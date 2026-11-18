@@ -78,6 +78,8 @@ final class Flake {
     var x: F = 0, y: F = 0, r: F = 0, vy: F = 0, phase: F = 0, sway: F = 0, swaySpd: F = 0, rot: F = 0, rotSpd: F = 0
     var a = 0
     var crystal = false
+    /// Which leaf this is, its shape and colour (autumn theme): an index into DotImages.leaves.
+    var kind = 0
     /// Only some flakes land on window edges; the rest fall past them.
     var catches = false
 }
@@ -105,6 +107,8 @@ final class Nisse {
 final class PlowBit {
     var x: F = 0, y: F = 0, vx: F = 0, vy: F = 0, life: F = 0, max: F = 0, size: F = 0
     var smoke = false
+    /// Which leaf this is, when the plow is autumn's leaf collector (an index into DotImages.leaves).
+    var kind = 0
 }
 
 // MARK: - GDI+-agtige tegnehjælpere (y-aksen peger nedad i alle tegnefunktioner)

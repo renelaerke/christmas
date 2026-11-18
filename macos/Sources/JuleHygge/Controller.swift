@@ -48,6 +48,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private var calendarWindow: CalendarWindow?
     private var menuActions: [MenuAction] = []
     private var santaCameraItem: NSMenuItem!, plowCameraItem: NSMenuItem!
+    /// The same twelve days in autumn: the haystack grows, then the scarecrow is put up beside it.
+    static let scarecrowSteps = [
+        "en lille bunke hø", "mere hø", "en hel høstak", "en stolpe til fugleskræmslet", "en tværpind til armene", "et hoved af sækkelærred",
+        "en ternet skjorte", "hænder af halm", "et ansigt", "et grønt halstørklæde", "en stråhat", "et græskar og en krage - fugleskræmslet er færdigt!"]
     private var countdownItem: NSMenuItem!, snowmanItem: NSMenuItem!, autostartItem: NSMenuItem!
     private(set) var powerSave = false
 
@@ -58,6 +62,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// number of flakes follows this, so a change comes on gradually; wind, speed and drifts follow the level.
     var snowAmount: F { time < stormUntil ? 2 : cfg.snowLevel == 3 ? F(Weather.amount()) : F(cfg.snowLevel) }
     var snowOn: Bool { cfg.snow || time < stormUntil }
+    var theme: Theme { Theme(rawValue: cfg.theme) ?? .jul }
 
     /// Snowfall slowly drifts between ~60 % and ~140 % of the chosen amount (two slow waves of about
     /// 3 and 7 minutes with random phases), so it feels organic but averages out to the chosen level.
@@ -348,7 +353,13 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let b = target.screenBounds
         // In the camera picture Santa is smaller and flies in a band where the whole sleigh (with its bobbing)
         // stays inside the picture; on the desktop anywhere in the upper part of the screen.
-        santaScale = target.isVirtual ? 0.85 : target.S
+        let baseScale: F = target.isVirtual ? 0.85 : target.S
+        // Size and pace are two separate things, each drawn per trip: Santa is ±15 % in size, and the geese
+        // pass anywhere from far off (half size, and quieter) to close by. The speed never follows the size.
+        // In the camera picture nothing grows: the band it flies in only has room for the ordinary size.
+        flyerDepth = theme == .efteraar ? 0.5 + R() * 0.7 : 0.85 + R() * 0.3
+        if target.isVirtual { flyerDepth = min(1, flyerDepth) }
+        santaScale = baseScale * flyerDepth
         santaY0 = b.minY + b.height * (target.isVirtual ? 0.25 + R() * 0.06 : 0.12 + R() * 0.25)
         // fly over every real screen at the same height (the camera scene is a world of its own)
         santaMinX = b.minX; santaMaxX = b.maxX
@@ -364,14 +375,19 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let pace = 0.9 + R() * 0.2
         jingleIndex = Int.random(in: 0..<jingles.count)
         jingles[jingleIndex].rate = Float(pace)
-        santaSpeed = 230 * pace * santaScale * (santaMaxX - santaMinX > b.width * 1.5 ? 1.6 : 1)
+        // the geese: alone two trips out of three, otherwise in wind; in a storm always the one with the wind
+        if theme == .efteraar {
+            jingleIndex = effectiveSnowLevel == 2 || R() < 1.0 / 3 ? 1 : 0
+            gooseVoices[jingleIndex].rate = Float(pace)
+        }
+        santaSpeed = 230 * pace * baseScale * (santaMaxX - santaMinX > b.width * 1.5 ? 1.6 : 1)
         santaPhase = 0
         santaActive = true
     }
 
     private func updateSanta(_ dt: F) {
         if !santaActive {
-            if cfg.santa {
+            if cfg.santa && theme.hasSanta {
                 santaNext -= dt
                 if santaNext <= 0 {
                     // while the desktop is paused for the camera, Santa visits the meeting instead
@@ -383,7 +399,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
         santaX += santaDir * santaSpeed * dt
         santaPhase += dt
-        sparkAcc += dt * 45
+        if theme.santaSparkles { sparkAcc += dt * 45 }
         while sparkAcc >= 1 {
             sparkAcc -= 1
             let sp = Spark()
@@ -406,9 +422,14 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private let audio = AudioHub()
     /// Three tunes; each of Santa's trips picks one at random.
     private lazy var jingles = Synth.Tune.all.map { t in audio.voice({ Synth.jingle(t) }, loops: true, varispeed: true) }
+    /// Autumn's flyer has two moods instead of tunes (the flock alone, or in wind); `jingleIndex` picks one.
+    private lazy var gooseVoices = (0..<Synth.gooseMoods.count).map { m in audio.voice({ Synth.geese(mood: m) }, loops: true, varispeed: true) }
     private var jingleIndex = 0
+    /// This trip's size (1 = the ordinary size); for the geese also how loud they are.
+    private var flyerDepth: F = 1
     private lazy var plowEngine = audio.voice(Synth.plowEngine, loops: true)
     private lazy var plowScrape = audio.voice(Synth.plowScrape, loops: true)
+    private lazy var leafSuction = audio.voice(Synth.leafSuction, loops: true)
     private lazy var plowHorn = audio.voice(Synth.plowHorn, loops: false)
     private var hornedThisRun = false
 
@@ -422,10 +443,16 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let margin = 330 * santaScale
         let presence = max(0, min(1, min(santaX - (santaMinX - margin), (santaMaxX + margin) - santaX) / margin))
         let on = santaActive && cfg.sound && !soundMuted
-        for (i, v) in jingles.enumerated() where (cfg.sound && i == jingleIndex) || v.playing {
-            v.update(level: on && i == jingleIndex ? Float(presence) * volume : 0, pan: Float((santaX - santaMinX) / span * 2 - 1), dt: d)
+        let autumn = theme == .efteraar
+        let pan = Float((santaX - santaMinX) / span * 2 - 1)
+        // the flyer's own sound for the theme; the other theme's sound fades out if it was playing
+        for (i, v) in jingles.enumerated() where (cfg.sound && !autumn && i == jingleIndex) || v.playing {
+            v.update(level: on && !autumn && i == jingleIndex ? Float(presence) * volume : 0, pan: pan, dt: d)
         }
-        if cfg.plowSound || plowEngine.playing || plowScrape.playing {
+        for (i, v) in gooseVoices.enumerated() where (cfg.sound && autumn && i == jingleIndex) || v.playing {
+            v.update(level: on && autumn && i == jingleIndex ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
+        }
+        if cfg.plowSound || plowEngine.playing || plowScrape.playing || leafSuction.playing {
             let span = max(1, plow.maxX - plow.minX)
             let margin: F = 300
             let presence = max(0, min(1, min(plow.gx - (plow.minX - margin), (plow.maxX + margin) - plow.gx) / margin))
@@ -434,7 +461,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             plowEngine.update(level: on ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
             // scraping gets louder with the amount of snow in front of the blade
             let load = Float(min(1, sqrt(plow.pushed / 2000)))
-            plowScrape.update(level: on ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
+            plowScrape.update(level: on && !autumn ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
+            // the leaf collector sucks instead of scraping: the fan runs all the time, a little harder with a full nozzle
+            if autumn || leafSuction.playing {
+                leafSuction.update(level: on && autumn ? Float(presence) * volume * (0.55 + 0.45 * load) : 0, pan: pan, dt: d)
+            }
             if on && !hornedThisRun && presence > 0.6 { hornedThisRun = true; plowHorn.playOnce(level: volume, pan: pan) }
         }
         if !plow.active { hornedThisRun = false }
@@ -528,7 +559,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if !plow.active {
             plow.cooldown -= dt
             // while the screens are paused for the camera only the camera picture is plowed (the others are hidden)
-            if cfg.plow && plow.cooldown <= 0,
+            if cfg.plow && theme.hasPlow && plow.cooldown <= 0,
                let o = overlays.first(where: { $0.isVirtual == screensPausedForCamera && $0.heapAverage > 18 * $0.S * 0.75 }) { startPlow(from: o) }
             return
         }
@@ -596,8 +627,13 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         var title: String?, msg: String?, opensCalendar = false
         if snowmanStage > cfg.snowmanSeenStage {
             if cfg.snowmanSeenStage > 0 && cfg.snowman {
-                title = "Snemanden vokser!"
-                msg = "Nisserne har bygget videre på snemanden. I dag fik den " + Self.snowmanSteps[snowmanStage - 1]
+                if theme == .efteraar {
+                    title = "Høstakken vokser!"
+                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[snowmanStage - 1]
+                } else {
+                    title = "Snemanden vokser!"
+                    msg = "Nisserne har bygget videre på snemanden. I dag fik den " + Self.snowmanSteps[snowmanStage - 1]
+                }
                 celebrateAt = time + 2
             }
             cfg.snowmanSeenStage = snowmanStage
@@ -647,6 +683,22 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     }
 
     // ------------------------------------------------------------------ menulinje-ikon og menu
+    /// Menu items whose text follows the theme: the Christmas title, and the autumn one (nil = the element has no
+    /// autumn form yet, so the item is hidden there). Applied each time the menu opens (menuNeedsUpdate).
+    private var themedItems: [(item: NSMenuItem, jul: String, efteraar: String?)] = []
+
+    private func themed(_ it: NSMenuItem, _ efteraar: String?) -> NSMenuItem {
+        themedItems.append((it, it.title, efteraar))
+        return it
+    }
+
+    /// The same for a submenu's own title and its choices (nil keeps a choice's text).
+    private func themed(_ parent: NSMenuItem, _ efteraar: String, choices: [String?]) -> NSMenuItem {
+        themedItems.append((parent, parent.title, efteraar))
+        for (it, name) in zip(parent.submenu?.items ?? [], choices) { if let name { themedItems.append((it, it.title, name)) } }
+        return parent
+    }
+
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.button?.image = AppIcon.menuBarImage
@@ -657,56 +709,61 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.autoenablesItems = false
         let cal = item("Julekalender…") { [unowned self] _ in showCalendar() }
         cal.attributedTitle = NSAttributedString(string: "Julekalender…", attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
-        menu.addItem(cal)
+        menu.addItem(themed(cal, nil))
         countdownItem = NSMenuItem(title: Self.countdown(), action: nil, keyEquivalent: "")
         countdownItem.isEnabled = false
-        menu.addItem(countdownItem)
-        menu.addItem(.separator())
+        menu.addItem(themed(countdownItem, nil))
+        menu.addItem(themed(.separator(), nil))
 
-        menu.addItem(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }))
-        menu.addItem(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }))
-        menu.addItem(toggle("Sne i bunden af skærmen", { $0.snowGround }, { $0.snowGround = $1 }))
-        menu.addItem(toggle("Sne på vinduerne", { $0.windowSnow }, { $0.windowSnow = $1 }))
+        menu.addItem(choice("Tema", Theme.names, [0, 1], { $0.theme }, { [unowned self] in $0.theme = $1; buildOverlays() }))
+        menu.addItem(themed(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }), "Løvfald"))
+        menu.addItem(themed(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }),
+                            "Mængde af blade", choices: ["Få blade", nil, "Efterårsstorm", nil]))
+        menu.addItem(themed(toggle("Sne i bunden af skærmen", { $0.snowGround }, { $0.snowGround = $1 }), "Blade i bunden af skærmen"))
+        menu.addItem(themed(toggle("Sne på vinduerne", { $0.windowSnow }, { $0.windowSnow = $1 }), "Blade på vinduerne"))
         snowmanItem = toggle("Snemand", { $0.snowman }, { $0.snowman = $1 })
-        menu.addItem(snowmanItem)
+        menu.addItem(themed(snowmanItem, "Høstak med fugleskræmsel"))
         menu.addItem(.separator())
 
-        menu.addItem(toggle("Julemanden", { $0.santa }, { $0.santa = $1 }))
-        menu.addItem(item("Send julemanden afsted nu!") { [unowned self] _ in
+        menu.addItem(themed(toggle("Julemanden", { $0.santa }, { $0.santa = $1 }), "Trækgæs"))
+        menu.addItem(themed(item("Send julemanden afsted nu!") { [unowned self] _ in
             if screensPausedForCamera { sendSantaToCamera() } else { launchSanta() }
-        })
-        menu.addItem(toggle("Lyd: bjælder og jingle når julemanden flyver", { $0.sound }, { $0.sound = $1 }))
+        }, "Send gæssene afsted nu!"))
+        menu.addItem(themed(toggle("Lyd: bjælder og jingle når julemanden flyver", { $0.sound }, { $0.sound = $1 }), "Lyd: gåsetræk når gæssene flyver"))
         menu.addItem(.separator())
 
-        menu.addItem(toggle("Sneplov rydder sneen", { $0.plow }, { $0.plow = $1 }))
-        menu.addItem(item("Send sneploven ud nu!") { [unowned self] _ in sendPlow() })
-        menu.addItem(toggle("Lyd: motor, skraben og horn fra sneploven", { $0.plowSound }, { $0.plowSound = $1 }))
+        menu.addItem(themed(toggle("Sneplov rydder sneen", { $0.plow }, { $0.plow = $1 }), "Løvsuger rydder bladene"))
+        menu.addItem(themed(item("Send sneploven ud nu!") { [unowned self] _ in sendPlow() }, "Send løvsugeren ud nu!"))
+        menu.addItem(themed(toggle("Lyd: motor, skraben og horn fra sneploven", { $0.plowSound }, { $0.plowSound = $1 }), "Lyd: motor, sug og horn fra løvsugeren"))
         menu.addItem(choice("Lydstyrke", ["Lav", "Middel", "Høj"], [0, 1, 2], { $0.soundLevel }, { $0.soundLevel = $1 }))
         menu.addItem(.separator())
 
-        menu.addItem(toggle("Nisser", { $0.nisser }, { $0.nisser = $1 }))
-        menu.addItem(choice("Antal nisser pr. skærm", ["1", "2", "3", "5", "8", "12"], [1, 2, 3, 5, 8, 12], { $0.nisseCount }, { $0.nisseCount = $1 }))
+        menu.addItem(themed(toggle("Nisser", { $0.nisser }, { $0.nisser = $1 }), "Pindsvin og egern"))
+        menu.addItem(themed(choice("Antal nisser pr. skærm", ["1", "2", "3", "5", "8", "12"], [1, 2, 3, 5, 8, 12], { $0.nisseCount }, { $0.nisseCount = $1 }),
+                            "Antal dyr pr. skærm", choices: []))
         menu.addItem(.separator())
 
-        menu.addItem(choice("Strømspare",
+        menu.addItem(themed(choice("Strømspare",
                             ["Fra - fuld sne på hele skærmen", "Til - sne kun nederst, stille blæser", "Kun på batteri eller i strømsparetilstand"],
-                            [0, 1, 2], { $0.powerSave }, { [unowned self] in $0.powerSave = $1; updatePowerSave() }))
-        menu.addItem(choice("Billedfrekvens",
+                            [0, 1, 2], { $0.powerSave }, { [unowned self] in $0.powerSave = $1; updatePowerSave() }),
+                            "Strømspare", choices: ["Fra - blade på hele skærmen", "Til - blade kun nederst, stille blæser", nil]))
+        menu.addItem(themed(choice("Billedfrekvens",
                             ["12 billeder/s - mindst strøm", "20 billeder/s - normal", "30 billeder/s - glattere sne", "60 billeder/s - helt glat, mest strøm"],
-                            [12, 20, 30, 60], { $0.frameRate }, { [unowned self] in $0.frameRate = $1; startTimer() }))
+                            [12, 20, 30, 60], { $0.frameRate }, { [unowned self] in $0.frameRate = $1; startTimer() }),
+                            "Billedfrekvens", choices: [nil, nil, "30 billeder/s - glattere løvfald", nil]))
         santaCameraItem = item("Send julemanden ind i kameraet") { [unowned self] _ in sendSantaToCamera() }
         plowCameraItem = item("Send sneploven ind i kameraet") { [unowned self] _ in sendPlowToCamera() }
-        menu.addItem(santaCameraItem)
-        menu.addItem(plowCameraItem)
+        menu.addItem(themed(santaCameraItem, "Send gæssene ind i kameraet"))
+        menu.addItem(themed(plowCameraItem, "Send løvsugeren ind i kameraet"))
         menu.addItem(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }))
         menu.addItem(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }))
         menu.addItem(toggle("Nissedragt i kameraet", { $0.cameraSuit }, { $0.cameraSuit = $1 }))
-        menu.addItem(toggle("Nisser og sne foran mig i kameraet", { $0.cameraFront }, { $0.cameraFront = $1 }))
+        menu.addItem(themed(toggle("Nisser og sne foran mig i kameraet", { $0.cameraFront }, { $0.cameraFront = $1 }), "Dyr og blade foran mig i kameraet"))
         menu.addItem(item("Installér JuleHygge Kamera (baggrund i Teams)…") { [unowned self] _ in cameraInstaller.install() })
         menu.addItem(toggle("Pause skærmene mens JuleHygge Kamera bruges", { $0.cameraPausesScreens }, { $0.cameraPausesScreens = $1 }))
         menu.addItem(item("Fjern JuleHygge Kamera") { [unowned self] _ in cameraInstaller.remove() })
         menu.addItem(.separator())
-        menu.addItem(toggle("Julelys", { $0.lights }, { $0.lights = $1 }))
+        menu.addItem(themed(toggle("Julelys", { $0.lights }, { $0.lights = $1 }), "Løvranke med lygter"))
         menu.addItem(toggle("Vis på alle skærme", { $0.allScreens }, { [unowned self] in $0.allScreens = $1; buildOverlays() }))
         menu.addItem(toggle("Pause ved fuldskærm (spil/film)", { $0.pauseFullscreen }, { $0.pauseFullscreen = $1 }))
         autostartItem = item("Start ved login") { it in
@@ -734,8 +791,13 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         plowCameraItem.isEnabled = inCamera
         santaCameraItem.toolTip = inCamera ? nil : "Virker når JuleHygge Kamera er i brug i Teams eller en anden app"
         plowCameraItem.toolTip = santaCameraItem.toolTip
+        let autumn = theme == .efteraar
+        for t in themedItems {
+            t.item.isHidden = autumn && t.efteraar == nil
+            if !t.item.isSeparatorItem { t.item.title = autumn ? (t.efteraar ?? t.jul) : t.jul }
+        }
         countdownItem.title = Self.countdown()
-        snowmanItem.title = "Snemand (trin \(snowmanStage) af \(Self.snowmanMaxStage))"
+        snowmanItem.title = "\(autumn ? "Høstak med fugleskræmsel" : "Snemand") (trin\(snowmanStage) af \(Self.snowmanMaxStage))"
         autostartItem.state = Self.autostart ? .on : .off
     }
 

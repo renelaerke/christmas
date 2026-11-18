@@ -21,5 +21,7 @@ if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then echo "VERSION skal se 
 if [[ "$VERSION" != 0.0.0 ]]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"; fi
 "$BIN" --icon "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/JuleHygge.icns"
+# The one sound file: the recording of geese for the autumn theme (see assets/lyd/KILDER.md).
+cp ../assets/lyd/gaes-flok.wav "$APP/Contents/Resources/gaes-flok.wav"
 codesign --force --sign - "$APP" >/dev/null
 echo "Bygget: $PWD/$APP (version $VERSION)"
