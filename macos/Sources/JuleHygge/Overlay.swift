@@ -104,6 +104,8 @@ enum GPU {
 
 final class DotImages {
     let flake, crystal, goldDot, whiteDot, goldGlint, whiteGlint, goldStar, whiteStar, smoke, chunk: CGImage
+    /// A raindrop's streak (autumn storm): an upright line, drawn narrow and tall and turned with the wind.
+    let rain: CGImage
     /// Autumn leaves in each colour, four ovals for every maple, lying along x (drawn turned as they fall).
     let leaves: [CGImage]
 
@@ -130,6 +132,7 @@ final class DotImages {
         whiteStar = img { $0.fillPoly(C(255, 255, 255), starPoints(m, m, m, m * 0.45)) }
         smoke = img { $0.fillEllipse(C(120, 120, 125), 0, 0, s, s) }
         chunk = img { $0.fillEllipse(C(250, 252, 255), 0, 0, s, s) }
+        rain = img { $0.line(C(190, 215, 240), 22, m, 6, m, s - 6, round: true) }
         // Two kinds of leaf in every colour, both with the stalk at the left and the tip at the right:
         // a pointed oval (beech) and, one in five, a maple.
         // The veins are faint and light. Dark ones made a small leaf read as a beetle seen from the side: the
@@ -210,6 +213,8 @@ final class ScreenOverlay {
     private var ledgeShapes: [Int: (fill: CAShapeLayer, line: CAShapeLayer, version: Int)] = [:]
     private var plowBitPool: DotPool!
     private var flakePool: DotPool!
+    private var rainPool: DotPool!
+    private var rain: [RainDrop] = []
     private var leafPool: DotPool!
     private var leafPileDrawn: F = -1, leafPileAt = -10.0
     private var ledgeLeafPool: DotPool!
@@ -298,6 +303,15 @@ final class ScreenOverlay {
         ledgeLeafPool = DotPool(in: root, screenHeight: h)
         sparkPool = DotPool(in: root, screenHeight: h)
         santaSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSanta(g) }
+        // autumn's kite: its string is a shape layer, the kite a small sprite at the string's end
+        kiteString.frame = root.bounds
+        kiteString.fillColor = nil
+        kiteString.strokeColor = C(235, 225, 200, 170)
+        kiteString.lineWidth = 1 * S
+        kiteString.actions = ["path": NSNull(), "hidden": NSNull()]
+        kiteString.isHidden = true
+        root.addSublayer(kiteString)
+        kiteSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawKite(g) }
         snowmanSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSnowman(g) }
         for l in [groundFill, groundLine] {
             l.frame = root.bounds
@@ -314,6 +328,7 @@ final class ScreenOverlay {
         root.addSublayer(nisseLayer)
         plowBitPool = DotPool(in: root, screenHeight: h)
         plowSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawPlow(g) }
+        rainPool = DotPool(in: root, screenHeight: h)   // behind the leaves
         flakePool = DotPool(in: root, screenHeight: h)
 
         window?.orderFrontRegardless()
@@ -388,7 +403,7 @@ final class ScreenOverlay {
     /// layers are removed, and only then is the window closed. (A display change can make AppKit redraw
     /// layers of a window that is being released; a sprite must not draw for an overlay that is going away.)
     func close() {
-        for sp in [lightsSprite, santaSprite, snowmanSprite, plowSprite] { sp?.detach() }
+        for sp in [lightsSprite, santaSprite, snowmanSprite, plowSprite, kiteSprite] { sp?.detach() }
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
         window?.orderOut(nil)
         window?.close()
@@ -417,6 +432,7 @@ final class ScreenOverlay {
         frameNo += 1
 
         updateSnow(dt)
+        updateRain(dt)
         updatePlow(dt)
         updateNisser(dt)
 
@@ -424,12 +440,14 @@ final class ScreenOverlay {
         renderSparks()
         renderSanta()
         renderSnowman()
+        renderKite()
         groundTimer -= dt
         if groundTimer <= 0 { groundTimer = 0.2; renderGround() }   // the pile changes slowly
         renderLedges()
         renderNisser()
         renderPlow()
         renderSnow()
+        renderRain()
     }
 
     // ------------------------------------------------------------------ sne
@@ -517,6 +535,47 @@ final class ScreenOverlay {
             let lim = maxH * (0.78 + 0.22 * F(0.6 * sin(gx / 37) + 0.4 * sin(gx / 13.7)))
             if heap[i] > lim { heap[i] = max(lim, heap[i] - 2 * S * dt) }
         }
+    }
+
+    // ------------------------------------------------------------------ regn (efterårsstorm)
+    // In autumn a storm brings rain with it: it sets in as the weather passes "normal" on its way to storm and
+    // thins out again as the storm dies down (the same gliding amount that sets the number of leaves). The
+    // drops fall fast and slant with the wind; they are short streaks from one shared image.
+    private static let noRain = ProcessInfo.processInfo.environment["JULE_NO_RAIN"] != nil
+
+    private func updateRain(_ dt: F) {
+        // JULE_NO_RAIN=1 leaves the rain out, to measure what it costs (measure.sh with and without)
+        let strength: F = c.theme == .efteraar && c.snowOn && !Self.noRain ? max(0, min(1, c.snowAmount - 1)) : 0
+        let target = Int(strength * (PS ? 70 : 130) * min(2, W * H / (1920 * 1080)))
+        var add = max(1, target / 30)
+        while add > 0 && rain.count < target {
+            rain.append(RainDrop(x: -100 + R() * (W + 200), y: rain.count < target / 2 ? R() * groundY : -R() * 80 * S, speed: (620 + R() * 260) * S))
+            add -= 1
+        }
+        guard !rain.isEmpty else { return }
+        let slant = c.wind * S * 1.6
+        var k = rain.count - 1
+        while k >= 0 {
+            rain[k].y += rain[k].speed * dt
+            rain[k].x += slant * dt
+            if rain[k].y >= groundY - heapAt(rain[k].x) {
+                if rain.count > target { rain.remove(at: k) }
+                else { rain[k].x = -100 + R() * (W + 200); rain[k].y = -R() * 80 * S }
+            }
+            k -= 1
+        }
+    }
+
+    private func renderRain() {
+        rainPool.begin()
+        if !rain.isEmpty {
+            // one angle for all drops: they fall at about the same speed
+            let angle = -atan2(c.wind * S * 1.6, 750 * S)
+            for d in rain where d.y > -20 * S {
+                rainPool.add(images.rain, x: d.x, y: d.y, w: 5 * S, h: 20 * S, opacity: 0.42, rotation: angle)
+            }
+        }
+        rainPool.end()
     }
 
     private func newFlake(anywhere: Bool) -> Flake {
@@ -918,6 +977,65 @@ final class ScreenOverlay {
             g.fillEllipse(C(240, 30, 30), x + 34, y - 29, 7, 7)
         } else {
             g.fillEllipse(C(40, 25, 15), x + 35, y - 27, 4, 4)
+        }
+    }
+
+    // ------------------------------------------------------------------ drage (efterår)
+    // A kite hangs in the wind over the primary screen, its string tied to the scarecrow's hand (or to the
+    // ground there, until the scarecrow has an arm). It drifts with the wind: further out and higher when it
+    // blows, nearer and lower when it is calm. The kite and string move every other frame, the tail flutters.
+    private let kiteString = CAShapeLayer()
+    private var kiteSprite: Sprite!
+    private var kiteX: F = 0, kiteY: F = 0, kiteLean: F = 0, kiteSet = false
+
+    private func renderKite() {
+        guard isPrimary && !isVirtual && cfg.kite && c.theme == .efteraar else { kiteSprite.hide(); kiteString.isHidden = true; return }
+        guard frameNo % 2 == 0 || kiteSprite.layer.isHidden else { return }
+        let baseX = W * 0.78, baseY = groundY - heapAt(W * 0.78) + 3 * S
+        let held = cfg.snowman && c.snowmanStage >= 5
+        let ax = baseX + (held ? 54 : 30) * S, ay = held ? baseY - 80 * S : baseY - 2 * S
+        let blow = max(-1, min(1, c.wind / 90))
+        let strength = min(1, abs(c.wind) / 60)
+        // the wind carries it to the lee side; with no wind it hangs to the left, over the open screen
+        let side: F = abs(blow) < 0.08 ? -1 : (blow < 0 ? -1 : 1)
+        let wantX = max(60 * S, min(W - 60 * S, ax + side * (170 + 150 * strength) * S + F(sin(c.time * 0.5)) * 14 * S))
+        let wantY = max(lightsTop + 110 * S, ay - H * (0.34 + 0.16 * strength) + F(sin(c.time * 0.8 + 1)) * 10 * S)
+        if !kiteSet { kiteX = wantX; kiteY = wantY; kiteSet = true }
+        kiteX += (wantX - kiteX) * 0.04
+        kiteY += (wantY - kiteY) * 0.04
+        kiteLean = max(-0.6, min(0.6, (kiteX - ax) / (300 * S) * 0.45))
+        kiteSprite.place(CGRect(x: kiteX - 60 * S, y: kiteY - 60 * S, width: 120 * S, height: 170 * S))
+        // the string sags a little between the hand and the kite's lower corner
+        let kx = kiteX - sin(kiteLean) * 34 * S, ky = kiteY + cos(kiteLean) * 34 * S
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: ax, y: H - ay))
+        p.addQuadCurve(to: CGPoint(x: kx, y: H - ky), control: CGPoint(x: (ax + kx) / 2, y: H - ((ay + ky) / 2 + 50 * S)))
+        kiteString.path = p
+        kiteString.isHidden = false
+    }
+
+    private func drawKite(_ g: CGContext) {
+        g.translateBy(x: kiteX, y: kiteY)
+        g.scaleBy(x: S, y: S)
+        g.rotate(by: kiteLean)
+        let red = C(206, 62, 40), yellow = C(242, 184, 52), spar = C(70, 45, 25)
+        // a diamond in four panels
+        g.fillPoly(red, [(0, -34), (22, -8), (0, -8)])
+        g.fillPoly(yellow, [(0, -34), (-22, -8), (0, -8)])
+        g.fillPoly(yellow, [(0, -8), (22, -8), (0, 34)])
+        g.fillPoly(red, [(0, -8), (-22, -8), (0, 34)])
+        g.line(spar, 1.2, 0, -34, 0, 34)
+        g.line(spar, 1.2, -22, -8, 22, -8)
+        // the tail: a line of bows that flutters
+        let t = F(c.time)
+        var px: F = 0, py: F = 34
+        for k in 1...4 {
+            let nx = sin(t * 3.1 + F(k) * 1.2) * (4 + F(k) * 2.2) - kiteLean * F(k) * 9, ny = 34 + F(k) * 17
+            g.line(C(235, 225, 200, 200), 1, px, py, nx, ny)
+            let bow = k % 2 == 0 ? red : yellow
+            g.fillPoly(bow, [(nx, ny), (nx - 6, ny - 3.5), (nx - 6, ny + 3.5)])
+            g.fillPoly(bow, [(nx, ny), (nx + 6, ny - 3.5), (nx + 6, ny + 3.5)])
+            px = nx; py = ny
         }
     }
 

@@ -8,6 +8,7 @@ final class Settings {
         cameraPausesScreens = true, windowSnow = true, cameraHat = true, cameraFront = true, cameraBeard = true, cameraSuit = true,
         sound = false, plowSound = false   // lyd er slået fra, indtil man selv slår den til
     var theme = 0              // 0 = jul, 1 = efterår (Theme)
+    var kite = true            // efterårets drage
     var autoUpdate = true      // install new GitHub releases by itself
     var lastVersion = ""       // the version that ran last time, to announce an update
     var snowLevel = 3          // 0 = let, 1 = normal, 2 = snestorm, 3 = skiftende vejr (Weather), som er standard
@@ -65,6 +66,7 @@ final class Settings {
         s.powerSave = max(0, min(2, i("PowerSave", s.powerSave)))
         s.frameRate = [12, 20, 30, 60].contains(i("FrameRate", 20)) ? i("FrameRate", 20) : 20
         s.theme = Theme(rawValue: i("Theme", 0)) != nil ? i("Theme", 0) : 0
+        s.kite = b("Kite", s.kite)
         s.autoUpdate = b("AutoUpdate", s.autoUpdate)
         s.lastVersion = d["LastVersion"] ?? ""
         s.snowmanSeenStage = i("SnowmanSeenStage", 0)
@@ -86,7 +88,7 @@ final class Settings {
             "Nisser=" + b(nisser), "Lights=" + b(lights), "PauseFullscreen=" + b(pauseFullscreen),
             "Snowman=" + b(snowman), "AllScreens=" + b(allScreens), "Plow=" + b(plow), "WindowSnow=" + b(windowSnow), "CameraHat=" + b(cameraHat), "CameraFront=" + b(cameraFront), "CameraBeard=" + b(cameraBeard), "CameraSuit=" + b(cameraSuit), "Sound=" + b(sound), "CameraPausesScreens=" + b(cameraPausesScreens), "PlowSound=" + b(plowSound), "SoundLevel=\(soundLevel)",
             "SnowLevel=\(snowLevel)", "NisseCount=\(nisseCount)", "PowerSave=\(powerSave)", "FrameRate=\(frameRate)",
-            "Theme=\(theme)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion,
+            "Theme=\(theme)", "Kite=" + b(kite),"AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion,
             "SnowmanSeenStage=\(snowmanSeenStage)", "CalendarYear=\(calendarYear)",
             "FirstRun=" + ds(firstRun), "LastDoorNotice=" + ds(lastDoorNotice),
             "OpenedDoors=" + openedDoors.sorted().map(String.init).joined(separator: ","),

@@ -52,7 +52,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     static let scarecrowSteps = [
         "en lille bunke hø", "mere hø", "en hel høstak", "en stolpe til fugleskræmslet", "en tværpind til armene", "et hoved af sækkelærred",
         "en ternet skjorte", "hænder af halm", "et ansigt", "et grønt halstørklæde", "en stråhat", "et græskar og en krage - fugleskræmslet er færdigt!"]
-    private var countdownItem: NSMenuItem!, snowmanItem: NSMenuItem!, autostartItem: NSMenuItem!
+    private var kiteItem: NSMenuItem!
+    private var countdownItem: NSMenuItem!,snowmanItem: NSMenuItem!, autostartItem: NSMenuItem!
     private(set) var powerSave = false
 
     var santaY: F { santaY0 + sin(santaPhase * 0.9) * 40 * santaScale }
@@ -723,6 +724,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(toggle("Sne på vinduerne", { $0.windowSnow }, { $0.windowSnow = $1 }), "Blade på vinduerne"))
         snowmanItem = toggle("Snemand", { $0.snowman }, { $0.snowman = $1 })
         menu.addItem(themed(snowmanItem, "Høstak med fugleskræmsel"))
+        // the kite only exists in autumn: shown there, hidden in the Christmas theme
+        kiteItem = toggle("Drage", { $0.kite }, { $0.kite = $1 })
+        menu.addItem(kiteItem)
         menu.addItem(.separator())
 
         menu.addItem(themed(toggle("Julemanden", { $0.santa }, { $0.santa = $1 }), "Trækgæs"))
@@ -796,6 +800,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             t.item.isHidden = autumn && t.efteraar == nil
             if !t.item.isSeparatorItem { t.item.title = autumn ? (t.efteraar ?? t.jul) : t.jul }
         }
+        kiteItem.isHidden = !autumn
         countdownItem.title = Self.countdown()
         snowmanItem.title = "\(autumn ? "Høstak med fugleskræmsel" : "Snemand") (trin\(snowmanStage) af \(Self.snowmanMaxStage))"
         autostartItem.state = Self.autostart ? .on : .off

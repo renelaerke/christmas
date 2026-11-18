@@ -84,6 +84,11 @@ final class Flake {
     var catches = false
 }
 
+/// One raindrop in autumn's storm.
+struct RainDrop {
+    var x: F, y: F, speed: F
+}
+
 final class Spark {
     var x: F = 0, y: F = 0, vx: F = 0, vy: F = 0, life: F = 0, max: F = 0, size: F = 0
     var gold = false, star = false
