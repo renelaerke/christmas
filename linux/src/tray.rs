@@ -135,9 +135,9 @@ impl ksni::Tray for AppTray {
             items.push(disabled(self.status.clone()));
             items.push(MenuItem::Separator);
         }
-        // The autumn theme: the calendar and the countdown belong to Christmas, and so far only the leaves and
-        // their piles have their autumn form on Linux. What has none is left out of the menu in autumn (and off
-        // on the screen, see the controller): it is never shown in its Christmas form.
+        // The autumn theme: the calendar and the countdown belong to Christmas. The plow, the sounds and the
+        // elves have no autumn form on Linux yet: they are left out of the menu in autumn (and off on the screen,
+        // see the controller), never shown in their Christmas form.
         let autumn = c.theme == 1;
         if !autumn {
             items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
@@ -158,17 +158,24 @@ impl ksni::Tray for AppTray {
         items.push(toggle(ground.into(), c.snow_ground, |s| &mut s.snow_ground));
         let on_windows = if autumn { text::MENU_WINDOW_LEAVES } else { text::MENU_WINDOW_SNOW };
         items.push(toggle(on_windows.into(), c.window_snow, |s| &mut s.window_snow));
-        if !autumn {
-            let snowman = text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE);
-            items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
-        }
+        let snowman = if autumn {
+            text::menu_scarecrow(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        } else {
+            text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        };
+        items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
+        items.push(MenuItem::Separator);
+
+        let (santa, send) = if autumn {
+            (text::MENU_GEESE, text::MENU_SEND_GEESE)
+        } else {
+            (text::MENU_SANTA, text::MENU_SEND_SANTA)
+        };
+        items.push(toggle(santa.into(), c.santa, |s| &mut s.santa));
+        items.push(item(send, || TrayMsg::Santa));
         items.push(MenuItem::Separator);
 
         if !autumn {
-            items.push(toggle(text::MENU_SANTA.into(), c.santa, |s| &mut s.santa));
-            items.push(item(text::MENU_SEND_SANTA, || TrayMsg::Santa));
-            items.push(MenuItem::Separator);
-
             items.push(toggle(text::MENU_PLOW.into(), c.plow, |s| &mut s.plow));
             items.push(item(text::MENU_SEND_PLOW, || TrayMsg::Plow));
             items.push(MenuItem::Separator);
@@ -190,9 +197,8 @@ impl ksni::Tray for AppTray {
         items.push(choice(text::MENU_POWER_SAVE, &power, &POWER_ORDER, c.power_save, |s| &mut s.power_save));
         let rates = if autumn { &text::FRAME_RATES_AUTUMN } else { &text::FRAME_RATES };
         items.push(choice(text::MENU_FRAME_RATE, rates, &FRAME_RATES, c.frame_rate, |s| &mut s.frame_rate));
-        if !autumn {
-            items.push(toggle(text::MENU_LIGHTS.into(), c.lights, |s| &mut s.lights));
-        }
+        let lights = if autumn { text::MENU_GARLAND } else { text::MENU_LIGHTS };
+        items.push(toggle(lights.into(), c.lights, |s| &mut s.lights));
         items.push(toggle(text::MENU_ALL_SCREENS.into(), c.all_screens, |s| &mut s.all_screens));
         items.push(toggle(text::MENU_PAUSE_FULLSCREEN.into(), c.pause_fullscreen, |s| &mut s.pause_fullscreen));
         items.push(

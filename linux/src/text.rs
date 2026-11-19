@@ -49,7 +49,8 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 
 // ---------------------------------------------------------------------- the autumn theme (menu "Tema")
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
-// Windows versions). Items whose element has no autumn form on Linux yet are left out of the menu in autumn.
+// Windows versions). Items whose element has no autumn form on Linux yet (the plow, the sounds, the elves) are
+// left out of the menu in autumn.
 pub const MENU_THEME: &str = "Tema";
 pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
 pub const MENU_LEAVES: &str = "Løvfald";
@@ -57,6 +58,34 @@ pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
 pub const MENU_LEAF_GROUND: &str = "Blade på panelet";
 pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
+pub const MENU_GEESE: &str = "Trækgæs";
+pub const MENU_SEND_GEESE: &str = "Send gæssene afsted nu!";
+pub const MENU_GARLAND: &str = "Løvranke med lygter";
+pub const NOTICE_SCARECROW_TITLE: &str = "Høstakken vokser!";
+
+pub fn menu_scarecrow(stage: i32, max: i32) -> String {
+    format!("Høstak med fugleskræmsel (trin {stage} af {max})")
+}
+
+pub fn notice_scarecrow(step: &str) -> String {
+    format!("Pindsvinene og egernene har bygget videre. I dag kom der {step}")
+}
+
+/// What the haystack and the scarecrow got on each day (stage 1..=12).
+pub const SCARECROW_STEPS: [&str; 12] = [
+    "en lille bunke hø",
+    "mere hø",
+    "en hel høstak",
+    "en stolpe til fugleskræmslet",
+    "en tværpind til armene",
+    "et hoved af sækkelærred",
+    "en ternet skjorte",
+    "hænder af halm",
+    "et ansigt",
+    "et grønt halstørklæde",
+    "en stråhat",
+    "et græskar og en krage - fugleskræmslet er færdigt!",
+];
 pub const FRAME_RATES_AUTUMN: [&str; 4] = [
     "12 billeder/s - mindst strøm",
     "20 billeder/s - normal",

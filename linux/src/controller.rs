@@ -191,6 +191,7 @@ impl Controller {
         c.update_daily(!updated);
         c.warm_sounds();
         c.build_screens();
+        c.figures.autumn = c.cfg.theme == 1;
         if opts.santa {
             let screens = c.screen_infos();
             c.figures.launch_santa(&screens);
@@ -300,9 +301,13 @@ impl Controller {
 
         let mut notice: Option<(&str, String, bool)> = None;
         if self.snowman_stage > self.cfg.snowman_seen_stage {
-            if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman && self.cfg.theme != 1 {
-                let step = text::SNOWMAN_STEPS[self.snowman_stage as usize - 1];
-                notice = Some((text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(step), false));
+            if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman {
+                let at = self.snowman_stage as usize - 1;
+                notice = Some(if self.cfg.theme == 1 {
+                    (text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false)
+                } else {
+                    (text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(text::SNOWMAN_STEPS[at]), false)
+                });
                 self.celebrate_at = Some(self.time + 2.0);
             }
             self.cfg.snowman_seen_stage = self.snowman_stage;
@@ -345,16 +350,18 @@ impl Controller {
             TrayMsg::Quit => {}
             TrayMsg::CheckUpdate => self.check_for_update(true),
             TrayMsg::Calendar => self.show_calendar(),
-            // (neither has an autumn form yet, and the autumn menu does not offer them)
-            TrayMsg::Santa if self.cfg.theme != 1 => {
+            // (in autumn the geese fly in his place)
+            TrayMsg::Santa => {
                 let screens = self.screen_infos();
+                self.figures.autumn = self.cfg.theme == 1;
                 self.figures.launch_santa(&screens);
             }
+            // (the plow has no autumn form yet, and the autumn menu does not offer it)
             TrayMsg::Plow if self.cfg.theme != 1 => {
                 let screens = self.screen_infos();
                 self.figures.send_plow(&screens);
             }
-            TrayMsg::Santa | TrayMsg::Plow => {}
+            TrayMsg::Plow => {}
             TrayMsg::Settings(m) => {
                 let old = self.cfg.take_menu_fields(&m);
                 self.cfg.save();
@@ -533,7 +540,8 @@ impl Controller {
             let margin = 330.0 * scale;
             let presence = ((x - (min - margin)).min((max + margin) - x) / margin).clamp(0.0, 1.0);
             let pan = (x - min) / (max - min).max(1.0) * 2.0 - 1.0;
-            let on = self.figures.santa.is_some() && self.cfg.sound && !muted;
+            // (the geese have no sound on Linux yet, and Santa's tune is not theirs)
+            let on = self.figures.santa.is_some() && self.cfg.sound && !muted && self.cfg.theme != 1;
             for i in 0..s.jingles.len() {
                 let v = s.jingles[i];
                 if (self.cfg.sound && i == s.jingle) || s.hub.playing(v) {
@@ -752,10 +760,12 @@ impl Controller {
             self.time += dt as f64;
             self.timers(dt);
             let screens = self.screen_infos();
-            // The autumn theme: so far only the leaves and their piles have their autumn form here. What has none
-            // (Santa, the plow, the elves, the snowman, the lights) is off in autumn, never shown as at Christmas.
+            // The autumn theme: the leaves and their piles, the haystack with its scarecrow, the geese and the vine
+            // with lanterns have their autumn form here. What has none yet (the plow, the elves) is off in autumn,
+            // never shown as at Christmas.
             let autumn = self.cfg.theme == 1;
-            self.figures.update(dt, self.time, &screens, self.cfg.santa && !autumn, self.cfg.plow && !autumn);
+            self.figures.autumn = autumn;
+            self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow && !autumn);
 
             let amount = self.snow_amount();
             let level = if amount > 1.5 {
@@ -780,10 +790,10 @@ impl Controller {
                 fullscreen: self.fullscreen,
                 pause_fullscreen: self.cfg.pause_fullscreen,
                 power_save: self.power_save,
-                lights: self.cfg.lights && !autumn,
+                lights: self.cfg.lights,
                 elves: self.cfg.elves && !autumn,
                 elf_count: self.cfg.elf_count,
-                snowman_stage: if self.cfg.snowman && !autumn { self.snowman_stage } else { 0 },
+                snowman_stage: if self.cfg.snowman { self.snowman_stage } else { 0 },
                 santa: self.figures.santa.as_ref(),
                 sparks: &self.figures.sparks,
                 plow: Some(&self.figures.plow),

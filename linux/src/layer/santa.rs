@@ -41,7 +41,8 @@ impl Layer {
         if sx < -330.0 * sc || sx > w + 330.0 * sc || sy < -150.0 * sc || sy > h + 150.0 * sc {
             return;
         }
-        self.mark(sx - 330.0 * sc, sy - 135.0 * sc, 660.0 * sc, 195.0 * sc);
+        // (the geese's wedge reaches a little higher than the sleigh)
+        self.mark(sx - 330.0 * sc, sy - 160.0 * sc, 660.0 * sc, 225.0 * sc);
 
         let cr = &self.canvas.cr;
         let saved = cr.matrix();
@@ -49,6 +50,11 @@ impl Layer {
         cr.scale((santa.dir * sc) as f64, sc as f64);
         cr.rotate(((santa.phase as f64 * 0.9).cos() * -4.0 * santa.dir as f64).to_radians());
         let t = santa.phase as f64;
+        if st.autumn {
+            geese(cr, t);
+            cr.set_matrix(saved);
+            return;
+        }
 
         let rx = [80.0, 140.0, 200.0, 260.0];
         let mut ry = [0.0; 4];
@@ -112,6 +118,48 @@ impl Layer {
         stroke(cr, GOLD, 3.0, LineCap::Round);
         cr.set_matrix(saved);
     }
+}
+
+/// Autumn's flyer in Santa's place (`DrawGeese` on Windows): geese on their way south in a wedge, the leader in
+/// front and one arm longer than the other. Each bird beats its wings in its own time and rides a little up and
+/// down. Drawn in Santa's frame.
+fn geese(cr: &Context, t: f64) {
+    const PLACES: [(f64, f64); 8] = [
+        (250.0, -35.0),
+        (182.0, -54.0),
+        (114.0, -73.0),
+        (46.0, -92.0),
+        (-22.0, -111.0),
+        (182.0, -16.0),
+        (114.0, 3.0),
+        (46.0, 22.0),
+    ];
+    for (i, (x, y)) in PLACES.iter().enumerate().rev() {
+        goose(cr, *x, *y + (t * 1.7 + i as f64 * 1.3).sin() * 3.0, i as f64 * 1.9, t);
+    }
+}
+
+/// One goose flying toward +x, seen from the side: grey-brown, neck stretched out, orange beak.
+fn goose(cr: &Context, x: f64, y: f64, phase: f64, t: f64) {
+    let flap = (t * 7.0 + phase).sin();
+    let (body, dark, neck) = (rgb(140, 125, 105), rgb(96, 84, 68), rgb(118, 104, 88));
+    // the far wing, a little shorter and lighter
+    fill_polygon(
+        cr,
+        rgb(168, 154, 134),
+        &[(x + 5.0, y - 3.0), (x - 7.0, y - 3.0), (x - 5.0, y - 3.0 - 20.0 * flap), (x + 3.0, y - 3.0 - 21.0 * flap)],
+    );
+    fill_polygon(cr, dark, &[(x - 15.0, y - 2.0), (x - 26.0, y - 0.5), (x - 15.0, y + 3.0)]);
+    fill_ellipse(cr, body, x - 17.0, y - 5.0, 34.0, 10.0);
+    fill_ellipse(cr, rgb(208, 198, 178), x - 11.0, y + 0.5, 21.0, 4.5);
+    line(cr, neck, 3.4, LineCap::Round, x + 14.0, y - 1.0, x + 31.0, y - 5.0);
+    fill_ellipse(cr, neck, x + 28.5, y - 9.0, 8.5, 6.5);
+    fill_polygon(cr, rgb(236, 140, 36), &[(x + 36.0, y - 7.2), (x + 42.5, y - 5.4), (x + 36.0, y - 4.2)]);
+    fill_ellipse(cr, rgb(25, 25, 28), x + 33.0, y - 7.6, 1.8, 1.8);
+    // the near wing over the body
+    let tip = [(x - 11.0, y - 2.0 - 25.0 * flap), (x - 2.0, y - 2.0 - 27.0 * flap)];
+    fill_polygon(cr, dark, &[(x + 8.0, y - 2.0), (x - 9.0, y - 2.0), tip[0], tip[1]]);
+    line(cr, rgb(70, 60, 48), 1.6, LineCap::Round, tip[0].0, tip[0].1, tip[1].0, tip[1].1);
 }
 
 fn reindeer(cr: &Context, x: f64, y: f64, phase: f64, rudolph: bool, t: f64) {

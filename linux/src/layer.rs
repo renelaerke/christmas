@@ -175,6 +175,13 @@ fn make_leaf_sprites() -> Res<Vec<Vec<u32>>> {
     Ok(all)
 }
 
+/// Which leaf lies where in a pile is fixed by its place, so the pile does not flicker: 0..1 from two whole
+/// numbers (as `Chance` on Windows).
+fn chance(i: i32, j: i32) -> f32 {
+    let v = (i as f64 * 12.9898 + j as f64 * 78.233).sin() * 43758.5453;
+    (v - v.floor()) as f32
+}
+
 /// One leaf, turned by `rot` and `size` pixels across, blended into a premultiplied buffer of `bw` x `bh` pixels
 /// (the screen's, or a cached picture's). Each pixel is looked up in the leaf's picture, between its four nearest
 /// points.
