@@ -1,6 +1,7 @@
 # Builds the macOS app (universal: Apple Silicon + Intel) with macos/build.sh and attaches it as
 # JuleHygge-macOS.zip to the GitHub release. Runs when a release is published (e.g. `gh release create`),
-# or by hand from the Actions tab (then the zip is only kept as a workflow artifact).
+# when called by release.yml (the "Make release" button) with the new tag, or by hand from the Actions tab
+# (then the zip is only kept as a workflow artifact).
 #
 # The app is ad-hoc signed like a local build, so on first launch macOS asks for confirmation
 # (right-click > Open, or System Settings > Privacy & Security > Open Anyway). The JuleHygge Kamera
@@ -10,6 +11,12 @@ name: macOS build
 on:
   release:
     types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to stamp and attach to (e.g. v1.4.1)
+        type: string
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -20,7 +27,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Toolchain
         run: |
@@ -33,11 +40,10 @@ jobs:
       - name: Version
         id: ver
         env:
-          EVENT: ${{ github.event_name }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: |
           v=0.0.0
-          if [ "$EVENT" = release ]; then v="${TAG#v}"; v="${v#V}"; fi
+          if [ -n "$TAG" ]; then v="${TAG#v}"; v="${v#V}"; fi
           echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Tag must look like v1.2.3, got '$TAG'"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
@@ -60,14 +66,14 @@ jobs:
           shasum -a 256 JuleHygge-macOS.zip
 
       - name: Keep as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: JuleHygge-macOS
           path: macos/build/JuleHygge-macOS.zip
 
       - name: Attach to the release
-        if: github.event_name == 'release'
+        if: inputs.tag != '' || github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
         run: gh release upload "$TAG" macos/build/JuleHygge-macOS.zip --clobber

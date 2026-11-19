@@ -292,15 +292,17 @@ final class ScreenOverlay {
         }
 
         let h = H
+        // snow on other windows sits on those windows, so the light string and everything that moves
+        // (Santa, sparks, nisser) is drawn over it
+        ledgeLayer.frame = root.bounds
+        root.addSublayer(ledgeLayer)
+        // the single leaves the piles on the windows are made of (see renderLedgeLeaves): with the piles, so
+        // under the light string too
+        ledgeLeafPool = DotPool(in: root, screenHeight: h)
         lightsSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.renderLights(g) }
         lightsLayer.frame = root.bounds
         lightsLayer.isHidden = true
         root.addSublayer(lightsLayer)
-        // snow on other windows sits on those windows, so everything that moves (Santa, sparks, nisser) is drawn over it
-        ledgeLayer.frame = root.bounds
-        root.addSublayer(ledgeLayer)
-        // the single leaves the piles on the windows are made of (see renderLedgeLeaves)
-        ledgeLeafPool = DotPool(in: root, screenHeight: h)
         sparkPool = DotPool(in: root, screenHeight: h)
         santaSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSanta(g) }
         // autumn's kite: its string is a shape layer, the kite a small sprite at the string's end

@@ -1,0 +1,102 @@
+# "Make release" button (Actions tab > Make release > Run workflow). Finds the next version from the newest
+# vX.Y.Z tag (patch, minor or major), creates a draft release on the current main, builds and attaches the
+# Windows exe, the macOS zip and the Linux tarball with that version, and then publishes the release. The apps'
+# self-update only looks at published releases, so nobody sees a release before all three files are on it. If a
+# build fails, the draft stays behind (delete it under Releases) and nothing is published.
+#
+# A release made with GITHUB_TOKEN does not start other workflows, so this one calls the three build
+# workflows itself (workflow_call) instead of relying on their "release published" trigger.
+name: Make release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Which part of the version to raise
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      notes:
+        description: Optional text at the top of the release notes (the merged PRs are listed below it)
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # all tags
+
+      - name: Next version
+        id: next
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          last=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          [ -n "$last" ] || last=v0.0.0
+          IFS=. read -r major minor patch <<< "${last#v}"
+          case "$BUMP" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            *)     patch=$((patch + 1)) ;;
+          esac
+          tag="v$major.$minor.$patch"
+          echo "Last release: $last -> new: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.next.outputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+            echo "## Install"
+            echo "- **Windows:** download \`JuleHygge.exe\`, put it in a folder of its own that you can write to (e.g. \`%LOCALAPPDATA%\\JuleHygge\`) and run it. SmartScreen may warn on first start (unsigned): More info, then Run anyway. Version 1.4.0 and later update themselves."
+            echo "- **macOS 14+:** download \`JuleHygge-macOS.zip\`, unzip and move \`JuleHygge.app\` to Applications. First start: right-click, then Open."
+            echo "- **Linux (Ubuntu 22.04+, Linux Mint 21+, x86_64):** download \`JuleHygge-linux-x86_64.tar.gz\`, unpack it and run \`./install.sh\` (no root; add \`--autostart\` to start it at login). It updates itself."
+            echo
+          } > notes.md
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" \
+            --title "JuleHygge $TAG (Windows + macOS + Linux)" --notes-file notes.md --generate-notes
+
+  windows:
+    needs: prepare
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  macos:
+    needs: prepare
+    uses: ./.github/workflows/macos-release.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  linux:
+    needs: prepare
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  publish:
+    needs: [prepare, windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url,assets --jq '.url, (.assets[] | .name + " " + .digest)'

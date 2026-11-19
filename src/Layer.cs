@@ -304,10 +304,18 @@ namespace JuleHygge
             foreach (var r in cleared) if (r.IntersectsWith(lightsRect)) { lightsDamaged = true; break; }
 
             presentOnly.Clear();
-            if (cfg.Lights) DrawLights(dt, lightsDamaged);
+            // Snow on other windows sits on those windows, so the light string and everything that moves
+            // (Santa, sparks, nisser) is drawn over it. In power-save mode the strip is not cleared every frame,
+            // so clear it before the snow when the lights are drawn again (they are blended over the snow).
+            bool lightsDraw = false;
+            if (cfg.Lights)
+            {
+                lightsDraw = PrepareLights(dt, lightsDamaged);
+                if (lightsDraw && PS) { ClearRects(new List<Rectangle> { lightsRect }); presentOnly.Add(lightsRect); }
+            }
             else if (lightsShown) { Mark(0, 0, W, LightsHeight); lightsShown = false; }
-            // snow on other windows sits on those windows, so everything that moves (Santa, sparks, nisser) is drawn over it
             DrawLedges();
+            if (lightsDraw) DrawLightsStrip();
             DrawSantaAndSparks();
             if (IsPrimary && cfg.Snowman) DrawSnowman(); else SnowmanPos = PointF.Empty;
             DrawGround();
@@ -1400,7 +1408,8 @@ namespace JuleHygge
             Color.FromArgb(255, 60, 60), Color.FromArgb(60, 220, 90), Color.FromArgb(255, 200, 60),
             Color.FromArgb(80, 150, 255), Color.FromArgb(255, 110, 200) };
 
-        void DrawLights(float dt, bool damaged)
+        // Updates the cached strip; returns true when it must be drawn this frame (see DrawLightsStrip).
+        bool PrepareLights(float dt, bool damaged)
         {
             int lh = LightsHeight;
             if (lightsBmp == null || lightsBmp.Width != W || lightsBmp.Height != lh)
@@ -1423,16 +1432,18 @@ namespace JuleHygge
                 rerendered = true;
             }
             // Normal mode redraws the strip every frame. Power-save mode leaves it in the buffer and only
-            // copies it again when it changed or something else cleared part of it.
-            if (!PS || rerendered || damaged || !lightsShown)
-            {
-                g.CompositingMode = CompositingMode.SourceCopy;
-                g.DrawImageUnscaled(lightsBmp, 0, 0);
-                g.CompositingMode = CompositingMode.SourceOver;
-                if (PS) presentOnly.Add(new Rectangle(0, 0, W, lh));
-            }
+            // draws it again when it changed or something else cleared part of it.
+            bool draw = !PS || rerendered || damaged || !lightsShown;
             if (!PS) Mark(0, 0, W, lh);
             lightsShown = true;
+            return draw;
+        }
+
+        // Blends the strip over what is already drawn (the strip area was cleared earlier this frame).
+        void DrawLightsStrip()
+        {
+            g.CompositingMode = CompositingMode.SourceOver;
+            g.DrawImageUnscaled(lightsBmp, 0, 0);
         }
 
         void RenderLights(Graphics lg)

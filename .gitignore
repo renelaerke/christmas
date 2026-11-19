@@ -12,3 +12,7 @@ obj/
 
 # Testoutput og fejlsøgningsbilleder fra kameraet (kan vise personer)
 build-test/
+
+# Linux
+linux/target/
+linux/build/

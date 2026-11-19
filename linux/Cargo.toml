@@ -1,0 +1,47 @@
+[package]
+name = "julehygge"
+version = "0.0.0"            # the real version comes from VERSION=x.y.z at build time (see build.rs)
+edition = "2021"
+rust-version = "1.89"        # std::fs::File::try_lock (single instance)
+description = "JuleHygge for Linux: snow, elves and an advent calendar over the desktop"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "JuleHygge"
+path = "src/main.rs"
+
+[dependencies]
+# X11 protocol in pure Rust (no libX11): overlay windows, monitors, click-through input shape.
+x11rb = { version = "0.13", features = ["randr", "shape", "xfixes", "render", "dpms", "shm"] }
+# System V shared memory for MIT-SHM (the same libc crate the other dependencies already use).
+libc = "0.2"
+# 2D drawing (and PNG output for --snapshot). Links the system's libcairo2.
+cairo-rs = { version = "0.20", features = ["png"] }
+# Text in the calendar window (same gtk-rs-core release as cairo-rs). Links the system's libpango.
+pangocairo = "0.20"
+# Sound output (ALSA; reaches PipeWire and PulseAudio through their ALSA plugins). Links the system's libasound2.
+cpal = "0.15"
+# Tray icon and menu (StatusNotifierItem over D-Bus, pure Rust via zbus).
+ksni = { version = "0.3", features = ["blocking"] }
+# Lock and screen saver state over D-Bus. Already used by ksni (same version and tokio runtime), so it adds no
+# second D-Bus stack.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "time"] }
+# Reading D-Bus signals (a click on a notification) as a stream; already used by ksni.
+futures-util = { version = "0.3", default-features = false }
+# Self-update from GitHub releases: HTTPS (rustls, no OpenSSL), the release JSON, the SHA-256 check, and taking the
+# binary out of the release tarball.
+ureq = { version = "2", default-features = false, features = ["tls"] }
+serde_json = "1"
+sha2 = "0.10"
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+# Local date and time of day (JULE_DATE, weather).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

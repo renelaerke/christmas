@@ -2,6 +2,14 @@
 
 Et lille juleoverlay til Windows og macOS: snevejr, sne der lægger sig på proceslinjen, julemanden i kane med rensdyr (og Rudolf), nisser der går rundt på proceslinjen, julelys langs toppen af skærmen, en snemand der bliver bygget lidt mere hver dag, og en julekalender med 24 låger.
 
+![Santa flies across the screen in a snowstorm, and the snow plow clears the taskbar](docs/media/julehygge.gif)
+
+| Snow on windows, nisser, snowman and lights | Advent calendar |
+|---|---|
+| ![Overview: snow piles on the browser and terminal windows, nisser and a snowman on the taskbar](docs/media/overview.png) | ![The advent calendar on 14 December with 13 doors open](docs/media/calendar.png) |
+
+*The terminal in the pictures runs [`tools/nordpol.ps1`](tools/nordpol.ps1), a small live dashboard that follows the app's debug log (gifts exchanged, snow sliding off windows, plow runs, CPU and frame rate).*
+
 - Overlayet er gennemsigtigt, og man kan klikke igennem det, så det forstyrrer ikke arbejdet.
 - Det virker på **alle skærme**. Julemanden flyver hen over de skærme, der står ved siden af hinanden.
 - Højreklik på snefnug-ikonet ved uret for **indstillinger** og **julekalenderen**. Dobbeltklik på ikonet kalder julemanden frem.
@@ -56,7 +64,7 @@ Al grafik tegnes i koden, så der ikke er billedfiler.
 | `JULE_NO_SUPERVISOR=1` | runs without the restart supervisor (test flags also skip it) |
 | `JULE_UPDATE_VERSION=x.y.z` | pretends to be this version when checking for updates |
 
-**Releases:** `.github/workflows/windows-build.yml` builds the exe on every push and pull request, and for a published release builds it with the tag as version (`build.ps1 -Version 1.4.0`) and attaches it. So create a release without files (`gh release create v1.4.0 --notes-file ...`); both workflows attach their builds within a few minutes.
+**Releases:** `.github/workflows/windows-build.yml` builds the exe on every push and pull request, and for a published release builds it with the tag as version (`build.ps1 -Version 1.4.0`) and attaches it. To release, run **Make release** in the Actions tab (`.github/workflows/release.yml`, or `gh workflow run release.yml -f bump=patch`): it raises the version (patch, minor or major), builds both apps, attaches them and then publishes the release, with the merged PRs listed in the notes. Merges to `main` are never released by themselves.
 
 ## Kode
 

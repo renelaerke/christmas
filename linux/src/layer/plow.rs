@@ -1,0 +1,249 @@
+//! The orange snow plow clearing the panel when the snow gets high, alternating direction each run. Snow it
+//! scrapes up builds a growing pile in front of the blade and is thrown up as chunks. The truck is driven in global
+//! coordinates (`figures.rs`), so one plow drives on across neighbouring screens. Ported from `src/Layer.cs`.
+
+use cairo::LineCap;
+
+use super::draw::*;
+use super::elves::ElfState;
+use super::{heap_at, Layer, SceneState, HEAP_STEP};
+use crate::figures::{PlowRun, PLOW_SCALE};
+
+pub(super) struct PlowBit {
+    x: f32,
+    y: f32,
+    vx: f32,
+    vy: f32,
+    life: f32,
+    max: f32,
+    size: f32,
+    smoke: bool,
+}
+
+/// The plow as this screen sees it: x in screen coordinates.
+struct Here {
+    x: f32,
+    dir: f32,
+    wheel: f32,
+    pushed: f32,
+}
+
+impl Layer {
+    fn plow_here(&self, plow: Option<&PlowRun>) -> Option<Here> {
+        let p = plow.filter(|p| p.active && p.members.contains(&self.index))?;
+        Some(Here { x: p.gx - self.rect.x as f32, dir: p.dir, wheel: p.wheel, pushed: p.pushed })
+    }
+
+    fn plow_on_screen(&self, h: &Here) -> bool {
+        let m = 140.0 * self.s * PLOW_SCALE;
+        h.x > -m && h.x < self.w as f32 + m
+    }
+
+    fn plow_pile_height(&self, pushed: f32) -> f32 {
+        (4.0 + (pushed / self.s).sqrt() * 0.3).min(34.0)
+    }
+
+    /// True while the truck is on this screen (the ground is then redrawn every frame).
+    pub(super) fn plow_is_here(&self, st: &SceneState) -> bool {
+        self.plow_here(st.plow).is_some_and(|h| self.plow_on_screen(&h))
+    }
+
+    /// True while snow chunks or smoke from the plow are still flying here (needs more frames).
+    pub fn is_busy(&self) -> bool {
+        !self.plow_bits.is_empty()
+    }
+
+    /// Snow scraped up on this screen since the last call; the controller adds it to the run.
+    pub fn take_pushed(&mut self) -> f32 {
+        std::mem::take(&mut self.plow_pushed)
+    }
+
+    pub(super) fn update_plow(&mut self, dt: f32, st: &SceneState) {
+        let s = self.s;
+        let sc = s * PLOW_SCALE;
+        let here = self.plow_here(st.plow);
+        if let Some(h) = &here {
+            // Everything between the edge where the plow entered this screen and the blade stays scraped down.
+            let w = self.w as f32;
+            let blade = h.x + h.dir * 72.0 * sc;
+            let residue = 1.5 * s;
+            let from = if h.dir > 0.0 { 0.0 } else { w };
+            if (h.dir > 0.0 && blade > 0.0) || (h.dir < 0.0 && blade < w) {
+                let i0 = (from.min(blade).max(0.0) / HEAP_STEP as f32) as usize;
+                let i1 = ((w.min(from.max(blade)) / HEAP_STEP as f32) as usize).min(self.heap.len() - 1);
+                for hp in &mut self.heap[i0..=i1] {
+                    if *hp > residue {
+                        self.plow_pushed += *hp - residue;
+                        *hp = residue;
+                    }
+                }
+            }
+        }
+        if let Some(h) = here.filter(|h| self.plow_on_screen(h)) {
+            let gy = self.ground_y - heap_at(&self.heap, h.x) + s;
+            let ph = self.plow_pile_height(h.pushed);
+            if ph > 10.0 {
+                self.plow_chunk_acc += dt * 30.0;
+                while self.plow_chunk_acc >= 1.0 {
+                    self.plow_chunk_acc -= 1.0;
+                    let r = &mut self.rng;
+                    self.plow_bits.push(PlowBit {
+                        x: h.x + h.dir * (70.0 + r.f() * ph) * sc,
+                        y: gy - ph * sc,
+                        vx: h.dir * (80.0 + r.f() * 140.0) * s,
+                        vy: -(60.0 + r.f() * 140.0) * s,
+                        life: 2.0,
+                        max: 2.0,
+                        size: (1.5 + r.f() * 2.5) * s,
+                        smoke: false,
+                    });
+                }
+            }
+            self.plow_smoke_timer -= dt;
+            if self.plow_smoke_timer <= 0.0 {
+                self.plow_smoke_timer = 0.2;
+                self.plow_bits.push(PlowBit {
+                    x: h.x - h.dir * 2.0 * sc,
+                    y: gy - 76.0 * sc,
+                    vx: -h.dir * 25.0 * s,
+                    vy: -30.0 * s,
+                    life: 1.6,
+                    max: 1.6,
+                    size: 5.0 * s,
+                    smoke: true,
+                });
+            }
+            // the elves wave at the truck as it passes
+            for e in &mut self.elves {
+                if e.state != ElfState::Wave && (e.x - h.x).abs() < 140.0 * s {
+                    e.state = ElfState::Wave;
+                    e.state_timer = 1.5;
+                }
+            }
+            if (st.time * 2.0) as i64 != ((st.time - dt as f64) * 2.0) as i64 {
+                crate::log::debug(&format!(
+                    "plow on screen x={}: x={} gy={} pushed={}",
+                    self.rect.x, h.x as i32, gy as i32, h.pushed as i32
+                ));
+            }
+        }
+
+        let (ground, heap) = (self.ground_y, &self.heap);
+        self.plow_bits.retain_mut(|b| {
+            b.life -= dt;
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+            if b.smoke {
+                b.size += 6.0 * s * dt;
+            } else {
+                b.vy += 420.0 * s * dt;
+            }
+            !(b.life <= 0.0 || (!b.smoke && b.vy > 0.0 && b.y >= ground - heap_at(heap, b.x)))
+        });
+    }
+
+    pub(super) fn draw_plow(&mut self, st: &SceneState) {
+        for i in 0..self.plow_bits.len() {
+            let b = &self.plow_bits[i];
+            let (x, y, size) = (b.x, b.y, b.size);
+            let col = if b.smoke { ((90.0 * b.life / b.max) as u8, 120, 120, 125) } else { (235, 250, 252, 255) };
+            self.mark(x - size, y - size, size * 2.0, size * 2.0);
+            let (x, y, size) = (x as f64, y as f64, size as f64);
+            fill_ellipse(&self.canvas.cr, col, x - size, y - size, size * 2.0, size * 2.0);
+        }
+        let Some(h) = self.plow_here(st.plow).filter(|h| self.plow_on_screen(h)) else { return };
+
+        let s = self.s;
+        let sc = s * PLOW_SCALE;
+        let gy = self.ground_y - heap_at(&self.heap, h.x) + s;
+        let ph = self.plow_pile_height(h.pushed) as f64;
+        self.mark(h.x - 130.0 * sc, gy - 100.0 * sc, 260.0 * sc, 106.0 * sc);
+
+        let cr = &self.canvas.cr;
+        let saved = cr.matrix();
+        cr.translate(h.x as f64, gy as f64);
+        cr.scale((h.dir * sc) as f64, sc as f64);
+
+        let orange = rgb(235, 130, 20);
+        let orange_dark = rgb(185, 95, 10);
+        let dark = rgb(50, 50, 55);
+        let grey = rgb(110, 110, 115);
+        let glass = rgb(175, 210, 235);
+
+        // exhaust stack
+        fill_rect(cr, grey, -4.0, -76.0, 4.0, 30.0);
+
+        // salt spreader at the back, with a spinning disc
+        fill_rect(cr, grey, -92.0, -32.0, 12.0, 16.0);
+        let sa = (h.wheel * 2.0) as f64;
+        line(cr, rgb(70, 70, 75), 2.0, LineCap::Butt, -86.0 - sa.cos() * 6.0, -14.0, -86.0 + sa.cos() * 6.0, -14.0);
+
+        // dump body with ribs and a reflective stripe
+        fill_rect(cr, orange, -80.0, -50.0, 74.0, 36.0);
+        fill_rect(cr, orange_dark, -82.0, -53.0, 78.0, 5.0);
+        for rx in [-62.0, -44.0, -26.0] {
+            line(cr, orange_dark, 2.0, LineCap::Butt, rx, -48.0, rx, -16.0);
+        }
+
+        // cab
+        fill_polygon(cr, orange, &[(-2.0, -14.0), (-2.0, -64.0), (26.0, -64.0), (40.0, -44.0), (43.0, -14.0)]);
+        fill_polygon(cr, glass, &[(14.0, -59.0), (25.0, -59.0), (36.0, -43.0), (14.0, -43.0)]);
+        fill_rect(cr, glass, 1.0, -59.0, 10.0, 16.0);
+        line(cr, orange_dark, 1.2, LineCap::Butt, 12.0, -60.0, 12.0, -16.0);
+        fill_rect(cr, dark, 4.0, -38.0, 5.0, 2.0);
+        fill_rect(cr, (230, 255, 255, 255), -80.0, -26.0, 123.0, 3.0);
+        fill_ellipse(cr, rgb(255, 245, 190), 38.0, -26.0, 5.0, 5.0);
+
+        // amber beacon on the roof, flashing
+        fill_rect(cr, dark, 12.0, -68.0, 10.0, 4.0);
+        let flash = 0.5 + 0.5 * (st.time * 12.0).sin();
+        fill_ellipse(cr, ((150.0 * flash) as u8, 255, 170, 0), 3.0, -82.0, 28.0, 24.0);
+        fill_ellipse(cr, rgb((200.0 + 55.0 * flash) as u8, (120.0 + 60.0 * flash) as u8, 0), 13.0, -74.0, 8.0, 7.0);
+
+        // chassis and wheels with rotating spokes
+        fill_rect(cr, dark, -86.0, -16.0, 132.0, 7.0);
+        for wx in [-58.0, -32.0, 26.0] {
+            fill_ellipse(cr, rgb(30, 30, 32), wx - 10.0, -20.0, 20.0, 20.0);
+            fill_ellipse(cr, rgb(160, 160, 165), wx - 5.0, -15.0, 10.0, 10.0);
+            for k in 0..3 {
+                let a = h.wheel as f64 + k as f64 * std::f64::consts::FRAC_PI_3;
+                let (dx, dy) = (a.cos() * 5.0, a.sin() * 5.0);
+                line(cr, rgb(60, 60, 65), 1.6, LineCap::Butt, wx - dx, -10.0 - dy, wx + dx, -10.0 + dy);
+            }
+        }
+
+        // snow pile in front of the blade
+        cr.new_path();
+        cr.move_to(56.0, 1.0);
+        cr.curve_to(60.0, -ph, 74.0 + ph * 0.6, -ph * 0.95, 72.0 + ph * 1.6, 1.0);
+        cr.close_path();
+        set(cr, (250, 250, 252, 255));
+        let _ = cr.fill_preserve();
+        stroke(cr, (120, 170, 200, 230), 1.0, LineCap::Butt);
+
+        // plow arm and curved yellow blade with black warning stripes
+        line(cr, rgb(80, 80, 85), 3.0, LineCap::Butt, 42.0, -12.0, 55.0, -16.0);
+        let blade = |cr: &cairo::Context| {
+            cr.new_path();
+            cr.move_to(54.0, -38.0);
+            cr.curve_to(66.0, -30.0, 70.0, -14.0, 68.0, 2.0);
+            cr.line_to(56.0, 2.0);
+            cr.curve_to(58.0, -12.0, 54.0, -28.0, 50.0, -38.0);
+            cr.close_path();
+        };
+        blade(cr);
+        set(cr, rgb(250, 195, 30));
+        let _ = cr.fill_preserve();
+        cr.save().ok();
+        cr.clip();
+        let mut sy = -44.0;
+        while sy < 8.0 {
+            line(cr, rgb(40, 40, 40), 3.0, LineCap::Butt, 46.0, sy, 74.0, sy + 14.0);
+            sy += 9.0;
+        }
+        cr.restore().ok();
+        blade(cr);
+        stroke(cr, rgb(130, 95, 10), 1.2, LineCap::Butt);
+        cr.set_matrix(saved);
+    }
+}

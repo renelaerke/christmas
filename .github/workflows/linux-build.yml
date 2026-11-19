@@ -1,0 +1,132 @@
+# Builds and tests the Linux version (linux/) on every push to main or linux-port and on every pull request
+# that touches it, and keeps the release tarball and a snapshot of the snow as a workflow artifact (version
+# 0.0.0). For a published release, or when release.yml (the "Make release" button) calls it with the new tag, the
+# binary is stamped with the tag (v1.4.0 -> 1.4.0) and JuleHygge-linux-x86_64.tar.gz is attached to the release.
+# The app's self-update only installs a binary whose version matches its release tag, so release tarballs must
+# come from this workflow, not from a local build.
+#
+# Built on Ubuntu 22.04 so the binary runs on Ubuntu 22.04+ and Linux Mint 21+ (glibc). The smoke test runs the
+# app under Xvfb with --snapshot (Xvfb has no compositor, so no windows are shown, but the scene is drawn).
+name: Linux build
+
+on:
+  push:
+    branches: [main, linux-port]
+    paths: ['linux/**', '.github/workflows/linux-build.yml']
+  pull_request:
+    paths: ['linux/**', '.github/workflows/linux-build.yml']
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to stamp and attach to (e.g. v1.4.1)
+        type: string
+        required: true
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to upload the tarball to the release
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: linux
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libcairo2-dev libpango1.0-dev libasound2-dev xvfb xauth
+
+      - name: Rust
+        run: |
+          rustup toolchain install stable --profile minimal -c clippy,rustfmt
+          rustup default stable
+          rustc --version
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            linux/target
+          key: linux-${{ hashFiles('linux/Cargo.toml', 'linux/Cargo.lock') }}
+
+      - name: Format
+        run: cargo fmt --check || echo "::warning::cargo fmt would change files"
+
+      - name: Clippy
+        run: cargo clippy --all-targets
+
+      - name: Tests
+        run: cargo test
+
+      # A release is stamped with its tag; any other run stays 0.0.0 (a developer build that never updates itself).
+      - name: Version
+        id: ver
+        env:
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: |
+          v=0.0.0
+          if [ -n "$TAG" ]; then v="${TAG#v}"; v="${v#V}"; fi
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Tag must look like v1.2.3, got '$TAG'"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          ./build.sh
+          stamped=$(build/JuleHygge --version)
+          echo "$stamped"
+          [ "$stamped" = "JuleHygge ${{ steps.ver.outputs.version }}" ] || { echo "Version stamp missing"; exit 1; }
+          tar -tzvf build/JuleHygge-linux-x86_64.tar.gz
+          sha256sum build/JuleHygge-linux-x86_64.tar.gz
+
+      - name: Install test (in a scratch home, without starting)
+        run: |
+          home="$RUNNER_TEMP/home" && mkdir -p "$home/pkg"
+          tar -xzf build/JuleHygge-linux-x86_64.tar.gz -C "$home/pkg"
+          HOME="$home" "$home/pkg/install.sh" --no-start
+          test -x "$home/.local/share/JuleHygge/JuleHygge"
+          test -s "$home/.local/share/icons/hicolor/256x256/apps/julehygge.png"
+          grep -q '^Exec=' "$home/.local/share/applications/julehygge.desktop"
+          test ! -e "$home/.config/autostart/julehygge.desktop"
+          HOME="$home" "$home/pkg/install.sh" --uninstall
+          test ! -e "$home/.local/share/JuleHygge"
+
+      - name: Smoke test under Xvfb
+        run: |
+          export JULE_DEBUG=1 JULE_SETTINGS="$RUNNER_TEMP/test.ini" XDG_RUNTIME_DIR="$RUNNER_TEMP/run"
+          mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+          set +e
+          xvfb-run -a -s "-screen 0 1920x1080x24" timeout 10 build/JuleHygge --snapshot="$RUNNER_TEMP/shots,4"
+          code=$?
+          set -e
+          echo "exit code $code (124 = stopped by timeout, as expected)"
+          cat "$XDG_RUNTIME_DIR/julehygge-debug.log" || true
+          [ "$code" = 124 ] || exit 1
+          ls -l "$RUNNER_TEMP/shots"
+          test -s "$RUNNER_TEMP/shots/screen0.png"
+          cp "$RUNNER_TEMP/shots/screen0.png" build/
+
+      - name: Keep as workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: JuleHygge-linux
+          path: |
+            linux/build/JuleHygge-linux-x86_64.tar.gz
+            linux/build/screen0.png
+            linux/Cargo.lock
+
+      - name: Attach to the release
+        if: inputs.tag != '' || github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.release.tag_name }}
+        run: gh release upload "$TAG" build/JuleHygge-linux-x86_64.tar.gz --clobber
