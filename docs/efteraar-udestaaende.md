@@ -25,6 +25,9 @@ Status pr. 2026-11-19. Temaet er bygget på macOS, element for element (se `docs
 - **Windows.** Efterårstemaet findes kun i macOS-udgaven. To ting er dog lavet i `src/`: nedfaldet fra vinduer deler
   nu pladsen jævnt (`WindowSnow.cs`), og julemandens størrelse varierer uafhængigt af farten (`Controller.cs`).
   Ingen af dem er kompileret eller afprøvet på Windows.
+- **Linux.** Har heller ikke efterårstemaet. Nedfaldsrettelsen er lavet i `linux/src/window_snow.rs` med en test, men
+  er ikke kompileret (Rust er ikke installeret på Mac'en); originalens Linux-workflow bygger og tester den ved en
+  pull request. Julemandens størrelse varierer endnu ikke på Linux.
 - **Gåsene som syntetisk lyd.** Undersøgt 2026-11-19 med optagelsen som forlæg (`macos/tools/sound-probe.swift` måler,
   `macos/tools/goose-synth.swift` laver en prøve, der matcher optagelsens tonehøjde, overtoner og spektrum). REL
   valgte at beholde optagelsen og ændre reglen i `AGENTS.md` i stedet.
