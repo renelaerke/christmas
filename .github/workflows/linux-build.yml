@@ -115,8 +115,8 @@ jobs:
           test -s "$RUNNER_TEMP/shots/screen0.png"
           cp "$RUNNER_TEMP/shots/screen0.png" build/
           # the same in the autumn theme, with a full pile, the finished scarecrow, the geese on their way and
-          # the leaf collector at work, kept as a second picture to look at
-          printf 'Theme=1\nFirstRun=2020-01-01\n' > "$RUNNER_TEMP/efteraar.ini"
+          # the leaf collector at work, in a storm (rain), kept as a second picture to look at
+          printf 'Theme=1\nFirstRun=2020-01-01\nSnowLevel=2\n' > "$RUNNER_TEMP/efteraar.ini"
           set +e
           JULE_SETTINGS="$RUNNER_TEMP/efteraar.ini" JULE_DEEPSNOW=1 xvfb-run -a -s "-screen 0 1920x1080x24" timeout 14 build/JuleHygge --santa --plow=1 --snapshot="$RUNNER_TEMP/shots-efteraar,7"
           code=$?
