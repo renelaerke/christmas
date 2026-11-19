@@ -38,6 +38,23 @@ Menuen **Tema** (`Theme`: 0 = jul, 1 = efterår; jul er standard) skifter hele o
 - **Strøm** (målt med `./measure.sh`): dragen koster ca. 0,7 % af en kerne og regnen ca. 1,8 % i storm. WindowServer er uændret.
 - **Test:** sæt `Theme=1` i en settings-fil og brug den med `JULE_SETTINGS`. `--julemand` sender gæssene afsted og `--sneplov` løvsugeren; `JULE_DEEPSNOW=1` starter med fuld løvbunke, også på vinduerne; `JULE_NO_RAIN=1` slår regnen fra (til måling); `--lyd-test=MAPPE` gemmer også `gaes-*.wav` og `loevsuger-sug.wav`.
 
+## De dødes dag
+Temaet **De dødes dag** (Día de los Muertos, `Theme=2`) er påbegyndt. Idéen står i `docs/temaer/index.html`, det udestående i `docs/muertos-udestaaende.md`.
+
+| Jul | De dødes dag |
+|---|---|
+| Snevejr | Kronblade af tagetes (cempasúchil) og nu og da et helt lille blomsterhoved, i fem orange og gule nuancer. |
+| Sne i bunden og på vinduerne | Et tæppe af kronblade, der vokser og falder fra vinduer som sneen. På vindueskanterne står små lys med flakkende flammer (ca. ét pr. 150 punkter), når der er landet kronblade; de forsvinder med vinduet. |
+| Snemand over 12 dage | En ofrenda: tre trin med duge, lys, tagetes, sukkerkranie, lys, de dødes brød, et billede, en bue af tagetes, papel picado og til sidst et glas vand, et lille sukkerkranie og en monarksommerfugl. |
+| Julemanden i kane | En sværm af monarksommerfugle. Lyd (slået fra som standard): en original lille vals i d-mol med marimba og guitar, syntetiseret (`Synth.muertosSon`). |
+| Sneplov | En æselkærre: en calaca fejer kronbladene op med en kost foran æslet, og de flyver bagud i kærren. Den går i æseltempo (45 % af sneplovens fart) og er lydløs. |
+| Nisser, der bytter pakker | Calacas (skeletter) med sombrero og stribet serape eller catrina-hat og lang kjole; de bytter tagetesbuketter og danser med maraca. |
+| Julelys | Papel picado: udklippede papirflag med blomst, kranie eller ruder. |
+| Julekalender og nedtælling | Skjult. |
+| Nissehue, skæg og dragt i kameraet | Intet endnu; kameraets baggrund er en lilla skumring. |
+
+- **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `FirstRun` en uge eller mere tilbage viser et færdigt alter, `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav`.
+
 ## Byg og kør
 
 Kræver Xcode eller Command Line Tools (Swift 5.10+), macOS 14+.
@@ -120,7 +137,7 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
 | `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger), gåseoptagelsen og delt lydmotor |
-| `Sources/JuleHygge/Theme.swift` | Temaet (jul eller efterår) og hvad der skifter med det |
+| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår eller de dødes dag) og hvad der skifter med det |
 | `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
 | `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
 | `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |

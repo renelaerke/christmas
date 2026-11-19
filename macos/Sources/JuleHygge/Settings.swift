@@ -7,7 +7,7 @@ final class Settings {
         pauseFullscreen = true, snowman = true, allScreens = true, plow = true,
         cameraPausesScreens = true, windowSnow = true, cameraHat = true, cameraFront = true, cameraBeard = true, cameraSuit = true,
         sound = false, plowSound = false   // lyd er slået fra, indtil man selv slår den til
-    var theme = 0              // 0 = jul, 1 = efterår (Theme)
+    var theme = 0              // 0 = jul, 1 = efterår, 2 = de dødes dag (Theme)
     var kite = true            // efterårets drage
     var autoUpdate = true      // install new GitHub releases by itself
     var lastVersion = ""       // the version that ran last time, to announce an update

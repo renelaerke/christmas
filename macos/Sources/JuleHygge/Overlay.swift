@@ -108,6 +108,11 @@ final class DotImages {
     let rain: CGImage
     /// Autumn leaves in each colour, four ovals for every maple, lying along x (drawn turned as they fall).
     let leaves: [CGImage]
+    /// Marigold petals and small flower heads (Día de los Muertos), drawn like the leaves.
+    let petals: [CGImage]
+    /// The candles on the window edges (Día de los Muertos): the wax stub, its flame and a warm glow, drawn
+    /// as separate images so the flame and glow can flicker without redrawing anything.
+    let candle, flame, glow: CGImage
 
     init(scale: F) {
         let s: F = 64, m: F = 32
@@ -166,6 +171,64 @@ final class DotImages {
             })
         }
         leaves = all
+
+        // Día de los Muertos: marigold (cempasúchil) petals, each a short fan with a frilled outer edge, lying
+        // along x with the narrow base at the left; and, one in five, a whole small flower head (frilled rings).
+        var petalList: [CGImage] = []
+        let crease = C(150, 60, 0, 70)
+        for colour in Theme.marigoldColours {
+            let petal = img { g in
+                let p = CGMutablePath()
+                p.move(to: CGPoint(x: 8, y: m))
+                p.addQuadCurve(to: CGPoint(x: 44, y: m - 22), control: CGPoint(x: 18, y: m - 22))
+                // the frilled edge: small scallops from top to bottom
+                let n = 6
+                for k in 0..<n {
+                    let a0 = -F.pi / 2 + F.pi * F(k) / F(n), a1 = -F.pi / 2 + F.pi * F(k + 1) / F(n), am = (a0 + a1) / 2
+                    let to = CGPoint(x: 38 + cos(a1) * 18, y: m + sin(a1) * 22)
+                    p.addQuadCurve(to: to, control: CGPoint(x: 38 + cos(am) * 26, y: m + sin(am) * 29))
+                }
+                p.addQuadCurve(to: CGPoint(x: 8, y: m), control: CGPoint(x: 18, y: m + 22))
+                g.addPath(p); g.setFillColor(colour); g.fillPath()
+                g.line(crease, 2, 10, m, 48, m - 8, round: true)
+                g.line(crease, 2, 10, m, 50, m + 6, round: true)
+            }
+            petalList += [petal, petal, petal, petal]
+            petalList.append(img { g in
+                for (r, a) in [(F(30), 255), (F(22), 255), (F(13), 255)] {
+                    let ring = CGMutablePath()
+                    let lobes = 12
+                    for k in 0...lobes {
+                        let a1 = 2 * F.pi * F(k) / F(lobes), am = a1 - F.pi / F(lobes)
+                        let pt = CGPoint(x: m + cos(a1) * r * 0.86, y: m + sin(a1) * r * 0.86)
+                        if k == 0 { ring.move(to: pt) } else { ring.addQuadCurve(to: pt, control: CGPoint(x: m + cos(am) * r * 1.12, y: m + sin(am) * r * 1.12)) }
+                    }
+                    ring.closeSubpath()
+                    g.addPath(ring); g.setFillColor(r == 22 ? shade(colour, 0.85) : withAlpha(colour, a)); g.fillPath()
+                    g.addPath(ring); g.setStrokeColor(crease); g.setLineWidth(1.5); g.strokePath()
+                }
+            })
+        }
+        petals = petalList
+
+        candle = img { g in
+            g.fillRect(C(250, 242, 222), 22, 4, 20, 60)
+            g.fillRect(C(222, 206, 176), 34, 4, 8, 60)
+            g.fillEllipse(C(255, 250, 236), 22, 0, 20, 8)
+            g.line(C(60, 40, 30), 3, 32, 4, 32, -4)
+        }
+        flame = img { g in
+            let f = CGMutablePath()
+            f.move(to: CGPoint(x: m, y: 2))
+            f.addCurve(to: CGPoint(x: m, y: 62), control1: CGPoint(x: m + 30, y: 30), control2: CGPoint(x: m + 22, y: 62))
+            f.addCurve(to: CGPoint(x: m, y: 2), control1: CGPoint(x: m - 22, y: 62), control2: CGPoint(x: m - 30, y: 30))
+            g.addPath(f); g.setFillColor(C(255, 170, 30)); g.fillPath()
+            g.fillEllipse(C(255, 246, 200), m - 8, 30, 16, 26)
+        }
+        glow = img { g in
+            g.drawRadialGradient(CGGradient(colorsSpace: nil, colors: [C(255, 200, 90, 210), C(255, 160, 50, 0)] as CFArray, locations: [0, 1])!,
+                                 startCenter: CGPoint(x: m, y: m), startRadius: 0, endCenter: CGPoint(x: m, y: m), endRadius: m, options: [])
+        }
     }
 }
 
@@ -218,6 +281,8 @@ final class ScreenOverlay {
     private var leafPool: DotPool!
     private var leafPileDrawn: F = -1, leafPileAt = -10.0
     private var ledgeLeafPool: DotPool!
+    private var ledgeCandlePool: DotPool!
+    private var ledgeCandlesShown = false
     private var ledgeLeavesAt = -10.0
     private var bulbLayers: [(layer: CALayer, omega: Double, phase: Double)] = []
     private let lightsLayer = CALayer()
@@ -225,6 +290,8 @@ final class ScreenOverlay {
     private var snowmanKey = ""
 
     private var PS: Bool { c.powerSave }
+    /// What falls and piles up: autumn's leaves, or the marigold petals of the dead.
+    private var fallImages: [CGImage] { c.theme == .muertos ? images.petals : images.leaves }
     private var lightsHeight: F { 70 * S }
 
     static let santaRed = C(205, 25, 35), gold = C(235, 195, 70), skin = C(255, 214, 186),
@@ -284,7 +351,8 @@ final class ScreenOverlay {
             root.isGeometryFlipped = false
             let sky = CAGradientLayer()
             sky.frame = root.bounds
-            sky.colors = [C(52, 78, 120), C(14, 24, 48)]   // bottom → top (layer y is up)
+            // bottom → top (layer y is up); the Day of the Dead has a purple dusk
+            sky.colors = controller.theme == .muertos ? [C(122, 31, 92), C(42, 15, 61)] : [C(52, 78, 120), C(14, 24, 48)]
             sky.startPoint = CGPoint(x: 0.5, y: 0)
             sky.endPoint = CGPoint(x: 0.5, y: 1)
             root.addSublayer(sky)
@@ -299,6 +367,8 @@ final class ScreenOverlay {
         // the single leaves the piles on the windows are made of (see renderLedgeLeaves): with the piles, so
         // under the light string too
         ledgeLeafPool = DotPool(in: root, screenHeight: h)
+        // the candles on the window edges (Día de los Muertos) stand in the petals
+        ledgeCandlePool = DotPool(in: root, screenHeight: h)
         lightsSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.renderLights(g) }
         lightsLayer.frame = root.bounds
         lightsLayer.isHidden = true
@@ -605,7 +675,7 @@ final class ScreenOverlay {
             f.a = Int(215 + depth * 40)
             f.crystal = false
             f.rotSpd = (R() - 0.5) * 5
-            f.kind = Int(R() * F(images.leaves.count)) % images.leaves.count
+            f.kind = Int(R() * F(fallImages.count)) % fallImages.count
         }
         return f
     }
@@ -617,7 +687,7 @@ final class ScreenOverlay {
             if f.y < -f.r * 2 { continue }
             let a = F(f.a)
             if c.theme.leaves {
-                flakePool.add(images.leaves[f.kind], x: f.x, y: f.y, w: f.r * 2.6, h: f.r * 2.6, opacity: a / 255, rotation: f.rot)
+                flakePool.add(fallImages[f.kind], x: f.x, y: f.y, w: f.r * 2.6, h: f.r * 2.6, opacity: a / 255, rotation: f.rot)
             } else if f.crystal {
                 if a < 60 { continue }
                 flakePool.add(images.crystal, x: f.x, y: f.y, w: f.r * 2, h: f.r * 2, opacity: a / 255, rotation: f.rot)
@@ -631,7 +701,7 @@ final class ScreenOverlay {
             for cl in c.clumps where !cl.dead {
                 let x = cl.x - ox, y = cl.y - oy
                 if x < -10 || x > W + 10 || y < -10 || y > H + 10 { continue }
-                flakePool.add(c.theme.leaves ? images.leaves[Int(abs(cl.x)) % images.leaves.count] : images.flake, x: x, y: y, w: cl.r * 2 * S, h: cl.r * 2 * S, opacity: 0.95)
+                flakePool.add(c.theme.leaves ? fallImages[Int(abs(cl.x)) % fallImages.count] : images.flake, x: x, y: y, w: cl.r * 2 * S, h: cl.r * 2 * S, opacity: 0.95)
             }
         }
         flakePool.end()
@@ -687,7 +757,7 @@ final class ScreenOverlay {
                             let p = chance(column, row + l.id), q = chance(row + 31, column), t = chance(column + 7, row + 3)
                             let y = edge - h + F(row) * down + (p - 0.5) * 3 * S - size * 0.1
                             let w = size * (0.75 + 0.5 * q)
-                            ledgeLeafPool.add(images.leaves[Int(p * 9973) % images.leaves.count], x: x - ox + (q - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: t * 6.28)
+                            ledgeLeafPool.add(fallImages[Int(p * 9973) % fallImages.count], x: x - ox + (q - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: t * 6.28)
                         }
                     }
                     x += across; column += 1
@@ -697,9 +767,41 @@ final class ScreenOverlay {
         ledgeLeafPool.end()
     }
 
+    /// Día de los Muertos: small candles stand on the edges of windows where petals lie, half sunk into them,
+    /// one about every 150 points, at places fixed on the window (so they stay put while the petals grow).
+    /// A candle only stands where the edge is not hidden by a window in front. The flames flicker: the flame
+    /// and glow images change size and strength every other frame (only these few layers move).
+    private func renderLedgeCandles() {
+        guard c.theme == .muertos || ledgeCandlesShown, frameNo % 2 == 0 else { return }
+        ledgeCandlesShown = c.theme == .muertos
+        let ox = screenBounds.minX, oy = screenBounds.minY
+        ledgeCandlePool.begin()
+        if cfg.windowSnow && c.theme == .muertos {
+            for l in c.ledgeList {
+                let dragged = l.moving && l.rect.size == l.settled.size
+                guard l.hasSnow && !dragged,
+                      l.settled.maxX > ox && l.settled.minX < ox + W && l.settled.minY > oy && l.settled.minY <= oy + H else { continue }
+                let edge = l.settled.minY - oy
+                for (gx, tall, k) in l.candleSpots {
+                    guard gx >= ox - 20 && gx <= ox + W + 20, l.isVisible(gx) else { continue }
+                    let h = l.height(at: gx)
+                    if h < 1.2 { continue }   // no petals here yet: the candle comes with them
+                    let foot = edge - h * 0.55, x = gx - ox
+                    let t = c.time * (7 + Double(k % 3)) + Double(k) * 1.7 + Double(l.id % 11)
+                    let flicker = F(0.82 + 0.1 * sin(t) + 0.08 * sin(t * 2.3 + 1))
+                    ledgeCandlePool.add(images.glow, x: x, y: foot - tall - 4, w: 40 * flicker, h: 40 * flicker, opacity: flicker)
+                    ledgeCandlePool.add(images.candle, x: x, y: foot - tall / 2, w: tall, h: tall, opacity: 1)
+                    ledgeCandlePool.add(images.flame, x: x + F(sin(t * 1.3)) * 0.4, y: foot - tall - 3.5 * flicker, w: 5.5, h: 9 * flicker, opacity: 1)
+                }
+            }
+        }
+        ledgeCandlePool.end()
+    }
+
     private func renderLedges() {
         if isVirtual { return }
         renderLedgeLeaves()
+        renderLedgeCandles()
         let ox = screenBounds.minX, oy = screenBounds.minY
         var seen = Set<Int>()
         for l in c.ledgeList {
@@ -808,7 +910,7 @@ final class ScreenOverlay {
                     let a = chance(column, row), b = chance(row + 31, column), d = chance(column + 7, row + 3)
                     let y = groundY - h + F(row) * down + (a - 0.5) * 4 * S - size * 0.12
                     let w = size * (0.75 + 0.55 * b)
-                    leafPool.add(images.leaves[Int(a * 9973) % images.leaves.count], x: x + (b - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: d * 6.28)
+                    leafPool.add(fallImages[Int(a * 9973) % fallImages.count], x: x + (b - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: d * 6.28)
                 }
             }
             x += across; column += 1
@@ -884,6 +986,44 @@ final class ScreenOverlay {
         g.line(C(70, 60, 48), 1.6, x - 11, y - 2 - 25 * flap, x - 2, y - 2 - 27 * flap, round: true)
     }
 
+    /// One monarch butterfly flying toward +x, seen from above: the body along x, the wings to both sides.
+    /// The wings beat by folding toward the body (their spread is |cos| of the flap).
+    private func drawMonarch(_ g: CGContext, _ x: F, _ y: F, _ size: F, _ flap: F) {
+        g.saveGState()
+        g.translateBy(x: x, y: y)
+        g.scaleBy(x: size, y: size)
+        let spread = 0.18 + 0.82 * abs(cos(flap))
+        let orange = C(255, 136, 0), deep = C(214, 92, 0), black = C(28, 22, 26), dot = C(255, 255, 255, 230)
+        for side in [F(-1), 1] {
+            g.saveGState()
+            g.scaleBy(x: 1, y: side * spread)
+            // forewing (toward the head) and hindwing, black-edged with orange cells
+            let fore = CGMutablePath()
+            fore.start(4, 0); fore.curve(10, -10, 22, -24, 14, -30); fore.curve(4, -30, -6, -20, -2, 0); fore.closeSubpath()
+            let hind = CGMutablePath()
+            hind.start(-1, 0); hind.curve(-2, -12, -10, -24, -18, -18); hind.curve(-22, -10, -12, -2, -1, 0); hind.closeSubpath()
+            g.fill(black, fore); g.fill(black, hind)
+            let foreIn = CGMutablePath()
+            foreIn.start(4, -2); foreIn.curve(9, -10, 18, -21, 12, -26); foreIn.curve(5, -26, -3, -18, 0, -2); foreIn.closeSubpath()
+            let hindIn = CGMutablePath()
+            hindIn.start(-2, -2); hindIn.curve(-3, -11, -9, -20, -16, -16); hindIn.curve(-19, -10, -11, -3, -2, -2); hindIn.closeSubpath()
+            g.fillGradient(foreIn, orange, deep, from: CGPoint(x: 4, y: -2), to: CGPoint(x: 12, y: -26))
+            g.fillGradient(hindIn, orange, deep, from: CGPoint(x: -2, y: -2), to: CGPoint(x: -16, y: -16))
+            // the black veins and the white dots in the border
+            g.line(black, 1.1, 2, -3, 12, -22); g.line(black, 1.1, 1, -3, 4, -24)
+            g.line(black, 1.1, -2, -3, -12, -15); g.line(black, 1.1, -2, -3, -6, -18)
+            for (dx, dy) in [(F(15), F(-28)), (10, -29.5), (5, -27.5), (-16, -18.5), (-19, -13), (-12, -20)] {
+                g.fillEllipse(dot, dx - 0.9, dy - 0.9, 1.8, 1.8)
+            }
+            g.restoreGState()
+        }
+        // body, head and antennae
+        g.fillEllipse(black, -9, -1.6, 16, 3.2)
+        g.fillEllipse(black, 5.5, -2, 4, 4)
+        g.line(black, 0.8, 9, -1, 14, -4); g.line(black, 0.8, 9, 1, 14, 4)
+        g.restoreGState()
+    }
+
     private func drawSanta(_ g: CGContext) {
         let sc = c.santaScale * 1.1
         let sx = c.santaX - screenBounds.minX, sy = c.santaY - screenBounds.minY
@@ -896,6 +1036,17 @@ final class ScreenOverlay {
             let places: [(F, F)] = [(250, -35), (182, -54), (114, -73), (46, -92), (-22, -111), (182, -16), (114, 3), (46, 22)]
             for (i, p) in places.enumerated().reversed() {
                 drawGoose(g, p.0, p.1 + sin(t * 1.7 + F(i) * 1.3) * 3, F(i) * 1.9, t)
+            }
+            return
+        }
+        if c.theme == .muertos {
+            // The dead's flyer: a loose swarm of monarch butterflies. Each one flutters at its own pace and
+            // wanders up and down around its place in the swarm.
+            let places: [(F, F, F)] = [(230, -40, 1.1), (180, -72, 0.8), (150, -20, 1.0), (100, -78, 0.9), (70, -45, 1.2),
+                                        (20, -10, 0.8), (-10, -72, 1.0), (-60, -40, 0.9), (-110, -70, 0.75), (-150, -15, 0.85)]
+            for (i, p) in places.enumerated() {
+                let fi = F(i)
+                drawMonarch(g, p.0 + sin(t * 0.9 + fi * 2.1) * 12, p.1 + sin(t * 1.3 + fi * 1.7) * 14, p.2, t * (10 + fi.truncatingRemainder(dividingBy: 3) * 1.5) + fi * 1.3)
             }
             return
         }
@@ -1146,12 +1297,141 @@ final class ScreenOverlay {
         }
     }
 
+    /// A small marigold head (cempasúchil) centred at (x, y): frilled rings in orange.
+    private func drawMarigold(_ g: CGContext, _ x: F, _ y: F, _ r: F, _ colour: CGColor) {
+        g.fillEllipse(shade(colour, 0.78), x - r, y - r * 0.9, r * 2, r * 1.8)
+        for k in 0..<7 {
+            let a = F(k) * 0.8976
+            g.fillEllipse(colour, x + cos(a) * r * 0.45 - r * 0.5, y + sin(a) * r * 0.4 - r * 0.45, r, r * 0.9)
+        }
+        g.fillEllipse(shade(colour, 0.85), x - r * 0.4, y - r * 0.38, r * 0.8, r * 0.76)
+    }
+
+    /// A candle standing at (x, y) (its foot), with a flame and a soft glow.
+    private func drawCandle(_ g: CGContext, _ x: F, _ y: F, _ h: F) {
+        // a warm glow around the flame (a flat light disc read as a grey spot on a dark desktop)
+        let glow = CGPath(ellipseIn: CGRect(x: x - 9, y: y - h - 14, width: 18, height: 18), transform: nil)
+        g.saveGState(); g.addPath(glow); g.clip()
+        g.drawRadialGradient(CGGradient(colorsSpace: nil, colors: [C(255, 190, 70, 120), C(255, 150, 40, 0)] as CFArray, locations: [0, 1])!,
+                             startCenter: CGPoint(x: x, y: y - h - 5), startRadius: 0, endCenter: CGPoint(x: x, y: y - h - 5), endRadius: 9, options: [])
+        g.restoreGState()
+        g.fillRect(C(250, 242, 222), x - 2.6, y - h, 5.2, h)
+        g.fillRect(C(220, 205, 175), x + 0.8, y - h, 1.8, h)
+        g.line(C(60, 40, 30), 0.8, x, y - h, x, y - h - 1.8)
+        let flame = CGMutablePath()
+        flame.start(x, y - h - 9); flame.curve(x + 3.2, y - h - 4.5, x + 2.4, y - h - 1, x, y - h - 1)
+        flame.curve(x - 2.4, y - h - 1, x - 3.2, y - h - 4.5, x, y - h - 9); flame.closeSubpath()
+        g.fill(C(255, 180, 40), flame)
+        g.fillEllipse(C(255, 245, 200), x - 0.9, y - h - 4.6, 1.8, 3)
+    }
+
+    /// A sugar skull (calavera de azúcar) centred at (x, y), `w` wide, with icing around the eyes.
+    private func drawSugarSkull(_ g: CGContext, _ x: F, _ y: F, _ w: F, _ icing: CGColor) {
+        let k = w / 20
+        g.fillEllipse(C(250, 246, 236), x - 10 * k, y - 10 * k, 20 * k, 17 * k)
+        g.fillRect(C(250, 246, 236), x - 6 * k, y + 3 * k, 12 * k, 6 * k)
+        g.strokeEllipse(C(150, 140, 130, 140), 0.8, x - 10 * k, y - 10 * k, 20 * k, 17 * k)
+        for dx in [F(-4.5), 4.5] {
+            g.fillEllipse(icing, x + dx * k - 3.6 * k, y - 3.6 * k, 7.2 * k, 7.2 * k)
+            g.fillEllipse(C(36, 28, 40), x + dx * k - 2.4 * k, y - 2.4 * k, 4.8 * k, 4.8 * k)
+        }
+        g.fillPoly(C(36, 28, 40), [(x, y + 1.5 * k), (x - 1.4 * k, y + 4 * k), (x + 1.4 * k, y + 4 * k)])
+        g.line(C(36, 28, 40), 0.8, x - 4.5 * k, y + 6.5 * k, x + 4.5 * k, y + 6.5 * k)
+        for dx in [F(-3), -1, 1, 3] { g.line(C(36, 28, 40), 0.7, x + dx * k, y + 5.3 * k, x + dx * k, y + 7.8 * k) }
+        // icing on the forehead: a small flower
+        for a in stride(from: F(0), to: 6.28, by: 1.2566) { g.fillEllipse(icing, x + cos(a) * 2 * k - 1.2 * k, y - 6.5 * k + sin(a) * 2 * k - 1.2 * k, 2.4 * k, 2.4 * k) }
+        g.fillEllipse(C(255, 210, 63), x - 1 * k, y - 7.5 * k, 2 * k, 2 * k)
+    }
+
+    /// The dead's form of the snowman: an ofrenda, the home altar, put together piece by piece over twelve days
+    /// in the same place and frame as the snowman. Three tiers under coloured cloths, then candles, marigolds,
+    /// a sugar skull, bread, a framed photo, an arch of marigolds and a monarch resting on it.
+    /// Origin at the ground, y up is negative.
+    private func drawOfrenda(_ g: CGContext, _ stage: Int) {
+        g.fillEllipse(C(40, 20, 30, 60), -60, -3, 120, 6)
+        let cloth = Theme.picadoColours
+        let wood = C(96, 58, 34)
+        // the arch of marigolds behind the altar (stage 10): two bent canes thick with flowers
+        if stage >= 10 {
+            g.bezier(C(70, 110, 40), 2.4, -50, -2, -54, -150, 54, -150, 50, -2)
+            for k in 0...16 {
+                let u = F(k) / 16, v = 1 - u
+                let px = v * v * v * -50 + 3 * v * v * u * -54 + 3 * v * u * u * 54 + u * u * u * 50
+                let py = v * v * v * -2 + 3 * v * v * u * -150 + 3 * v * u * u * -150 + u * u * u * -2
+                drawMarigold(g, px, py, 4.2, Theme.marigoldColours[k % Theme.marigoldColours.count])
+            }
+        }
+        // the tiers: a box under a cloth with a scalloped hem
+        func tier(_ y: F, _ w: F, _ h: F, _ col: CGColor) {
+            g.fillRect(wood, -w / 2, y - h, w, h)
+            let c2 = CGMutablePath()
+            c2.start(-w / 2 - 2, y - h)
+            c2.to(w / 2 + 2, y - h)
+            c2.to(w / 2 + 2, y - h + h * 0.62)
+            let n = Int(w / 9)
+            for i in 0..<n {
+                let x1 = w / 2 + 2 - (w + 4) * F(i + 1) / F(n), xm = w / 2 + 2 - (w + 4) * (F(i) + 0.5) / F(n)
+                c2.addQuadCurve(to: CGPoint(x: x1, y: y - h + h * 0.62), control: CGPoint(x: xm, y: y - h + h * 0.62 + 7))
+            }
+            c2.closeSubpath()
+            g.fill(col, c2)
+            g.line(shade(col, 0.7), 1, -w / 2 - 2, y - h + 0.5, w / 2 + 2, y - h + 0.5)
+        }
+        if stage >= 1 { tier(0, 112, 26, cloth[3]) }
+        if stage >= 2 { tier(-26, 84, 26, cloth[0]) }
+        if stage >= 3 { tier(-52, 56, 24, cloth[2]) }
+        // papel picado along the front of the bottom tier (stage 11)
+        if stage >= 11 {
+            for i in 0..<5 {
+                let x = -44 + F(i) * 22
+                g.fillRect(cloth[(i + 1) % cloth.count], x - 8, -14, 16, 10)
+                g.fillEllipse(C(96, 58, 34), x - 2, -11, 4, 4)
+            }
+        }
+        // the photo of the one remembered, at the back of the top tier (stage 9)
+        if stage >= 9 {
+            g.fillRect(C(196, 150, 60), 8, -98, 18, 22)
+            g.fillRect(C(232, 224, 205), 10.5, -95.5, 13, 17)
+            g.fillEllipse(C(120, 100, 88), 12.5, -87.5, 9, 9)
+            g.fillEllipse(C(150, 128, 110), 14.5, -93, 5, 6)
+        }
+        // the sugar skull on top (stage 6)
+        if stage >= 6 { drawSugarSkull(g, -8, -86, 22, cloth[0]) }
+        // marigolds along each tier's edge (stage 5)
+        if stage >= 5 {
+            for (y, w) in [(F(-27), F(100)), (-53, 72)] {
+                var x = -w / 2
+                var k = 0
+                while x <= w / 2 { drawMarigold(g, x, y, 4.6, Theme.marigoldColours[k % Theme.marigoldColours.count]); x += 12; k += 1 }
+            }
+        }
+        // bread of the dead (pan de muerto) on the middle tier (stage 8)
+        if stage >= 8 {
+            g.fillEllipse(C(206, 146, 80), -38, -38, 22, 12)
+            g.line(C(244, 226, 190), 2.6, -34, -35, -20, -31, round: true)
+            g.line(C(244, 226, 190), 2.6, -34, -31, -20, -35, round: true)
+            g.fillEllipse(C(244, 226, 190), -29.5, -39.5, 5, 5)
+        }
+        // candles: on the bottom tier (stage 4), the middle tier (stage 7)
+        if stage >= 4 { for x in [F(-50), 50] { drawCandle(g, x, -26, 14) } }
+        if stage >= 7 { for x in [F(-36), 36] { drawCandle(g, x, -52, 11) } }
+        // a glass of water and small sugar skulls for the children (stage 12), and a monarch resting on the arch
+        if stage >= 12 {
+            g.fillRect(C(190, 225, 245, 150), 14, -40, 8, 12)
+            g.fillRect(C(150, 200, 235, 170), 14, -34, 8, 6)
+            g.strokeEllipse(C(255, 255, 255, 120), 0.8, 14, -41, 8, 2)
+            drawSugarSkull(g, 2, -32, 9, cloth[2])
+            drawMonarch(g, 24, -100, 0.55, 0.5)
+        }
+    }
+
     private func drawSnowman(_ g: CGContext) {
         let stage = c.snowmanStage
         let x = W * 0.78, y = groundY - heapAt(x) + 3 * S
         g.translateBy(x: x, y: y)
         g.scaleBy(x: S, y: S)
         if c.theme == .efteraar { drawScarecrow(g, stage); return }
+        if c.theme == .muertos { drawOfrenda(g, stage); return }
 
         g.fillEllipse(C(60, 80, 110, 50), -30, -3, 60, 6)
         let wood = C(110, 70, 35)
@@ -1252,7 +1532,24 @@ final class ScreenOverlay {
         if plowOnScreen {
             let gy = groundY - heapAt(plowX) + S
             let ph = plowPileHeight
-            if c.theme.leaves {
+            if c.theme == .muertos {
+                // the broom: petals are swept up and fly back over the donkey into the cart
+                if ph > 5 {
+                    plowChunkAcc += dt * 10
+                    while plowChunkAcc >= 1 {
+                        plowChunkAcc -= 1
+                        let b = PlowBit()
+                        b.x = plowX + plowDir * (90 + R() * 14) * sc
+                        b.y = gy - (2 + R() * 6) * sc
+                        b.vx = -plowDir * (70 + R() * 70) * S
+                        b.vy = -(150 + R() * 70) * S
+                        b.max = 1.6; b.life = 1.6
+                        b.size = (3 + R() * 2) * S
+                        b.kind = Int(R() * 1000)
+                        plowBits.append(b)
+                    }
+                }
+            } else if c.theme.leaves {
                 // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
                 if ph > 6 {
                     plowChunkAcc += dt * 14
@@ -1284,7 +1581,7 @@ final class ScreenOverlay {
                 }
             }
             plowSmokeTimer -= dt
-            if plowSmokeTimer <= 0 {
+            if plowSmokeTimer <= 0 && c.theme != .muertos {
                 plowSmokeTimer = 0.2
                 let b = PlowBit()
                 b.smoke = true
@@ -1316,7 +1613,7 @@ final class ScreenOverlay {
         plowBitPool.begin()
         for b in plowBits {
             if !b.smoke && c.theme.leaves {
-                plowBitPool.add(images.leaves[b.kind % images.leaves.count], x: b.x, y: b.y, w: b.size * 2.6, h: b.size * 2.6,
+                plowBitPool.add(fallImages[b.kind % fallImages.count], x: b.x, y: b.y, w: b.size * 2.6, h: b.size * 2.6,
                                 opacity: 1, rotation: b.life * 7 + F(b.kind))
                 continue
             }
@@ -1336,6 +1633,7 @@ final class ScreenOverlay {
         let ph = plowPileHeight
         g.translateBy(x: plowX, y: gy)
         g.scaleBy(x: plowDir * sc, y: sc)
+        if c.theme == .muertos { drawPetalCart(g, ph); return }
 
         // Autumn's form is a leaf collector: the same truck in green, with a suction nozzle and hose in place
         // of the blade, and an open body heaped with leaves in place of the salt spreader.
@@ -1419,6 +1717,91 @@ final class ScreenOverlay {
         while sy < 8 { g.line(C(40, 40, 40), 3, 46, sy, 74, sy + 14); sy += 9 }
         g.restoreGState()
         g.stroke(C(130, 95, 10), 1.2, blade)
+    }
+
+    /// The Day of the Dead's form of the snow plow: a donkey pulls a wooden cart, and a calaca walks in front
+    /// sweeping the marigold petals up with a broom; they fly back over the donkey into the cart, to be taken
+    /// out to the graves. Facing +x, origin at the ground, the broom where the plow's blade would be.
+    private func drawPetalCart(_ g: CGContext, _ ph: F) {
+        let wood = C(140, 92, 50), woodDark = C(96, 60, 30), ink = C(34, 26, 40)
+        let step = plowWheel
+        // the cart: an open box heaped with marigolds, on one big spoked wheel
+        for (i, lx) in [F(-96), -84, -72, -60, -48, -36, -26].enumerated() {
+            drawMarigold(g, lx + 6, -46 - F(i % 2) * 3, 6.5, Theme.marigoldColours[i % Theme.marigoldColours.count])
+            drawMarigold(g, lx, -42 + F(i % 2) * 2, 6, Theme.marigoldColours[(i + 2) % Theme.marigoldColours.count])
+        }
+        g.fillRect(wood, -100, -42, 78, 24)
+        for y in [F(-34), -26] { g.line(woodDark, 1.2, -100, y, -22, y) }
+        g.fillRect(woodDark, -100, -44, 78, 3)
+        for x in [F(-100), -61, -25] { g.fillRect(woodDark, x, -44, 3, 26) }
+        // a strip of papel picado along the side
+        for k in 0..<4 { g.fillRect(Theme.picadoColours[k % Theme.picadoColours.count], -93 + F(k) * 18, -40, 12, 6) }
+        // the shafts to the donkey
+        g.line(woodDark, 3, -24, -28, 16, -36, round: true)
+        // the wheel
+        g.fillEllipse(woodDark, -78, -36, 36, 36)
+        g.fillEllipse(C(0, 0, 0, 0), -74, -32, 28, 28)
+        g.strokeEllipse(wood, 2.5, -74, -32, 28, 28)
+        for k in 0..<6 {
+            let a = step + F(k) * .pi / 3
+            g.line(wood, 2, -60, -18, -60 + cos(a) * 14, -18 + sin(a) * 14)
+        }
+        g.fillEllipse(woodDark, -63, -21, 6, 6)
+
+        // the donkey: grey, with long ears, a dark mane and a garland of marigolds round the neck
+        let fur = C(132, 122, 116), furDark = C(92, 84, 80), belly = C(196, 188, 180)
+        func leg(_ hx: F, _ a: F, _ col: CGColor) {
+            let kx = hx + sin(a) * 9, ky: F = -14
+            g.line(col, 4, hx, -28, kx, ky, round: true)
+            g.line(col, 3.4, kx, ky, kx + sin(a) * 3, 0, round: true)
+            g.fillRect(ink, kx + sin(a) * 3 - 2, -2.5, 5, 3)
+        }
+        leg(4, sin(step * 1.6 + 1.2) * 0.45, furDark)
+        leg(34, sin(step * 1.6 + 1.2 + .pi) * 0.45, furDark)
+        // tail
+        g.bezier(furDark, 2, 0, -38, -8, -34, -8, -24, -6, -18)
+        g.fillEllipse(ink, -10, -22, 6, 7)
+        g.fillEllipse(fur, -2, -46, 44, 22)
+        g.fillEllipse(belly, 6, -32, 30, 9)
+        leg(8, sin(step * 1.6 + .pi) * 0.45, fur)
+        leg(38, sin(step * 1.6) * 0.45, fur)
+        // harness
+        g.line(C(150, 40, 40), 2.2, 14, -46, 14, -26)
+        // neck and head
+        let nod = sin(step * 1.6) * 1.2
+        g.fillPoly(fur, [(30, -44), (46, -62 + nod), (56, -56 + nod), (42, -30)])
+        g.fillEllipse(fur, 44, -66 + nod, 18, 12)
+        g.fillEllipse(belly, 55, -62 + nod, 11, 9)
+        g.fillEllipse(ink, 61, -59.5 + nod, 2, 2)
+        g.fillEllipse(ink, 50, -63 + nod, 2.8, 2.8)
+        // ears
+        g.fillPoly(fur, [(45, -64 + nod), (38, -80 + nod), (42, -81 + nod), (49, -65 + nod)])
+        g.fillPoly(furDark, [(48, -65 + nod), (46, -82 + nod), (50, -82 + nod), (52, -65 + nod)])
+        // mane
+        for k in 0..<5 { g.line(ink, 2, 32 + F(k) * 3, -46 - F(k) * 3.6 + nod * F(k) / 5, 29 + F(k) * 3, -50 - F(k) * 3.6 + nod * F(k) / 5, round: true) }
+        // the marigold garland round the neck
+        for k in 0..<4 { drawMarigold(g, 34 + F(k) * 4, -36 - F(k) * 5 + nod * F(k) / 4, 3, Theme.marigoldColours[k]) }
+
+        // the calaca with the broom, walking in front
+        let walker = Nisse()
+        walker.tunicIndex = 2; walker.tunic = Self.tunics[0]; walker.state = 0
+        let frame = Int((step * 1.6 / (4 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.walkFrames)) % Self.walkFrames
+        g.saveGState()
+        g.translateBy(x: 80, y: 0)
+        g.scaleBy(x: 1.1, y: 1.1)
+        drawCalaca(g, walker, frame)
+        g.restoreGState()
+        // the broom: the handle from the calaca's hands down to the ground in front, the head swinging
+        let swing = sin(step * 3.2) * 5
+        g.line(woodDark, 2.2, 82, -38, 96 + swing, -3, round: true)
+        let head = CGMutablePath()
+        head.start(92 + swing, -6); head.to(102 + swing, -6); head.to(108 + swing, 1); head.to(88 + swing, 1); head.closeSubpath()
+        g.fill(C(214, 170, 72), head)
+        for k in 0..<5 { g.line(C(150, 110, 40), 0.8, 90 + swing + F(k) * 4, -5, 89 + swing + F(k) * 4.6, 1) }
+        // petals gathered in front of the broom
+        for (i, lx) in [F(100), 107, 114].enumerated() where F(i) * 6 < ph {
+            g.fillEllipse(Theme.marigoldColours[i % Theme.marigoldColours.count], lx + swing - 5, -6 - F(i % 2) * 2, 10, 6)
+        }
     }
 
     // ------------------------------------------------------------------ nisser
@@ -1638,7 +2021,7 @@ final class ScreenOverlay {
         let img = renderImage(width: 64 * maxSc, height: 80 * maxSc, scale: backingScale) { g in
             g.scaleBy(x: maxSc, y: maxSc)
             g.translateBy(x: 32, y: 72)
-            if c.theme.animals { drawAnimal(g, n, frame) } else { drawNisse(g, n, frame) }
+            if c.theme.animals { drawAnimal(g, n, frame) } else if c.theme.skeletons { drawCalaca(g, n, frame) } else { drawNisse(g, n, frame) }
         }!
         nisseFrames[key] = img
         return img
@@ -1812,6 +2195,143 @@ final class ScreenOverlay {
         }
     }
 
+    // ------------------------------------------------------------------ calacas (de dødes dag)
+    /// The Day of the Dead's walkers: small cheerful skeletons. They are nisser in everything but looks: they
+    /// walk, stop, wave (dance, with a maraca), cross to the next screen and meet to hand over a bunch of
+    /// marigolds. Every other one is a calaca in a sombrero with a striped serape, the others a catrina in a long
+    /// dress and a wide hat with flowers. The bones are white with a dark outline, so they show on light windows
+    /// as well as dark ones. Drawn like a nisse: feet at (0, 0), y up is negative, facing right.
+    private func drawCalaca(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let p: F = n.state == 0 ? F(frame) / F(Self.walkFrames) * 4 * .pi : 0
+        let standPhase: F = n.state == 1 ? F(frame) / F(Self.standFrames) * 2 * .pi : 0
+        let wavePhase: F = n.state == 2 ? F(frame) / F(Self.waveFrames) * 2 * .pi : 0
+        let walking = n.state == 0
+        let legA: F = walking ? sin(p) * 0.55 : 0
+        let bob: F = walking ? -abs(sin(p)) * 1.5 : (n.state == 2 ? -abs(sin(wavePhase)) * 2 : 0)
+        let ink = C(34, 26, 40), bone = C(246, 242, 230)
+        let catrina = n.tunicIndex % 2 == 1
+        let colours = Theme.picadoColours
+        let main = colours[(n.tunicIndex / 2 + (catrina ? 3 : 0)) % colours.count]
+
+        func boneLine(_ x1: F, _ y1: F, _ x2: F, _ y2: F, _ w: F) {
+            g.line(ink, w + 1.8, x1, y1, x2, y2, round: true)
+            g.line(bone, w, x1, y1, x2, y2, round: true)
+        }
+
+        g.fillEllipse(C(40, 20, 30, 50), -11, -2, 22, 4)
+
+        // legs and shoes (under a catrina's dress only the shoes step out)
+        func leg(_ hx: F, _ hy: F, _ a: F) {
+            let fx = hx + sin(a) * 13, fy = hy + cos(a) * 13
+            if !catrina { boneLine(hx, hy, fx, fy, 2.4) }
+            g.fillEllipse(ink, fx - 3, fy - 2, 8.5, 4.5)
+        }
+        leg(-2, -15 + bob, legA)
+        leg(2, -15 + bob, -legA)
+
+        g.translateBy(x: 0, y: bob)
+        let backArm: F, frontArm: F
+        if n.state == 2 { backArm = -0.4 + sin(wavePhase) * 0.3; frontArm = 2.6 + sin(wavePhase) * 0.5 }
+        else if n.carriesGift { backArm = 1.3; frontArm = 1.3 }
+        else { backArm = -legA * 0.9; frontArm = legA * 0.9 }
+        let sway = sin(walking ? p * 0.5 : standPhase) * 0.06
+
+        func arm(_ sx: F, _ sy: F, _ a: F) {
+            let hx = sx + sin(a) * 11, hy = sy + cos(a) * 11
+            boneLine(sx, sy, hx, hy, 2)
+            g.fillEllipse(bone, hx - 2, hy - 2, 4, 4)
+            g.strokeEllipse(ink, 0.8, hx - 2, hy - 2, 4, 4)
+        }
+        arm(-1, -33, backArm)
+
+        if catrina {
+            // the long dress, flaring from the waist, with a ruffle at the hem
+            let dress = CGMutablePath()
+            dress.start(-5, -34); dress.to(5, -34)
+            dress.curve(7, -24, 12, -12, 13, -3)
+            dress.to(-13, -3)
+            dress.curve(-12, -12, -7, -24, -5, -34)
+            dress.closeSubpath()
+            g.fill(main, dress)
+            g.line(shade(main, 0.65), 1, -5, -34, 5, -34)
+            for k in 0..<6 { g.fillEllipse(shade(main, 0.75), -13 + F(k) * 4.3, -5, 4.6, 3.6) }
+            g.line(colours[(n.tunicIndex + 4) % colours.count], 1.6, -6.5, -24, 6.5, -24)   // the sash
+        } else {
+            // spine, pelvis and ribcage
+            boneLine(0, -17, 0, -34, 1.8)
+            g.fillEllipse(ink, -6, -21, 12, 6.5)
+            g.fillEllipse(bone, -5, -20.2, 10, 5)
+            let ribs = CGMutablePath()
+            ribs.addEllipse(in: CGRect(x: -6.5, y: -36, width: 13, height: 13))
+            g.stroke(ink, 3, ribs)
+            g.stroke(bone, 1.6, ribs)
+            for y in [F(-32), -28.5] { boneLine(-5, y, 5, y, 1.1) }
+            // the striped serape over one shoulder
+            let stripe = [main, colours[(n.tunicIndex + 2) % colours.count], C(250, 240, 210)]
+            for (k, col) in stripe.enumerated() {
+                let o = F(k) * 2.2
+                g.line(col, 2.4, -6 + o * 0.4, -36 + o, 6 + o * 0.4, -24 + o, round: false)
+            }
+        }
+
+        if n.carriesGift && n.state != 2 {
+            // a bunch of marigolds
+            g.line(C(70, 110, 40), 1.2, 10, -22, 12, -31)
+            g.line(C(70, 110, 40), 1.2, 10, -22, 16, -30)
+            drawMarigold(g, 11.5, -32, 3.2, Theme.marigoldColours[n.giftIndex % Theme.marigoldColours.count])
+            drawMarigold(g, 16.5, -31, 3, Theme.marigoldColours[(n.giftIndex + 1) % Theme.marigoldColours.count])
+            drawMarigold(g, 14, -35.5, 2.8, Theme.marigoldColours[(n.giftIndex + 3) % Theme.marigoldColours.count])
+        }
+
+        // the skull, with the eye sockets ringed in colour like a sugar skull
+        g.saveGState()
+        g.translateBy(x: 1, y: -44)
+        g.rotate(by: sway)
+        g.fillEllipse(ink, -7.6, -7.6, 15.2, 14.2)
+        g.fillEllipse(bone, -6.7, -6.7, 13.4, 12.4)
+        g.fillRect(bone, -3.6, 3, 7.2, 3.6)
+        g.strokeEllipse(ink, 0.8, -3.6, 3, 7.2, 3.6)
+        let ring = colours[(n.tunicIndex + 1) % colours.count]
+        for dx in [F(-0.5), 4.4] {
+            g.fillEllipse(ring, dx - 2.9, -2.9, 5.8, 5.8)
+            g.fillEllipse(ink, dx - 1.9, -1.9, 3.8, 3.8)
+        }
+        g.fillPoly(ink, [(5.5, 1.2), (4.4, 3), (6.4, 3)])
+        for dx in [F(-1.5), 1, 3.5] { g.line(ink, 0.6, dx, 3.4, dx, 6.2) }
+
+        if catrina {
+            // a wide hat tilted back, with flowers and a feather
+            g.rotate(by: -0.12)
+            g.fillEllipse(ink, -15, -9, 30, 6)
+            g.fillEllipse(shade(main, 0.55), -14, -8.4, 28, 4.8)
+            let crown = CGMutablePath()
+            crown.start(-6, -7); crown.curve(-6, -14, 6, -14, 6, -7); crown.closeSubpath()
+            g.fill(shade(main, 0.55), crown)
+            g.bezier(C(250, 250, 250), 1.6, -4, -11, -10, -20, -16, -20, -18, -14)
+            drawMarigold(g, -2, -10, 2.6, Theme.marigoldColours[0])
+            drawMarigold(g, 3, -9.5, 2.4, colours[0])
+            drawMarigold(g, 7.5, -8.5, 2.2, Theme.marigoldColours[3])
+        } else {
+            // a sombrero: wide brim, tall crown and a coloured band
+            g.fillEllipse(ink, -16, -9, 32, 6.5)
+            g.fillEllipse(C(214, 170, 72), -15, -8.4, 30, 5.2)
+            let crown = CGMutablePath()
+            crown.start(-6.5, -6.5); crown.curve(-6, -19, 6, -19, 6.5, -6.5); crown.closeSubpath()
+            g.fill(C(214, 170, 72), crown)
+            g.stroke(C(120, 84, 30), 0.8, crown)
+            g.fillRect(main, -6.4, -9.4, 12.8, 2.4)
+        }
+        g.restoreGState()
+
+        arm(1, -33, frontArm)
+        if n.state == 2 {
+            // dancing with a maraca in the raised hand
+            let hx = 1 + sin(frontArm) * 11, hy = -33 + cos(frontArm) * 11
+            g.line(C(120, 80, 40), 1.4, hx, hy, hx + sin(frontArm) * 4, hy + cos(frontArm) * 4)
+            g.fillEllipse(colours[(n.tunicIndex + 5) % colours.count], hx + sin(frontArm) * 6 - 3, hy + cos(frontArm) * 6 - 3, 6, 6)
+        }
+    }
+
     // ------------------------------------------------------------------ julelys
     static let bulbColors = [C(255, 60, 60), C(60, 220, 90), C(255, 200, 60), C(80, 150, 255), C(255, 110, 200)]
     /// The lanterns on autumn's garland all burn warm.
@@ -1851,6 +2371,8 @@ final class ScreenOverlay {
     }
 
     private func buildBulbs() {
+        // the papel picado has no lights of its own
+        if c.theme == .muertos { return }
         let scale = backingScale
         let w = 7 * S, h = 11 * S, bw = 26 * S, bh = 28 * S
         let autumn = c.theme == .efteraar
@@ -1884,7 +2406,7 @@ final class ScreenOverlay {
         // Autumn's form is a garland: a brown vine with leaves hanging from it, and small lanterns where the
         // bulbs are (their lit panes are the twinkling layers, see buildBulbs).
         let autumn = c.theme == .efteraar
-        let wire = autumn ? C(104, 68, 34, 235) : C(25, 60, 35, 220), socket = C(30, 70, 40)
+        let wire = autumn ? C(104, 68, 34, 235) : c.theme == .muertos ? C(40, 30, 36, 200) : C(25, 60, 35, 220), socket = C(30, 70, 40)
         var x0 = -span * 0.3
         while x0 < W {
             g.setStrokeColor(wire); g.setLineWidth(2 * S); g.setLineCap(.round)
@@ -1896,6 +2418,66 @@ final class ScreenOverlay {
             }
             g.strokePath()
             x0 += span
+        }
+        if c.theme == .muertos {
+            // Papel picado: a flag of thin cut paper in a bright colour hangs at every bulb's place, a little turned
+            // with the string's slope, with a zigzag hem and a pattern cut out of it (punched with the clear blend mode,
+            // so the desktop shows through the holes).
+            var x0 = -span * 0.3, idx = 0
+            let w = 26 * S, h = 30 * S
+            while x0 < W {
+                for b in 0..<4 {
+                    let u = (F(b) + 0.5) / 4
+                    let bx = x0 + u * span, by = top + sag * (1 - (2 * u - 1) * (2 * u - 1))
+                    let slope = sag * -4 * (2 * u - 1) / span
+                    g.saveGState()
+                    g.translateBy(x: bx, y: by)
+                    g.rotate(by: atan(slope) * 0.6 + sin(F(idx) * 1.9) * 0.05)
+                    g.beginTransparencyLayer(auxiliaryInfo: nil)
+                    var flag: [(F, F)] = [(-w / 2, 0), (w / 2, 0), (w / 2, h - 3 * S)]
+                    let teeth = 6
+                    for k in 0..<teeth {
+                        let x1 = w / 2 - w * (F(k) + 0.5) / F(teeth), x2 = w / 2 - w * F(k + 1) / F(teeth)
+                        flag.append((x1, h)); flag.append((x2, h - 3 * S))
+                    }
+                    g.fillPoly(Theme.picadoColours[idx % Theme.picadoColours.count], flag)
+                    g.setBlendMode(.clear)
+                    let k = S, cy = h * 0.48
+                    switch idx % 3 {
+                    case 0:
+                        // a flower: five petals around a hole
+                        for j in 0..<5 { let a = F(j) * 1.2566 - .pi / 2; g.fillEllipse(C(0, 0, 0), cos(a) * 5 * k - 2.6 * k, cy + sin(a) * 5 * k - 2.6 * k, 5.2 * k, 5.2 * k) }
+                        g.fillEllipse(C(0, 0, 0), -1.6 * k, cy - 1.6 * k, 3.2 * k, 3.2 * k)
+                    case 1:
+                        // a small skull: the head with eyes and nose left standing
+                        g.fillEllipse(C(0, 0, 0), -6.5 * k, cy - 7 * k, 13 * k, 12 * k)
+                        g.fillRect(C(0, 0, 0), -4 * k, cy + 3 * k, 8 * k, 4.5 * k)
+                        g.setBlendMode(.normal)
+                        let col = Theme.picadoColours[idx % Theme.picadoColours.count]
+                        g.fillEllipse(col, -4.4 * k, cy - 2.6 * k, 3.6 * k, 3.6 * k)
+                        g.fillEllipse(col, 0.8 * k, cy - 2.6 * k, 3.6 * k, 3.6 * k)
+                        g.fillPoly(col, [(0, cy + 1.5 * k), (-1.2 * k, cy + 3.4 * k), (1.2 * k, cy + 3.4 * k)])
+                        for dx in [F(-2), 0, 2] { g.line(col, 0.8 * k, dx * k, cy + 4.5 * k, dx * k, cy + 7.5 * k) }
+                        g.setBlendMode(.clear)
+                    default:
+                        // diamonds and a heart-like drop
+                        for (dx, dy) in [(F(0), F(-6)), (-6, 0), (6, 0), (0, 6)] {
+                            g.fillPoly(C(0, 0, 0), [(dx * k, cy + (dy - 3.2) * k), (dx * k + 3.2 * k, cy + dy * k), (dx * k, cy + (dy + 3.2) * k), (dx * k - 3.2 * k, cy + dy * k)])
+                        }
+                    }
+                    // a row of small holes along the top and the sides
+                    for j in 0..<5 { g.fillEllipse(C(0, 0, 0), -w / 2 + w * (F(j) + 0.5) / 5 - 1 * k, 3 * k, 2 * k, 2 * k) }
+                    for yy in [h * 0.3, h * 0.55] { g.fillEllipse(C(0, 0, 0), -w / 2 + 2 * k, yy, 2 * k, 2 * k); g.fillEllipse(C(0, 0, 0), w / 2 - 4 * k, yy, 2 * k, 2 * k) }
+                    g.setBlendMode(.normal)
+                    g.endTransparencyLayer()
+                    // folded over the string
+                    g.fillRect(C(0, 0, 0, 40), -w / 2, 0, w, 1.4 * S)
+                    g.restoreGState()
+                    idx += 1
+                }
+                x0 += span
+            }
+            return
         }
         if autumn {
             // leaves along the vine, each hanging by its stalk at its own angle (none where a lantern hangs)

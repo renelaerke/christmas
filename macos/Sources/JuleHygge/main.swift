@@ -13,7 +13,7 @@ if let i = args.firstIndex(of: "--icon"), i + 1 < args.count {
 if let a = args.first(where: { $0.hasPrefix("--lyd-test=") }) {
     let dir = String(a.dropFirst(11))
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-    for (name, make) in Synth.Tune.all.map({ t in ("julemand-" + t.name, { Synth.jingle(t) }) }) + [("sneplov-motor", Synth.plowEngine), ("sneplov-skraben", Synth.plowScrape), ("sneplov-horn", Synth.plowHorn), ("loevsuger-sug", Synth.leafSuction)]
+    for (name, make) in Synth.Tune.all.map({ t in ("julemand-" + t.name, { Synth.jingle(t) }) }) + [("sneplov-motor", Synth.plowEngine), ("sneplov-skraben", Synth.plowScrape), ("sneplov-horn", Synth.plowHorn), ("loevsuger-sug", Synth.leafSuction), ("sommerfugle-son", Synth.muertosSon)]
         + Synth.gooseMoods.enumerated().map({ m in ("gaes-" + m.element, { Synth.geese(mood: m.offset) }) }) {
         guard let buf = make() else { continue }
         let url = URL(fileURLWithPath: dir).appendingPathComponent(name + ".wav")

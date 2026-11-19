@@ -494,4 +494,103 @@ enum Synth {
         for i in 0..<fade { let k = Float(i) / Float(fade); out[i] *= k; out[n - 1 - i] *= k }
         return buf
     }
+
+    // ------------------------------------------------------------------ de dødes dag
+    /// The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the
+    /// style of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar
+    /// that plays the bass on the first beat and strums the chord on the second and third (down, up, down).
+    /// Written for JuleHygge, so it is free of rights.
+    static func muertosSon() -> AVAudioPCMBuffer? {
+        let beat = 0.38
+        let A4 = 69, Cs5 = 73, C5 = 72, D5 = 74, E5 = 76, F5 = 77, G5 = 79, A5 = 81, Bb5 = 82, C6 = 84, D6 = 86
+        let melody: [(Int, Double)] = [
+            (A4, 1), (D5, 1), (F5, 1),            (A5, 2), (G5, 0.5), (F5, 0.5),
+            (E5, 1.5), (F5, 0.5), (G5, 1),        (A5, 2), (0, 1),
+            (F5, 1), (E5, 0.5), (D5, 0.5), (F5, 1), (A5, 1), (D6, 1), (A5, 1),
+            (Bb5, 1), (A5, 0.5), (G5, 0.5), (F5, 1), (E5, 2), (0, 1),
+            (C5, 1), (F5, 1), (A5, 1),            (C6, 2), (A5, 1),
+            (Bb5, 1), (G5, 1), (E5, 1),           (E5, 1), (G5, 1), (Bb5, 1),
+            (A5, 1.5), (G5, 0.5), (F5, 1),        (F5, 1), (E5, 0.5), (D5, 0.5), (A5, 1),
+            (G5, 1), (E5, 1), (Cs5, 1),           (D5, 2), (0, 1),
+        ]
+        // the guitar's chords, lowest string first (the first note is the bass)
+        let Dm = [50, 57, 62, 65], A7 = [45, 52, 55, 61, 64], Gm = [43, 50, 55, 58, 62], Fmaj = [41, 48, 53, 57, 60], C7 = [48, 52, 58, 60, 64]
+        let chords = [Dm, Dm, A7, A7, Dm, Dm, Gm, A7, Fmaj, Fmaj, C7, C7, Gm, Dm, A7, Dm]
+        let totalBeats = melody.reduce(0) { $0 + $1.1 }
+        let n = Int(totalBeats * beat * sampleRate)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n)) else { return nil }
+        buf.frameLength = AVAudioFrameCount(n)
+        let out = buf.floatChannelData![0]
+        for i in 0..<n { out[i] = 0 }
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        var rng = SeededRandom(seed: 1102)
+
+        /// One marimba stroke: the bar's fundamental with its 4th and 10th partials (a marimba bar is tuned so),
+        /// all dying fast, plus a soft knock of the mallet. Wraps round the loop's end, so the seam is clean.
+        func strike(_ t0: Double, _ midi: Int, _ amp: Double) {
+            let f = freq(midi)
+            let start = Int(t0 * sampleRate), count = Int(1.2 * sampleRate)
+            for k in 0..<count {
+                let t = Double(k) / sampleRate
+                let env = min(1, t / 0.002)
+                var v = exp(-t * 4.5) * sin(2 * .pi * f * t)
+                v += 0.22 * exp(-t * 14) * sin(2 * .pi * f * 4 * t)
+                v += 0.05 * exp(-t * 30) * sin(2 * .pi * f * 10 * t)
+                v += 0.15 * exp(-t * 300) * sin(2 * .pi * 180 * t)
+                out[(start + k) % n] += Float(v * env * amp)
+            }
+        }
+
+        /// One plucked string (Karplus-Strong): a burst of soft noise circulating in a delay line one period
+        /// long, averaged a little each round, so it rings and darkens like a nylon string.
+        func pluck(_ t0: Double, _ midi: Int, _ amp: Double, _ len: Double) {
+            let period = max(2, Int(sampleRate / freq(midi)))
+            var line = [Double](repeating: 0, count: period)
+            var prev = 0.0
+            for i in 0..<period { let r = Double(rng.next()) * 2 - 1; prev = prev * 0.5 + r * 0.5; line[i] = prev }
+            let start = Int(t0 * sampleRate), count = Int(len * sampleRate)
+            var i = 0
+            for k in 0..<count {
+                let j = i % period, j2 = (i + 1) % period
+                let v = line[j]
+                line[j] = 0.4985 * (line[j] + line[j2])
+                let fadeOut = k > count - 800 ? Double(count - k) / 800 : 1
+                out[(start + k) % n] += Float(v * amp * fadeOut)
+                i += 1
+            }
+        }
+
+        func strum(_ t0: Double, _ chord: [Int], down: Bool, _ amp: Double) {
+            let strings = down ? Array(chord.dropFirst()) : Array(chord.suffix(3).reversed())
+            for (k, m) in strings.enumerated() { pluck(t0 + Double(k) * 0.011, m, amp, beat * 1.4) }
+        }
+
+        // melody: short notes struck once, long ones rolled
+        var t = 0.0
+        for (note, len) in melody {
+            if note > 0 {
+                if len >= 1.5 {
+                    var r = 0.0
+                    while r < len * beat - 0.1 { strike(t + r, note, r == 0 ? 0.30 : 0.17); r += 0.085 }
+                } else {
+                    strike(t, note, 0.30)
+                }
+            }
+            t += len * beat
+        }
+        // guitar: bass on 1, strum down on 2, up on the "and", down on 3
+        for (b, chord) in chords.enumerated() {
+            let t0 = Double(b * 3) * beat
+            pluck(t0, chord[0], 0.38, beat * 2.2)
+            strum(t0 + beat, chord, down: true, 0.16)
+            strum(t0 + beat * 1.5, chord, down: false, 0.10)
+            strum(t0 + beat * 2, chord, down: true, 0.14)
+        }
+
+        var peak: Float = 0
+        for i in 0..<n { peak = max(peak, abs(out[i])) }
+        if peak > 0.9 { let k = 0.9 / peak; for i in 0..<n { out[i] *= k } }
+        return buf
+    }
 }
