@@ -28,7 +28,9 @@ JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`,
 - Mål CPU-forbruget før og efter ændringer i tegnekoden.
 
 ## Konventioner
-- Ingen billed- eller lydfiler. Al grafik tegnes i koden med GDI+.
+- Ingen billedfiler. Al grafik tegnes i koden (GDI+ på Windows).
+- Lyd syntetiseres som udgangspunkt i koden. En optagelse (WAV) må bruges, når syntese ikke kan komme til at lyde ægte: den skal være fri at bruge, og dens kilde skal stå i `assets/lyd/KILDER.md`. Den eneste indtil nu er gåsene i efterårstemaet, `assets/lyd/gaes-flok.wav` (syntetiske gåsekald blev prøvet to gange og lød for kunstige).
+- Én modelfil, kun i macOS-udgaven: `assets/model/selfie_multiclass_256x256.mlpackage` skiller tøj fra hud og hår i JuleHygge Kamera (kilde og kontrolsummer i `assets/model/KILDER.md`). Dens licens (Apache 2.0) ligger i `macos/licenses/`, følger med i appen og vises fra menuen (`Licenses.swift`). Windows og Linux har hverken modellen eller licensen.
 - Figurerne skal være originale: dansk nisse med rød hue og gråt tøj, ingen kendte figurer.
 - Indstillinger gemmes i `Settings`. Nye felter skal have en standardværdi, så gamle `settings.ini`-filer stadig virker.
 - Fakta i `CalendarContent` er ikke kildetjekket. Tjek dem, før der tilføjes nye.
@@ -68,7 +70,7 @@ JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`,
   - `log show` gemmer ikke info-linjer længe, og i zsh er `log` en indbygget kommando: brug `/usr/bin/log show --info --last 1h --predicate 'subsystem == "dk.julehygge.JuleHygge" AND eventMessage CONTAINS "hue:"'` kort efter kørslen.
 - `measure.sh` måler den nyeste JuleHygge-proces; den anden er vagtprocessen.
 - Test-appen skal køre som `.app` (`build/JuleHygge.app`, ikke `.build/release/JuleHygge`), ellers crasher UserNotifications. Brug `JULE_LOG` og `JULE_SETTINGS` med stier i projektet.
-- Sound is synthesized in code on both platforms (`macos/.../Sound.swift`, `src/Sound.cs`, played with `waveOut` on Windows) — still no sound files. Sound must always be off by default.
+- Sound is synthesized in code on both platforms (`macos/.../Sound.swift`, `src/Sound.cs`, played with `waveOut` on Windows); the one recording is the geese (see Konventioner). Sound must always be off by default.
 - Windows keeps feature parity with macOS: window snow (`src/WindowSnow.cs`, ported from `WindowSnow.swift`; macOS point sizes are scaled by the system DPI via `Ledge.U`), nisse gift meetings, storm drifts, three tunes with ±10% pace, and `FinishRuns()` when the overlay stops (lock, display off, suspend, screen saver polled via `SPI_GETSCREENSAVERRUNNING`, or a frame stall over 2 s). Windows deliberately differs on frame rate: Santa and the plow are boosted to 30 fps, not 60.
 - **Automatisk opdatering (`Updater.swift`, som `src/Updater.cs`):** en udgivet app tjekker GitHub 1 minut efter start og hver 6. time, henter `JuleHygge-macOS.zip`, pakker den ud ved siden af sig selv, kontrollerer den (SHA-256, bundle-id, version lig udgivelsens tag, gyldig signatur) og bytter hele app-mappen ud. Vagtprocessen starter den nye app, når barnet slutter med kode 3.
   - Versionen stemples af `build.sh` med `VERSION=x.y.z` (workflowet giver udgivelsens tag). Uden den er appen 0.0.0 og opdaterer aldrig sig selv. Udgivelser til og med v1.4.0 er stemplet 1.0 og kan ikke opdatere sig selv.

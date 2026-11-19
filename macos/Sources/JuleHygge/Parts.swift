@@ -76,8 +76,10 @@ final class PersonParts {
               let arr = out.featureValue(for: "classes")?.multiArrayValue,
               arr.dataType == .float32, arr.count == Self.classCount * n * n else { return nil }
         var v = [Float](repeating: 0, count: n * n)
+        var neckSkin = [Float](repeating: 0, count: n * n), faceSkin = neckSkin
         arr.withUnsafeBufferPointer(ofType: Float32.self) { p in
             let base = Self.clothesClass * n * n
+            for i in 0..<(n * n) { neckSkin[i] = p[2 * n * n + i]; faceSkin[i] = p[3 * n * n + i] }
             // Steep round one half: where the model is only fairly sure (a sleeve seen from an odd angle, 0.6–0.8)
             // the costume must still cover, or the clothes' own colour shines through it.
             for i in 0..<(n * n) { v[i] = max(0, min(1, (p[base + i] - 0.5) * 5 + 0.5)) }
@@ -108,6 +110,52 @@ final class PersonParts {
             .transformed(by: shrink.inverted())
             .cropped(to: extent)
         last = image
+        body = neckSkin; face = faceSkin; seen = extent
         return image
+    }
+
+    // ------------------------------------------------------------------ neck and face
+
+    /// The last picture's body skin (neck, hands) and face skin, per cell of the model's square (row 0 at the top).
+    private var body: [Float] = [], face: [Float] = []
+    private var seen = CGRect.zero
+
+    /// The face's skin in the last picture as a mask (white = face), or nil without the model.
+    func faceMask() -> CIImage? {
+        let n = Self.side
+        guard face.count == n * n, seen.width > 32 else { return nil }
+        let grow = CGAffineTransform(scaleX: seen.width / CGFloat(n), y: seen.height / CGFloat(n))
+            .concatenating(CGAffineTransform(translationX: seen.minX, y: seen.minY))
+        return CIImage(bitmapData: Data(face.map { UInt8(max(0, min(1, ($0 - 0.5) * 4 + 0.5)) * 255) }), bytesPerRow: n, size: CGSize(width: n, height: n), format: .L8, colorSpace: nil)
+            .applyingGaussianBlur(sigma: 0.6)
+            .transformed(by: grow)
+            .cropped(to: seen)
+    }
+
+    /// The bare neck under a head, as the model sees it in the last picture: the skin below the chin that is not
+    /// face, within the head's breadth to either side. `chin` in picture coordinates (y up), `reach` how far to the
+    /// sides and down to look. Gives the neck's middle and half breadth and the height of its lower end (where the
+    /// clothes begin), or nil when no neck shows (a high collar) or without the model.
+    func neck(chin: CGPoint, reach: CGFloat) -> (x: CGFloat, half: CGFloat, bottom: CGFloat)? {
+        let n = Self.side
+        guard body.count == n * n, seen.width > 32, reach > 4 else { return nil }
+        let sx = CGFloat(n) / seen.width, sy = CGFloat(n) / seen.height
+        let cx = Int((chin.x - seen.minX) * sx), cy = Int((seen.maxY - chin.y) * sy)
+        let rx = max(2, Int(reach * sx)), ry = max(2, Int(reach * 1.6 * sy))
+        var mids: [CGFloat] = [], halves: [CGFloat] = [], lastRow = -1, gap = 0
+        for y in max(0, cy - ry / 6)..<min(n, cy + ry) {
+            var lo = n, hi = -1
+            for x in max(0, cx - rx)...min(n - 1, cx + rx) where body[y * n + x] > 0.5 { lo = min(lo, x); hi = max(hi, x) }
+            // (a row counts when the skin in it is a fair part of a neck's breadth, not a stray cell)
+            if hi - lo >= rx / 4 {
+                mids.append(CGFloat(lo + hi + 1) / 2); halves.append(CGFloat(hi - lo + 1) / 2); lastRow = y; gap = 0
+            } else if lastRow >= 0 {
+                gap += 1
+                if gap > 2 { break }
+            }
+        }
+        guard mids.count >= 2 else { return nil }
+        mids.sort(); halves.sort()
+        return (seen.minX + mids[mids.count / 2] / sx, halves[halves.count / 2] / sx, seen.maxY - CGFloat(lastRow + 1) / sy)
     }
 }

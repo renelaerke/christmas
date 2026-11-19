@@ -84,7 +84,9 @@ icon_script = ('set -e\\nSRC=\\"$PROJECT_DIR/build/JuleHygge.icns\\"\\n'
                # the one sound file: the recording of geese for the autumn theme (assets/lyd/KILDER.md)
                'cp \\"$PROJECT_DIR/../assets/lyd/gaes-flok.wav\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/gaes-flok.wav\\"\\n'
                # the one model file: clothes, skin and hair for the camera costume (assets/model/KILDER.md)
-               'xcrun coremlcompiler compile \\"$PROJECT_DIR/../assets/model/selfie_multiclass_256x256.mlpackage\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\\"\\n')
+               'xcrun coremlcompiler compile \\"$PROJECT_DIR/../assets/model/selfie_multiclass_256x256.mlpackage\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\\"\\n'
+               # and the model's licence (Apache 2.0), shown from the menu
+               'cp \\"$PROJECT_DIR/licenses/Apache-2.0.txt\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Apache-2.0.txt\\"\\n')
 obj(ICON, '{isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); '
     'name = "App icon (drawn by the app)"; outputPaths = (); runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; '
     f'shellScript = "{icon_script}"; }}')

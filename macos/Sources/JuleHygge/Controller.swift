@@ -766,6 +766,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(item("Installér JuleHygge Kamera (baggrund i Teams)…") { [unowned self] _ in cameraInstaller.install() })
         menu.addItem(toggle("Pause skærmene mens JuleHygge Kamera bruges", { $0.cameraPausesScreens }, { $0.cameraPausesScreens = $1 }))
         menu.addItem(item("Fjern JuleHygge Kamera") { [unowned self] _ in cameraInstaller.remove() })
+        menu.addItem(item("Licens for tøjmodellen i kameraet…") { _ in LicenseWindow.show() })
         menu.addItem(.separator())
         menu.addItem(themed(toggle("Julelys", { $0.lights }, { $0.lights = $1 }), "Løvranke med lygter"))
         menu.addItem(toggle("Vis på alle skærme", { $0.allScreens }, { [unowned self] in $0.allScreens = $1; buildOverlays() }))
