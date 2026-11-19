@@ -282,9 +282,17 @@ extension NisseHat {
     static func replay(dir: String) {
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { $0.hasPrefix("raa-") && $0.hasSuffix(".jpg") }.sorted()
         guard !names.isEmpty else { print("ingen raa-NNN.jpg i", dir); return }
+        PersonParts.loadNow = true
         let hat = NisseHat(), costume = NisseCostume()
         let colours = [CIColor(red: 1, green: 0, blue: 0), CIColor(red: 0, green: 1, blue: 0), CIColor(red: 1, green: 1, blue: 0), CIColor(red: 1, green: 1, blue: 0),
                        CIColor(red: 0, green: 0.5, blue: 1), CIColor(red: 0, green: 0.5, blue: 1)]
+        var partsMs: [Double] = []
+        defer {
+            // (the first picture also loads the model)
+            let rest = partsMs.dropFirst()
+            if rest.isEmpty { print("tøjmodel: ikke brugt (farvereglen i stedet)") }
+            else { print(String(format: "tøjmodel: %.1f ms pr. billede i gennemsnit, højst %.1f (første billede med indlæsning %.0f ms)", rest.reduce(0, +) / Double(rest.count), rest.max() ?? 0, partsMs[0])) }
+        }
         for name in names {
             guard let src = CIImage(contentsOf: URL(fileURLWithPath: dir).appendingPathComponent(name)) else { continue }
             let handler = VNImageRequestHandler(ciImage: src, options: [:])
@@ -301,7 +309,9 @@ extension NisseHat {
             let maskRaw = CIImage(cvPixelBuffer: buf)
             let mask = maskRaw.transformed(by: CGAffineTransform(scaleX: src.extent.width / maskRaw.extent.width, y: src.extent.height / maskRaw.extent.height))
             var out = costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
-            if let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
+            if costume.parts.lastMs > 0, !costume.shapes.isEmpty { partsMs.append(costume.parts.lastMs) }
+            // (autumn's costume has no beard; HUE_EFTERAAR=1 replays the sou'wester and the raincoat)
+            if !CameraCostume.autumn, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
             out = hat.apply(to: out, person: mask)
             for s in costume.shapes {
                 for (i, p) in s.marks.enumerated() where p.x.isFinite && p.y.isFinite {

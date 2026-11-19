@@ -234,6 +234,9 @@ final class NisseHat {
         var l: [Double], r: [Double]
         /// depth of the head against its breadth, learned from the outline while the person turns
         var depth = NisseHat.ordinaryDepth
+        /// The crown's height above the eye line as a share of the head's breadth, learned while the head is seen
+        /// straight on (see `parts`); nil until then.
+        var crownShare: Double?
         var sums = (cc: 0.0, cs: 0.0, ss: 0.0, bc: 0.0, bs: 0.0)
         // ---- steadying
         var fOrigin = [OneEuro(minCutoff: 0.9, beta: 0.03), OneEuro(minCutoff: 0.9, beta: 0.03)]
@@ -585,6 +588,8 @@ final class NisseHat {
         return lo <= hi ? (lo, hi) : nil
     }
 
+    /// The last crown share learned from any head (see `parts`).
+    private var crownShareSeen: Double?
     private enum Item { case quad([V], CGColor), ball(V, Double, Double) }
     private static let light = simd_normalize(V(-0.45, 0.6, 0.7))
 
@@ -593,7 +598,21 @@ final class NisseHat {
     private func parts(_ t: Track) -> (back: [(Double, Item)], front: [(Double, Item)], tip: V)? {
         guard let g = Self.ring(t) else { return nil }
         let U = t.U, k = t.depth, rf = g.rf, X = g.X, Y = g.Y, Z = g.Z
-        let vc = g.centre.y, top = t.crownV, vLow = -Self.below * U
+        // The hat's own height. A hat keeps its shape when the head moves, but the crown as it shows in the outline
+        // does not: leaning back and turned, the top of the outline is the forehead and the hair above it, far
+        // below where the crown is seen from the front (live 2026-11-19: 88 px above the eye line against 125–145,
+        // and all that was left of the sou'wester over the brim was a thin strip). So the crown's height is
+        // learned as a share of the head's breadth while the head is seen straight on, and the hat is never lower
+        // than that (less a little, and shortened as the head's upright axis leans from the picture's plane).
+        if abs(t.yaw) < 0.2, abs(t.pitch) < 0.18, t.crownV > 0.5 * U {
+            let s = t.crownV / U
+            t.crownShare = t.crownShare.map { $0 + (s - $0) * 0.05 } ?? s
+            crownShareSeen = t.crownShare
+        }
+        let vc = g.centre.y, vLow = -Self.below * U
+        // (a head that is found again after a quick move starts as a new one: until it has been seen straight
+        // on itself, the last share learned stands in; heads differ little in this)
+        let top = max(t.crownV, (t.crownShare ?? crownShareSeen ?? 0) * U * Y.y * 0.9)
         guard top > vc + 4, Y.y > 0.3 else { return nil }
         // the light keeps its place in the picture while the head's frame rolls
         let cr = cos(t.roll), sr = sin(t.roll)
@@ -611,9 +630,14 @@ final class NisseHat {
             pts.append(P2(l - mg, v)); pts.append(P2(r + mg, v))
         }
         pts.append(P2(t.crownX, top + mg))
+        // (a sou'wester's crown is low and round: two more points beside the top one keep it from ending in a peak)
+        if CameraCostume.autumn { pts.append(P2(t.crownX - 0.38 * U, top + mg * 0.8)); pts.append(P2(t.crownX + 0.38 * U, top + mg * 0.8)) }
         let L = Self.free * U
-        let apex = P2(t.crownX + L * Y.x, top + L * Y.y)
-        pts.append(apex)
+        // Autumn's hat is a sou'wester: the same cloth on the measured head, but closed in a dome over the crown
+        // instead of running on into a long bent tip, and with a stiff brim in place of the fur (see below).
+        let autumn = CameraCostume.autumn
+        let apex = autumn ? P2(t.crownX, top + mg) : P2(t.crownX + L * Y.x, top + L * Y.y)
+        if !autumn { pts.append(apex) }
         let poly = Self.hull(pts)
 
         // the part above the head bends over: the centre line by its length, and how far it has turned there
@@ -633,8 +657,11 @@ final class NisseHat {
             return curve[i] + (curve[i + 1] - curve[i]) * (f - Double(i))
         }
         func depthOnAxis(_ v: Double) -> Double { (v - vc) * Y.z / Y.y }
-        guard let (bl, br) = Self.row(poly, vBend) else { return nil }
-        let Qb = V((bl + br) / 2, vBend, depthOnAxis(vBend))
+        var Qb = V(0, 0, 0)
+        if !autumn {
+            guard let (bl, br) = Self.row(poly, vBend) else { return nil }
+            Qb = V((bl + br) / 2, vBend, depthOnAxis(vBend))
+        }
 
         let M = 38, segs = 36
         var rings: [[V]] = [], centres: [V] = []
@@ -655,7 +682,7 @@ final class NisseHat {
                 let side: V = (aj * sin(ph)) * X, fore: V = (aj * kj * cos(ph)) * Bj
                 return c + side + fore
             }
-            if v > vBend {
+            if v > vBend && !autumn {
                 let along = (v - vBend) / Y.y, w = along / Lf
                 let Rb = Self.rotationMatrix(axis * (Self.bend * pow(min(1, w), 1.6)))
                 let straight = Qb + Y * along, moved = Qb + bent(w)
@@ -665,6 +692,11 @@ final class NisseHat {
             rings.append(ring); centres.append(c)
         }
         guard rings.count > 3 else { return nil }
+        if autumn, let last = centres.last {
+            // close the dome: one last ring drawn together in a point just above the top ring
+            let cap = V(last.x, apex.y, depthOnAxis(apex.y))
+            rings.append(Array(repeating: cap, count: segs)); centres.append(cap)
+        }
         for j in 0..<(rings.count - 1) {
             let a = rings[j], b = rings[j + 1], mid = (centres[j] + centres[j + 1]) / 2
             for i in 0..<segs {
@@ -679,10 +711,49 @@ final class NisseHat {
                 if nrm.z < -0.02 { continue }   // faces away from the camera
                 let diffuse = max(0, simd_dot(nrm, lightH)), spec = pow(max(0, simd_dot(nrm, halfway)), 16) * 0.22
                 let shade = 0.32 + 0.68 * diffuse
-                let col = CGColor(srgbRed: min(1, 0.80 * shade + spec), green: min(1, 0.07 * shade + spec * 0.9),
-                                  blue: min(1, 0.12 * shade + spec * 0.9), alpha: 1)
+                let col = autumn
+                    ? CGColor(srgbRed: min(1, 0.97 * shade + spec), green: min(1, 0.77 * shade + spec), blue: min(1, 0.08 * shade + spec * 0.8), alpha: 1)
+                    : CGColor(srgbRed: min(1, 0.80 * shade + spec), green: min(1, 0.07 * shade + spec * 0.9),
+                              blue: min(1, 0.12 * shade + spec * 0.9), alpha: 1)
                 front.append((m.z, .quad(q, col)))
             }
+        }
+        if autumn {
+            // ---- the sou'wester's brim: a stiff ring that slopes down and out from where the fur would sit,
+            // narrow over the forehead and long at the back of the neck. Seen from above it is lit like the
+            // cloth; where its underside shows it is in shade.
+            let n = 48
+            func edge(_ i: Int) -> (inner: V, outer: V, out: V) {
+                let ph = Double(i) / Double(n) * 2 * .pi, sp = sin(ph), cp = cos(ph)
+                let out: V = simd_normalize((k * sp) * X + cp * g.B)
+                let inner: V = g.centre + (g.a * sp) * X + (g.a * k * cp) * g.B
+                let w = U * (0.40 + 0.38 * max(0, -cp))
+                // turned up over the forehead (so it never comes down over the eyes), level at the sides,
+                // sloping down at the back
+                let rise = cp > 0 ? 0.75 * cp : 0.5 * cp
+                return (inner, inner + out * (w * (cp > 0 ? 1 - 0.45 * cp : 1)) + g.N * (w * rise), out)
+            }
+            for i in 0..<n {
+                let a = edge(i), b = edge(i + 1)
+                let q = [a.inner, b.inner, b.outer, a.outer]
+                let m = (q[0] + q[1] + q[2] + q[3]) / 4
+                var nrm = simd_cross(q[1] - q[0], q[3] - q[0])
+                let len = simd_length(nrm)
+                if len < 1e-9 { continue }
+                nrm /= len
+                if simd_dot(nrm, g.N) < 0 { nrm = -nrm }           // the upper side's normal
+                let under = nrm.z < 0                                // the camera sees the underside
+                if under { nrm = -nrm }
+                let diffuse = max(0, simd_dot(nrm, lightH))
+                // (the turned-up front shows its outer side to the camera with the light from above behind it:
+                // lit like the cloth it came out dark brown, so the brim never goes below a clear yellow)
+                let shade = 0.58 + 0.42 * diffuse
+                let col = CGColor(srgbRed: min(1, 0.97 * shade), green: min(1, 0.77 * shade), blue: min(1, 0.08 * shade), alpha: 1)
+                let facing = (a.out + b.out).z
+                if facing >= 0 { front.append((1e6 + m.z, .quad(q, col))) }
+                else if m.y >= vLow { back.append((m.z, .quad(q, col))) }
+            }
+            return (back, front, centres.last ?? g.centre)
         }
         // pompom at the tip
         let tip = Qb + bent(1)

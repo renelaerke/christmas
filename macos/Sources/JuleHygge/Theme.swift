@@ -7,6 +7,13 @@ import AppKit
 /// out in that theme (never shown in its Christmas form): so far what falls, the pile at the bottom of the
 /// screen, the piles on the windows, the walkers (hedgehogs and squirrels for nisser) and what is built day by
 /// day (a haystack with a scarecrow for the snowman) are done.
+/// What the camera dresses the person in. Set from the theme before each camera frame (the hat and the costume
+/// are drawn on the camera's queue and do not see the controller): autumn's sou'wester and yellow raincoat
+/// instead of the nisse hat and the red suit. Autumn has nothing in the beard's place.
+enum CameraCostume {
+    nonisolated(unsafe) static var autumn = ProcessInfo.processInfo.environment["HUE_EFTERAAR"] != nil
+}
+
 enum Theme: Int {
     case jul = 0, efteraar = 1
 
