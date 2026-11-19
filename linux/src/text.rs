@@ -49,7 +49,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 
 // ---------------------------------------------------------------------- the autumn theme (menu "Tema")
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
-// Windows versions). The sounds have no autumn form on Linux yet and are left out of the menu in autumn.
+// Windows versions).
 pub const MENU_THEME: &str = "Tema";
 pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
 pub const MENU_LEAVES: &str = "Løvfald";
@@ -59,6 +59,8 @@ pub const MENU_LEAF_GROUND: &str = "Blade på panelet";
 pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
 pub const MENU_GEESE: &str = "Trækgæs";
 pub const MENU_SEND_GEESE: &str = "Send gæssene afsted nu!";
+pub const MENU_GOOSE_SOUND: &str = "Lyd: gåsetræk når gæssene flyver";
+pub const MENU_LEAF_COLLECTOR_SOUND: &str = "Lyd: motor, sug og horn fra løvsugeren";
 pub const MENU_KITE: &str = "Drage";
 pub const MENU_GARLAND: &str = "Løvranke med lygter";
 pub const MENU_LEAF_COLLECTOR: &str = "Løvsuger rydder panelet";

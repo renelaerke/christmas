@@ -83,6 +83,8 @@ pub struct Figures {
     /// The autumn theme (set by the controller): geese fly in Santa's place, at varying distance and with no
     /// trail of sparks.
     pub autumn: bool,
+    /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
+    pub flyer_depth: f32,
 }
 
 /// The screen directly to the left (dir < 0) or right (dir > 0) of screen `i`: edge to edge and overlapping
@@ -119,6 +121,7 @@ impl Figures {
             santa_pace: 1.0,
             new_trip: false,
             autumn: false,
+            flyer_depth: 1.0,
         }
     }
 
@@ -158,7 +161,8 @@ impl Figures {
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
         let b = target.rect;
         // the geese pass at very different distances (as `flyerDepth` on Windows)
-        let scale = if self.autumn { target.s * (0.5 + self.rng.f() * 0.7) } else { target.s };
+        self.flyer_depth = if self.autumn { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
+        let scale = target.s * self.flyer_depth;
         let y0 = b.y as f32 + b.h as f32 * (0.12 + self.rng.f() * 0.25);
         // fly over every screen at the same height
         let (mut min_x, mut max_x) = (b.x as f32, b.right() as f32);

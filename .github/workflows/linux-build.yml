@@ -124,6 +124,10 @@ jobs:
           [ "$code" = 124 ] || exit 1
           test -s "$RUNNER_TEMP/shots-efteraar/screen0.png"
           cp "$RUNNER_TEMP/shots-efteraar/screen0.png" build/screen0-efteraar.png
+          # the sounds, written as files: the summary shows that the goose recording was read
+          build/JuleHygge --sound-test="$RUNNER_TEMP/lyd"
+          cat "$RUNNER_TEMP/lyd/summary.txt"
+          grep -q '^gaes-alene: [1-9]' "$RUNNER_TEMP/lyd/summary.txt"
 
       - name: Keep as workflow artifact
         uses: actions/upload-artifact@v7

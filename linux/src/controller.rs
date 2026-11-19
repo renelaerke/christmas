@@ -47,7 +47,10 @@ struct Sounds {
     plow_engine: Voice,
     plow_scrape: Voice,
     plow_horn: Voice,
-    /// This trip's tune.
+    /// Autumn's sounds: the geese's two moods (`GOOSE_MOODS`) and the leaf collector's suction.
+    geese: Vec<Voice>,
+    leaf_suction: Voice,
+    /// This trip's tune (in autumn: the geese's mood).
     jingle: usize,
     horned_this_run: bool,
     /// Where Santa was last (x, scale, span), so his tune can fade out after he has gone.
@@ -86,6 +89,8 @@ pub struct Controller {
     storm_until: f64,
     /// The snowman grew today: celebrate with sparks at this time.
     celebrate_at: Option<f64>,
+    /// The weather is a storm now (in autumn the geese then always call over wind).
+    storm_now: bool,
     /// A release build checks for updates 1 minute after start and then every 6 hours.
     update_timer: f32,
     /// A check running on a worker thread; `true` when asked for from the menu (then every outcome is reported).
@@ -163,6 +168,7 @@ impl Controller {
             scan_timer: 0.0,
             storm_until: -1.0,
             celebrate_at: None,
+            storm_now: false,
             // JULE_UPDATE_DELAY=N: the first check after N seconds (testing)
             update_timer: std::env::var("JULE_UPDATE_DELAY").ok().and_then(|v| v.parse().ok()).unwrap_or(60.0),
             update_check: None,
@@ -507,13 +513,14 @@ impl Controller {
     /// Synthesizes the switched-on sounds in the background ahead of time, so they are ready when needed.
     fn warm_sounds(&mut self) {
         let s = &self.sounds;
+        let autumn = self.cfg.theme == 1;
         if self.cfg.sound {
-            for j in &s.jingles {
+            for j in if autumn { &s.geese } else { &s.jingles } {
                 s.hub.warm(*j);
             }
         }
         if self.cfg.plow_sound {
-            for v in [s.plow_engine, s.plow_scrape, s.plow_horn] {
+            for v in [s.plow_engine, if autumn { s.leaf_suction } else { s.plow_scrape }, s.plow_horn] {
                 s.hub.warm(v);
             }
         }
@@ -524,11 +531,19 @@ impl Controller {
     fn update_sound(&mut self, dt: f32) {
         let volume = [0.15, 0.35, 0.6][self.cfg.sound_level.clamp(0, 2) as usize];
         let muted = self.cfg.pause_fullscreen && self.fullscreen.is_some();
+        let autumn = self.cfg.theme == 1;
+        let storm = self.storm_now;
         let s = &mut self.sounds;
         if self.figures.take_new_trip() {
-            // each trip picks one of the tunes, played at the trip's pace
-            s.jingle = self.rng.range(0, s.jingles.len() as i32) as usize;
-            s.hub.set_rate(s.jingles[s.jingle], self.figures.santa_pace);
+            if autumn {
+                // the geese: alone two trips out of three, otherwise in wind; in a storm always the one with wind
+                s.jingle = usize::from(storm || self.rng.f() < 1.0 / 3.0);
+                s.hub.set_rate(s.geese[s.jingle], self.figures.santa_pace);
+            } else {
+                // each trip picks one of the tunes, played at the trip's pace
+                s.jingle = self.rng.range(0, s.jingles.len() as i32) as usize;
+                s.hub.set_rate(s.jingles[s.jingle], self.figures.santa_pace);
+            }
         }
         if let (Some(santa), Some((min, max))) = (&self.figures.santa, self.figures.santa_span()) {
             s.santa_last = (santa.x, santa.scale, min, max);
@@ -538,28 +553,46 @@ impl Controller {
             let margin = 330.0 * scale;
             let presence = ((x - (min - margin)).min((max + margin) - x) / margin).clamp(0.0, 1.0);
             let pan = (x - min) / (max - min).max(1.0) * 2.0 - 1.0;
-            // (the geese have no sound on Linux yet, and Santa's tune is not theirs)
-            let on = self.figures.santa.is_some() && self.cfg.sound && !muted && self.cfg.theme != 1;
+            let on = self.figures.santa.is_some() && self.cfg.sound && !muted;
+            // only this trip's tune plays; any other one still fading out keeps being updated until it is silent
             for i in 0..s.jingles.len() {
                 let v = s.jingles[i];
-                if (self.cfg.sound && i == s.jingle) || s.hub.playing(v) {
-                    let level = if on && i == s.jingle { presence * volume } else { 0.0 };
+                if (self.cfg.sound && !autumn && i == s.jingle) || s.hub.playing(v) {
+                    let level = if on && !autumn && i == s.jingle { presence * volume } else { 0.0 };
+                    s.hub.update(v, level, pan, dt);
+                }
+            }
+            // in autumn the geese call instead, quieter when they pass far off
+            let depth = self.figures.flyer_depth.min(1.0);
+            for i in 0..s.geese.len() {
+                let v = s.geese[i];
+                if (self.cfg.sound && autumn && i == s.jingle) || s.hub.playing(v) {
+                    let level = if on && autumn && i == s.jingle { presence * depth * volume } else { 0.0 };
                     s.hub.update(v, level, pan, dt);
                 }
             }
         }
         let plow = &self.figures.plow;
-        if self.cfg.plow_sound || s.hub.playing(s.plow_engine) || s.hub.playing(s.plow_scrape) {
+        if self.cfg.plow_sound
+            || s.hub.playing(s.plow_engine)
+            || s.hub.playing(s.plow_scrape)
+            || s.hub.playing(s.leaf_suction)
+        {
             let (min, max) = self.figures.plow_span();
             let margin = 300.0;
             let presence = ((plow.gx - (min - margin)).min((max + margin) - plow.gx) / margin).clamp(0.0, 1.0);
             let pan = (plow.gx - min) / (max - min).max(1.0) * 2.0 - 1.0;
-            // (the leaf collector has no sound on Linux yet)
-            let on = plow.active && self.cfg.plow_sound && !muted && self.cfg.theme != 1;
+            let on = plow.active && self.cfg.plow_sound && !muted;
             s.hub.update(s.plow_engine, if on { presence * volume * 0.8 } else { 0.0 }, pan, dt);
             // scraping gets louder with the amount of snow in front of the blade
             let load = (plow.pushed / 2000.0).sqrt().min(1.0);
-            s.hub.update(s.plow_scrape, if on { presence * volume * (0.15 + 0.85 * load) } else { 0.0 }, pan, dt);
+            let scrape = if on && !autumn { presence * volume * (0.15 + 0.85 * load) } else { 0.0 };
+            s.hub.update(s.plow_scrape, scrape, pan, dt);
+            // in autumn the leaf collector's suction takes the scraping's place
+            if autumn || s.hub.playing(s.leaf_suction) {
+                let suction = if on && autumn { presence * volume * (0.55 + 0.45 * load) } else { 0.0 };
+                s.hub.update(s.leaf_suction, suction, pan, dt);
+            }
             if on && !s.horned_this_run && presence > 0.6 {
                 s.horned_this_run = true;
                 s.hub.play_once(s.plow_horn, volume, pan);
@@ -759,8 +792,8 @@ impl Controller {
             self.time += dt as f64;
             self.timers(dt);
             let screens = self.screen_infos();
-            // The autumn theme: every figure has its autumn form (`SceneState::autumn`); only the sounds have none
-            // yet and are silent in autumn (`update_sound`).
+            // The autumn theme: every figure has its autumn form (`SceneState::autumn`), and so have the sounds
+            // (`update_sound`).
             let autumn = self.cfg.theme == 1;
             self.figures.autumn = autumn;
             self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
@@ -773,6 +806,7 @@ impl Controller {
             } else {
                 0
             };
+            self.storm_now = level == 2;
             self.update_wind(dt, level);
             let bottom = self.screens.iter().map(|s| s.layer.rect.bottom()).max().unwrap_or(0) as f32;
             let melt = !(self.cfg.snow || self.time < self.storm_until) || !self.cfg.window_snow;
@@ -1035,8 +1069,14 @@ impl Sounds {
         let plow_engine = hub.create_voice(crate::sound::plow_engine, true);
         let plow_scrape = hub.create_voice(crate::sound::plow_scrape, true);
         let plow_horn = hub.create_voice(crate::sound::plow_horn, false);
+        let geese = (0..crate::sound::GOOSE_MOODS.len())
+            .map(|mood| hub.create_voice(move || crate::sound::geese(mood), true))
+            .collect();
+        let leaf_suction = hub.create_voice(crate::sound::leaf_suction, true);
         Sounds {
             hub,
+            geese,
+            leaf_suction,
             jingles,
             plow_engine,
             plow_scrape,

@@ -135,9 +135,8 @@ impl ksni::Tray for AppTray {
             items.push(disabled(self.status.clone()));
             items.push(MenuItem::Separator);
         }
-        // The autumn theme: the calendar and the countdown belong to Christmas. The sounds have no autumn form on
-        // Linux yet: they are left out of the menu in autumn (and silent, see the controller), never played in
-        // their Christmas form.
+        // The autumn theme: the calendar and the countdown belong to Christmas and are left out of the menu in
+        // autumn; everything else has its autumn form and its autumn name.
         let autumn = c.theme == 1;
         if !autumn {
             items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
@@ -188,13 +187,16 @@ impl ksni::Tray for AppTray {
         items.push(item(send, || TrayMsg::Plow));
         items.push(MenuItem::Separator);
 
-        if !autumn {
-            // sound is off by default; each source is switched on separately
-            items.push(toggle(text::MENU_SOUND.into(), c.sound, |s| &mut s.sound));
-            items.push(toggle(text::MENU_PLOW_SOUND.into(), c.plow_sound, |s| &mut s.plow_sound));
-            items.push(choice(text::MENU_VOLUME, &text::VOLUMES, &[0, 1, 2], c.sound_level, |s| &mut s.sound_level));
-            items.push(MenuItem::Separator);
-        }
+        // sound is off by default; each source is switched on separately
+        let (sound, plow_sound) = if autumn {
+            (text::MENU_GOOSE_SOUND, text::MENU_LEAF_COLLECTOR_SOUND)
+        } else {
+            (text::MENU_SOUND, text::MENU_PLOW_SOUND)
+        };
+        items.push(toggle(sound.into(), c.sound, |s| &mut s.sound));
+        items.push(toggle(plow_sound.into(), c.plow_sound, |s| &mut s.plow_sound));
+        items.push(choice(text::MENU_VOLUME, &text::VOLUMES, &[0, 1, 2], c.sound_level, |s| &mut s.sound_level));
+        items.push(MenuItem::Separator);
 
         let (elves, elf_count) = if autumn {
             (text::MENU_ANIMALS, text::MENU_ANIMAL_COUNT)
