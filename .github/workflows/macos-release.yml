@@ -27,7 +27,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Toolchain
         run: |
@@ -66,7 +66,7 @@ jobs:
           shasum -a 256 JuleHygge-macOS.zip
 
       - name: Keep as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: JuleHygge-macOS
           path: macos/build/JuleHygge-macOS.zip
