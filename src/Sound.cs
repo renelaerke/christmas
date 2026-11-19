@@ -323,6 +323,170 @@ namespace JuleHygge
             });
         }
 
+        // The leaf collector's suction (autumn's form of the scraping): a rush of air through a wide hose, i.e.
+        // noise shaped by a broad resonance and a hollow one from the hose, over the fan's steady whine.
+        public static float[] LeafSuction()
+        {
+            const double len = 3.0;
+            return MakeBuffer(len, (output, n) =>
+            {
+                var rng = new Random(77);
+                int over = (int)(0.3 * Rate);
+                var air = new float[n + over];
+                // two resonators (state-variable band-passes): the rush around 900 Hz and the hose around 260 Hz
+                double lowA = 0, bandA = 0, lowB = 0, bandB = 0;
+                double fA = 2 * Math.Sin(Math.PI * 900 / Rate), fB = 2 * Math.Sin(Math.PI * 260 / Rate);
+                for (int i = 0; i < n + over; i++)
+                {
+                    double t = i / Rate;
+                    double white = Noise(rng);
+                    double highA = white - lowA - 1.4 * bandA;
+                    bandA += fA * highA;
+                    lowA += fA * bandA;
+                    double highB = white - lowB - 0.5 * bandB;
+                    bandB += fB * highB;
+                    lowB += fB * bandB;
+                    // the air flutters a little as leaves pass through (whole cycles per loop)
+                    double w = 2 * Math.PI * t / len;
+                    double flutter = 0.85 + 0.15 * Math.Sin(w * 4) * Math.Sin(w * 11 + 0.7);
+                    air[i] = (float)((bandA * 0.55 + bandB * 0.12) * flutter);
+                }
+                // made a little longer than the loop and cross-faded into its own start, so the loop has no seam
+                for (int i = 0; i < over; i++)
+                {
+                    float k = (float)i / over;
+                    air[i] = air[i] * k + air[n + i] * (1 - k);
+                }
+                for (int i = 0; i < n; i++)
+                {
+                    double t = i / Rate;
+                    // the fan: a whine with a slow beat between two close tones (all whole cycles per loop)
+                    double whine = 0.05 * Math.Sin(2 * Math.PI * 520 * t) + 0.035 * Math.Sin(2 * Math.PI * 524 * t)
+                        + 0.02 * Math.Sin(2 * Math.PI * 1040 * t) + 0.012 * Math.Sin(2 * Math.PI * 1563 * t);
+                    output[i] = air[i] * 0.8f + (float)(whine * 1.6);
+                }
+            });
+        }
+
+        // ------------------------------------------------------------------ geese (autumn's flyer)
+        // The two moods of a flock of geese passing over; each trip picks one (alone twice as often as in wind).
+        public static readonly string[] GooseMoods = { "alene", "blaest" };
+
+        // The flock itself is a recording (assets/lyd/gaes-flok.wav, see KILDER.md there): synthesized calls
+        // sounded far too artificial. build.ps1 puts the file into the exe as a resource. Mixed to mono at the
+        // synth's sample rate, peak 0.6. Null if it is missing or not 16-bit PCM: no goose sound then.
+        static float[] gooseRecording;
+        static bool gooseLoaded;
+        static readonly object gooseGate = new object();
+
+        static float[] GooseRecording()
+        {
+            lock (gooseGate)
+            {
+                if (gooseLoaded) return gooseRecording;
+                gooseLoaded = true;
+                try
+                {
+                    byte[] d;
+                    using (var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("gaes-flok.wav"))
+                    {
+                        if (s == null) return null;
+                        d = new byte[s.Length];
+                        int got = 0;
+                        while (got < d.Length) { int r = s.Read(d, got, d.Length - got); if (r <= 0) break; got += r; }
+                    }
+                    // find the format and the samples
+                    int channels = 0, rate = 0, bits = 0, start = -1, bytes = 0;
+                    for (int pos = 12; pos + 8 <= d.Length; )
+                    {
+                        string id = System.Text.Encoding.ASCII.GetString(d, pos, 4);
+                        int size = BitConverter.ToInt32(d, pos + 4);
+                        if (id == "fmt ") { channels = BitConverter.ToInt16(d, pos + 10); rate = BitConverter.ToInt32(d, pos + 12); bits = BitConverter.ToInt16(d, pos + 22); }
+                        if (id == "data") { start = pos + 8; bytes = Math.Min(size, d.Length - start); break; }
+                        pos += 8 + size + (size & 1);
+                    }
+                    if (start < 0 || bits != 16 || channels < 1 || rate < 8000) return null;
+                    int m = bytes / (2 * channels);
+                    if (m < 2) return null;
+                    var mono = new float[m];
+                    for (int i = 0; i < m; i++)
+                    {
+                        int sum = 0;
+                        for (int ch = 0; ch < channels; ch++) sum += BitConverter.ToInt16(d, start + (i * channels + ch) * 2);
+                        mono[i] = sum / (float)channels / 32768f;
+                    }
+                    double ratio = rate / Rate;
+                    int outN = (int)((m - 1) / ratio);
+                    var rec = new float[Math.Max(0, outN)];
+                    float peak = 0;
+                    for (int i = 0; i < outN; i++)
+                    {
+                        double p = i * ratio;
+                        int j = Math.Min(m - 2, (int)p);
+                        float f = (float)(p - j);
+                        rec[i] = mono[j] * (1 - f) + mono[j + 1] * f;
+                        peak = Math.Max(peak, Math.Abs(rec[i]));
+                    }
+                    if (peak > 0) { float k = 0.6f / peak; for (int i = 0; i < outN; i++) rec[i] *= k; }
+                    gooseRecording = rec;
+                }
+                catch (Exception ex) { ErrorLog.Write(ex); }
+                return gooseRecording;
+            }
+        }
+
+        // One seamless loop of geese calling, as long as the recording: 0 = the flock alone, 1 = farther off
+        // (quieter and duller) over synthesized gusts of wind. Null without the recording.
+        public static float[] Geese(int mood)
+        {
+            var rec = GooseRecording();
+            int over = (int)(0.5 * Rate);
+            if (rec == null || rec.Length <= over * 4) return null;
+            int n = rec.Length - over;
+            double len = n / Rate;
+            var output = new float[n];
+
+            // The recording, its tail cross-faded into its start so the loop has no seam; a far flock is
+            // quieter and has lost its brightness (a one-pole low-pass).
+            int tail = Math.Max(0, Math.Min(rec.Length - n, n));
+            float level = mood == 0 ? 1f : 0.6f, open = mood == 0 ? 1f : 0.35f, smooth = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float s = rec[i];
+                if (i < tail) { float k = (float)i / tail; s = s * k + rec[n + i] * (1 - k); }
+                smooth += (s - smooth) * open;
+                output[i] = smooth * level;
+            }
+            if (mood > 0)
+            {
+                // The wind under the calls: made a little longer than the loop and cross-faded into its own
+                // start, so the loop has no seam. (A third mood with rain was tried and dropped: it did not work.)
+                var rng = new Random(1200 + mood);
+                var bed = new float[n + over];
+                double lp1 = 0, lp2 = 0;
+                for (int i = 0; i < n + over; i++)
+                {
+                    double tt = i / Rate;
+                    // gusts: the wind grows louder and brighter together (whole cycles per loop)
+                    double w = 2 * Math.PI * tt / len;
+                    double gq = 0.5 + 0.5 * (0.6 * Math.Sin(w * 2) + 0.4 * Math.Sin(w * 5 + 1.3));
+                    double gust = gq * gq;
+                    double a = 0.012 + 0.05 * gust;
+                    lp1 += (Noise(rng) - lp1) * a;
+                    lp2 += (lp1 - lp2) * a;
+                    bed[i] = (float)(lp2 * (0.25 + 0.75 * gust) * 1.9);
+                }
+                for (int i = 0; i < over; i++)
+                {
+                    float k = (float)i / over;
+                    bed[i] = bed[i] * k + bed[n + i] * (1 - k);
+                }
+                for (int i = 0; i < n; i++) output[i] += bed[i];
+            }
+            Normalize(output);
+            return output;
+        }
+
         // Two-tone truck horn: "baa-baaa".
         public static float[] PlowHorn()
         {
@@ -514,9 +678,12 @@ namespace JuleHygge
             sounds.Add("sneplov-motor", PlowEngine);
             sounds.Add("sneplov-skraben", PlowScrape);
             sounds.Add("sneplov-horn", PlowHorn);
+            sounds.Add("loevsuger-sug", LeafSuction);
+            for (int m = 0; m < GooseMoods.Length; m++) { int mood = m; sounds.Add("gaes-" + GooseMoods[m], () => Geese(mood)); }
             foreach (var kv in sounds)
             {
                 var s = kv.Value();
+                if (s == null) { summary.Add(kv.Key + ": mangler (optagelsen er ikke i denne exe)"); continue; }
                 using (var w = new BinaryWriter(File.Create(Path.Combine(dir, kv.Key + ".wav"))))
                 {
                     w.Write(new[] { 'R', 'I', 'F', 'F' }); w.Write(36 + s.Length * 2); w.Write(new[] { 'W', 'A', 'V', 'E' });

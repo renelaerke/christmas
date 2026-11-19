@@ -207,6 +207,8 @@ namespace JuleHygge
     {
         public float X, Y, R, Vy, Phase, Sway, SwaySpd, Rot, RotSpd;
         public int A;
+        // Autumn theme: which leaf this is, its shape and colour (see Layer.LeafSprite).
+        public int Kind;
         public bool Crystal;
         // About half the flakes can land on a window's top edge (the rest fall past to the ground).
         public bool Catches;
