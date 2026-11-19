@@ -31,7 +31,7 @@ Status pr. 2026-11-19. Temaet er bygget på macOS, element for element (se `docs
 - **Linux.** Har efterårstemaet uden kameraet (2026-11-19): skrevet af efter Windows-koden uden Rust på Mac'en og
   kun bygget og set som stillbilleder i CI (`screen0-efteraar.png`). Ikke set køre, ikke hørt, CPU ikke målt, og
   bladene på vinduerne er aldrig tegnet (ingen vinduer under Xvfb). Nedfaldsrettelsen i `linux/src/window_snow.rs`
-  har en test.
+  har en test. Julemandens størrelse varierer endnu ikke på Linux (gæssenes gør).
 - **Gåsene som syntetisk lyd.** Undersøgt 2026-11-19 med optagelsen som forlæg (`macos/tools/sound-probe.swift` måler,
   `macos/tools/goose-synth.swift` laver en prøve, der matcher optagelsens tonehøjde, overtoner og spektrum). REL
   valgte at beholde optagelsen og ændre reglen i `AGENTS.md` i stedet.
