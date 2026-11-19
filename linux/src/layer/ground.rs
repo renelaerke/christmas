@@ -209,7 +209,7 @@ fn lay_leaves(buf: &mut [u32], w: i32, rows: i32, heap: &[f32], sprites: &[Vec<u
                 let (a, b, d) = (chance(column, row), chance(row + 31, column), chance(column + 7, row + 3));
                 let y = gy - h + row as f32 * down + (a - 0.5) * 4.0 * s - size * 0.12;
                 if let Some(sprite) = sprites.get(leaf_sprite((a * 9973.0) as usize)) {
-                    blend_leaf(buf, w, rows, sprite, x + (b - 0.5) * across, y, size * (0.75 + 0.55 * b), d * 6.28, 255);
+                    blend_leaf(buf, w, rows, sprite, x + (b - 0.5) * across, y, size * (0.75 + 0.55 * b), d * std::f32::consts::TAU, 255);
                 }
             }
         }
