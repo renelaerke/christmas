@@ -800,6 +800,7 @@ impl Controller {
                 clumps: &self.window_snow.clumps,
                 ledge_u: self.display.dpi_scale,
                 autumn,
+                kite: self.cfg.kite,
             };
             let busy = Instant::now();
             frame_all(&mut self.display, &mut self.screens, dt, &st);

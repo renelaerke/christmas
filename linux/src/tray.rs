@@ -164,6 +164,10 @@ impl ksni::Tray for AppTray {
             text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
         };
         items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
+        // (the kite only exists in autumn)
+        if autumn {
+            items.push(toggle(text::MENU_KITE.into(), c.kite, |s| &mut s.kite));
+        }
         items.push(MenuItem::Separator);
 
         let (santa, send) = if autumn {

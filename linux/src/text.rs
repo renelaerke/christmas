@@ -59,6 +59,7 @@ pub const MENU_LEAF_GROUND: &str = "Blade på panelet";
 pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
 pub const MENU_GEESE: &str = "Trækgæs";
 pub const MENU_SEND_GEESE: &str = "Send gæssene afsted nu!";
+pub const MENU_KITE: &str = "Drage";
 pub const MENU_GARLAND: &str = "Løvranke med lygter";
 pub const MENU_LEAF_COLLECTOR: &str = "Løvsuger rydder panelet";
 pub const MENU_SEND_LEAF_COLLECTOR: &str = "Send løvsugeren ud nu!";
