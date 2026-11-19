@@ -60,8 +60,6 @@ final class NisseCostume {
     private(set) var shapes: [Shape] = []
     /// Tells the person's clothes from skin and hair (for the suit).
     let parts = PersonParts()
-    /// Where each face's scarf was in the last picture (see Scarf.swift).
-    var scarfSteady: [ScarfPlace] = []
 
     /// One Euro filters for one face: every landmark coordinate, the face size and the tilt. Steady while the
     /// head is still, quick when it moves.

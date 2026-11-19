@@ -123,7 +123,6 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/Theme.swift` | Temaet (jul eller efterår) og hvad der skifter med det |
 | `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
 | `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
-| `Sources/JuleHygge/Scarf.swift` | Efterårets halstørklæde i kameraet. Lagt væk: intet kalder det |
 | `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |
 | `Sources/JuleHygge/Icon.swift` | Snefnug-ikonet (menulinje og app-ikon, tegnes i koden) |
 | `install.sh` / `measure.sh` | installation med start ved login / CPU-måling af app og WindowServer |

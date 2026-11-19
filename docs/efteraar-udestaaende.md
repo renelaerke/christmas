@@ -9,8 +9,9 @@ Status pr. 2026-11-19. Temaet er bygget på macOS, element for element (se `docs
   er ikke forsøgt.
 - **Vinduer: et egern, der gemmer nødder.** Bladene samler sig på vinduerne, men der er intet egern dér.
 - **Kamera: noget i skæggets sted.** Sydvest og regnfrakke er lavet. To forsøg er lagt væk:
-  - Halstørklæde: koden ligger i `macos/Sources/JuleHygge/Scarf.swift` (og halsmålingen i `Parts.swift`), men intet
-    kalder den. REL prøvede det på optagne billeder: "virker ikke for mig".
+  - Halstørklæde: lagt væk og ikke med i `main`. Koden (`Scarf.swift` og en halsmåling i `Parts.swift`, bygget på
+    tøjmodellens hud-klasser) findes i historikken, commit `5c16027`. REL prøvede det på optagne billeder: "virker
+    ikke for mig".
   - Røde kinder og næse: afprøvet og droppet samme dag, koden er fjernet. (Pletterne kom ikke frem i første forsøg;
     årsagen blev ikke fundet.)
 - **Sydvesten, når hovedet er lænet tilbage og drejet.** Den tegnes set nedefra og ligner en ring om hovedet. REL har
