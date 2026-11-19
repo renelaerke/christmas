@@ -223,19 +223,32 @@ namespace JuleHygge
         void DropSnow(Ledge l)
         {
             float u = Ledge.U;
+            // At most 700 clumps fall at a time. The room that is left is shared evenly along the whole edge:
+            // filling it from the left let a wide window (a maximized one needs well over 700) drop its snow
+            // from its left part only, as if the window were narrower.
+            int wanted = 0;
+            for (int i = 0; i < l.Cols.Length; i++)
+            {
+                float h = l.Cols[i] + l.Hang[i];
+                if (h > 0.5f * u) wanted += Math.Min(4, (int)(h / (2.5f * u)) + 1);
+            }
+            int room = Math.Max(60, 700 - Clumps.Count);
+            float keep = wanted > room ? (float)room / wanted : 1f;
+            float bigger = Math.Min(1.5f, (float)Math.Sqrt(1 / keep));   // fewer clumps carry a little more each
             for (int i = 0; i < l.Cols.Length; i++)
             {
                 float h = l.Cols[i] + l.Hang[i];
                 if (h <= 0.5f * u) continue;
                 int n = Math.Min(4, (int)(h / (2.5f * u)) + 1);
-                for (int k = 0; k < n && Clumps.Count < 700; k++)
+                for (int k = 0; k < n; k++)
                 {
+                    if (R() >= keep) continue;
                     var c = new SnowClump();
                     c.X = l.Settled.Left + i * Ledge.Step + R() * Ledge.Step;
                     c.Y = l.Settled.Top - R() * h;
                     c.VX = (R() - 0.5f) * 6 * u;
                     c.VY = R() * 20 * u;
-                    c.R = 1.6f + R() * 1.8f;
+                    c.R = (1.6f + R() * 1.8f) * bigger;
                     Clumps.Add(c);
                 }
             }

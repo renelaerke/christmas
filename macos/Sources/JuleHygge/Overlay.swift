@@ -104,6 +104,10 @@ enum GPU {
 
 final class DotImages {
     let flake, crystal, goldDot, whiteDot, goldGlint, whiteGlint, goldStar, whiteStar, smoke, chunk: CGImage
+    /// A raindrop's streak (autumn storm): an upright line, drawn narrow and tall and turned with the wind.
+    let rain: CGImage
+    /// Autumn leaves in each colour, four ovals for every maple, lying along x (drawn turned as they fall).
+    let leaves: [CGImage]
 
     init(scale: F) {
         let s: F = 64, m: F = 32
@@ -128,6 +132,40 @@ final class DotImages {
         whiteStar = img { $0.fillPoly(C(255, 255, 255), starPoints(m, m, m, m * 0.45)) }
         smoke = img { $0.fillEllipse(C(120, 120, 125), 0, 0, s, s) }
         chunk = img { $0.fillEllipse(C(250, 252, 255), 0, 0, s, s) }
+        rain = img { $0.line(C(190, 215, 240), 22, m, 6, m, s - 6, round: true) }
+        // Two kinds of leaf in every colour, both with the stalk at the left and the tip at the right:
+        // a pointed oval (beech) and, one in five, a maple.
+        // The veins are faint and light. Dark ones made a small leaf read as a beetle seen from the side: the
+        // midrib a body and the side veins legs.
+        let vein = C(90, 44, 14, 70), sideVein = C(255, 236, 196, 50)
+        func mirrored(_ upper: [CGPoint]) -> [CGPoint] { upper + upper.dropFirst().dropLast().reversed().map { CGPoint(x: $0.x, y: 2 * m - $0.y) } }
+        // The maple has the eleven points of a sugar maple: the tip, and on each side the top lobe's side point,
+        // the side lobe's three points and the small bottom lobe. (Along the axis 0…1 from blade to tip, and out
+        // from the axis in units of the leaf's length.)
+        let half: [(F, F)] = [(0.14, 0), (0.17, 0.26), (0.24, 0.22), (0.30, 0.44), (0.34, 0.40), (0.46, 0.50), (0.50, 0.42),
+                              (0.60, 0.44), (0.50, 0.17), (0.74, 0.22), (0.72, 0.12), (1, 0)]
+        let maple = mirrored(half.map { CGPoint(x: 12 + $0.0 * 51, y: m - $0.1 * 58) })
+        var all: [CGImage] = []
+        // Four ovals for every maple in each colour, so any pick from the list gives 80 % ovals.
+        for colour in Theme.leafColours {
+            let oval = img { g in
+                let leaf = CGMutablePath()
+                leaf.move(to: CGPoint(x: 10, y: m))
+                leaf.addQuadCurve(to: CGPoint(x: 62, y: m), control: CGPoint(x: 34, y: 2))
+                leaf.addQuadCurve(to: CGPoint(x: 10, y: m), control: CGPoint(x: 34, y: 62))
+                g.addPath(leaf); g.setFillColor(colour); g.fillPath()
+                g.line(vein, 2.5, 1, m, 56, m, round: true)
+                g.line(sideVein, 1.5, 26, m, 36, m - 12); g.line(sideVein, 1.5, 26, m, 36, m + 12)
+                g.line(sideVein, 1.5, 40, m, 48, m - 9); g.line(sideVein, 1.5, 40, m, 48, m + 9)
+            }
+            all += [oval, oval, oval, oval]
+            all.append(img { g in
+                g.fillPoly(colour, maple.map { ($0.x, $0.y) })
+                g.line(vein, 2.5, 1, m, 58, m, round: true)
+                g.line(sideVein, 1.5, 21, m, 35, 6); g.line(sideVein, 1.5, 21, m, 35, 58)
+            })
+        }
+        leaves = all
     }
 }
 
@@ -175,6 +213,12 @@ final class ScreenOverlay {
     private var ledgeShapes: [Int: (fill: CAShapeLayer, line: CAShapeLayer, version: Int)] = [:]
     private var plowBitPool: DotPool!
     private var flakePool: DotPool!
+    private var rainPool: DotPool!
+    private var rain: [RainDrop] = []
+    private var leafPool: DotPool!
+    private var leafPileDrawn: F = -1, leafPileAt = -10.0
+    private var ledgeLeafPool: DotPool!
+    private var ledgeLeavesAt = -10.0
     private var bulbLayers: [(layer: CALayer, omega: Double, phase: Double)] = []
     private let lightsLayer = CALayer()
     private var bulbsBuilt = false
@@ -252,26 +296,41 @@ final class ScreenOverlay {
         // (Santa, sparks, nisser) is drawn over it
         ledgeLayer.frame = root.bounds
         root.addSublayer(ledgeLayer)
+        // the single leaves the piles on the windows are made of (see renderLedgeLeaves): with the piles, so
+        // under the light string too
+        ledgeLeafPool = DotPool(in: root, screenHeight: h)
         lightsSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.renderLights(g) }
         lightsLayer.frame = root.bounds
         lightsLayer.isHidden = true
         root.addSublayer(lightsLayer)
         sparkPool = DotPool(in: root, screenHeight: h)
         santaSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSanta(g) }
+        // autumn's kite: its string is a shape layer, the kite a small sprite at the string's end
+        kiteString.frame = root.bounds
+        kiteString.fillColor = nil
+        kiteString.strokeColor = C(235, 225, 200, 170)
+        kiteString.lineWidth = 1 * S
+        kiteString.actions = ["path": NSNull(), "hidden": NSNull()]
+        kiteString.isHidden = true
+        root.addSublayer(kiteString)
+        kiteSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawKite(g) }
         snowmanSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSnowman(g) }
         for l in [groundFill, groundLine] {
             l.frame = root.bounds
             l.actions = ["path": NSNull(), "hidden": NSNull()]
             root.addSublayer(l)
         }
-        groundFill.fillColor = C(248, 252, 255, 245)
+        groundFill.fillColor = c.theme.pile
         groundLine.fillColor = nil
-        groundLine.strokeColor = C(170, 200, 230, 110)
+        groundLine.strokeColor = c.theme.pileEdge
         groundLine.lineWidth = 1.5 * S
+        // the single leaves a leaf pile is made of lie over its fill (see renderLeafPile)
+        leafPool = DotPool(in: root, screenHeight: h)
         nisseLayer.frame = root.bounds
         root.addSublayer(nisseLayer)
         plowBitPool = DotPool(in: root, screenHeight: h)
         plowSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawPlow(g) }
+        rainPool = DotPool(in: root, screenHeight: h)   // behind the leaves
         flakePool = DotPool(in: root, screenHeight: h)
 
         window?.orderFrontRegardless()
@@ -281,7 +340,7 @@ final class ScreenOverlay {
     /// CALayer.render(in:) creates an offscreen buffer for every layer with transparency, which made ~260
     /// snowflakes take ~900 ms per frame. Drawn directly, each flake is one image draw with an alpha value.
     /// Layers drawn in front of the person in the camera picture: the snow pile, the snowman, the nisser, the plow and its spray.
-    private var foregroundLayers: [CALayer] { [snowmanSprite.layer, groundFill, groundLine, nisseLayer, plowBitPool.container, plowSprite.layer] }
+    private var foregroundLayers: [CALayer] { [snowmanSprite.layer, groundFill, groundLine, leafPool.container, nisseLayer, plowBitPool.container, plowSprite.layer] }
 
     /// The camera scene in two images: everything behind the person (sky, lights, snowfall, Santa) and, with a
     /// transparent background, what stands in front of the person (see `foregroundLayers`).
@@ -346,7 +405,7 @@ final class ScreenOverlay {
     /// layers are removed, and only then is the window closed. (A display change can make AppKit redraw
     /// layers of a window that is being released; a sprite must not draw for an overlay that is going away.)
     func close() {
-        for sp in [lightsSprite, santaSprite, snowmanSprite, plowSprite] { sp?.detach() }
+        for sp in [lightsSprite, santaSprite, snowmanSprite, plowSprite, kiteSprite] { sp?.detach() }
         root.sublayers?.forEach { $0.removeFromSuperlayer() }
         window?.orderOut(nil)
         window?.close()
@@ -375,6 +434,7 @@ final class ScreenOverlay {
         frameNo += 1
 
         updateSnow(dt)
+        updateRain(dt)
         updatePlow(dt)
         updateNisser(dt)
 
@@ -382,12 +442,14 @@ final class ScreenOverlay {
         renderSparks()
         renderSanta()
         renderSnowman()
+        renderKite()
         groundTimer -= dt
         if groundTimer <= 0 { groundTimer = 0.2; renderGround() }   // the pile changes slowly
         renderLedges()
         renderNisser()
         renderPlow()
         renderSnow()
+        renderRain()
     }
 
     // ------------------------------------------------------------------ sne
@@ -395,7 +457,8 @@ final class ScreenOverlay {
         let baseCount: [F] = [110, 260, 650]
         // between two levels while the weather changes
         let amount = max(0, min(2, c.snowAmount)), lower = min(1, Int(amount))
-        let flakesWanted = baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - F(lower))
+        // (leaves are much bigger than flakes, so far fewer are needed)
+        let flakesWanted = (baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - F(lower))) * (c.theme.leaves ? 0.2 : 1)
         let logicalArea = W * H
         // Snow covers the whole screen also in power-save mode: a Mac handles it easily, power-save only lowers the frame rate.
         let areaShare: F = 1
@@ -476,6 +539,47 @@ final class ScreenOverlay {
         }
     }
 
+    // ------------------------------------------------------------------ regn (efterårsstorm)
+    // In autumn a storm brings rain with it: it sets in as the weather passes "normal" on its way to storm and
+    // thins out again as the storm dies down (the same gliding amount that sets the number of leaves). The
+    // drops fall fast and slant with the wind; they are short streaks from one shared image.
+    private static let noRain = ProcessInfo.processInfo.environment["JULE_NO_RAIN"] != nil
+
+    private func updateRain(_ dt: F) {
+        // JULE_NO_RAIN=1 leaves the rain out, to measure what it costs (measure.sh with and without)
+        let strength: F = c.theme == .efteraar && c.snowOn && !Self.noRain ? max(0, min(1, c.snowAmount - 1)) : 0
+        let target = Int(strength * (PS ? 70 : 130) * min(2, W * H / (1920 * 1080)))
+        var add = max(1, target / 30)
+        while add > 0 && rain.count < target {
+            rain.append(RainDrop(x: -100 + R() * (W + 200), y: rain.count < target / 2 ? R() * groundY : -R() * 80 * S, speed: (620 + R() * 260) * S))
+            add -= 1
+        }
+        guard !rain.isEmpty else { return }
+        let slant = c.wind * S * 1.6
+        var k = rain.count - 1
+        while k >= 0 {
+            rain[k].y += rain[k].speed * dt
+            rain[k].x += slant * dt
+            if rain[k].y >= groundY - heapAt(rain[k].x) {
+                if rain.count > target { rain.remove(at: k) }
+                else { rain[k].x = -100 + R() * (W + 200); rain[k].y = -R() * 80 * S }
+            }
+            k -= 1
+        }
+    }
+
+    private func renderRain() {
+        rainPool.begin()
+        if !rain.isEmpty {
+            // one angle for all drops: they fall at about the same speed
+            let angle = -atan2(c.wind * S * 1.6, 750 * S)
+            for d in rain where d.y > -20 * S {
+                rainPool.add(images.rain, x: d.x, y: d.y, w: 5 * S, h: 20 * S, opacity: 0.42, rotation: angle)
+            }
+        }
+        rainPool.end()
+    }
+
     private func newFlake(anywhere: Bool) -> Flake {
         let f = Flake()
         let depth = R()
@@ -492,6 +596,17 @@ final class ScreenOverlay {
         f.rot = R() * 6.28
         f.rotSpd = (R() - 0.5) * 2
         f.catches = R() < 0.5
+        if c.theme.leaves {
+            // a leaf: bigger, opaque, swaying wide and turning as it falls
+            f.r = (5 + depth * 7) * S
+            f.vy = (30 + depth * 40 + R() * 20) * S * (c.effectiveSnowLevel == 2 ? 1.4 : 1)
+            f.sway = (25 + R() * 45) * S
+            f.swaySpd = 0.6 + R() * 1.0
+            f.a = Int(215 + depth * 40)
+            f.crystal = false
+            f.rotSpd = (R() - 0.5) * 5
+            f.kind = Int(R() * F(images.leaves.count)) % images.leaves.count
+        }
         return f
     }
 
@@ -501,7 +616,9 @@ final class ScreenOverlay {
         for f in flakes {
             if f.y < -f.r * 2 { continue }
             let a = F(f.a)
-            if f.crystal {
+            if c.theme.leaves {
+                flakePool.add(images.leaves[f.kind], x: f.x, y: f.y, w: f.r * 2.6, h: f.r * 2.6, opacity: a / 255, rotation: f.rot)
+            } else if f.crystal {
                 if a < 60 { continue }
                 flakePool.add(images.crystal, x: f.x, y: f.y, w: f.r * 2, h: f.r * 2, opacity: a / 255, rotation: f.rot)
             } else {
@@ -514,7 +631,7 @@ final class ScreenOverlay {
             for cl in c.clumps where !cl.dead {
                 let x = cl.x - ox, y = cl.y - oy
                 if x < -10 || x > W + 10 || y < -10 || y > H + 10 { continue }
-                flakePool.add(images.flake, x: x, y: y, w: cl.r * 2 * S, h: cl.r * 2 * S, opacity: 0.95)
+                flakePool.add(c.theme.leaves ? images.leaves[Int(abs(cl.x)) % images.leaves.count] : images.flake, x: x, y: y, w: cl.r * 2 * S, h: cl.r * 2 * S, opacity: 0.95)
             }
         }
         flakePool.end()
@@ -546,8 +663,43 @@ final class ScreenOverlay {
     }
 
     /// Draws the snow on window edges that cross this screen; a path is only rebuilt when its pile changed.
+    /// The piles on the windows are made of leaves too, like the pile at the bottom (renderLeafPile): single
+    /// leaves over the dark fill, from the pile's top down to where it hangs below the window's edge.
+    /// Laid out again a few times a second; which leaf lies where is fixed by its place on the window.
+    private func renderLedgeLeaves() {
+        guard c.theme.leaves, c.time - ledgeLeavesAt >= 0.3 else { return }
+        ledgeLeavesAt = c.time
+        func chance(_ i: Int, _ j: Int) -> F { let v = sin(F(i) * 12.9898 + F(j) * 78.233) * 43758.5453; return v - v.rounded(.down) }
+        let ox = screenBounds.minX, oy = screenBounds.minY
+        let size = 13 * S, across = 6 * S, down = 4.5 * S
+        ledgeLeafPool.begin()
+        for l in c.ledgeList {
+            let dragged = l.moving && l.rect.size == l.settled.size
+            guard l.hasSnow && !dragged && cfg.windowSnow,
+                  l.settled.maxX > ox && l.settled.minX < ox + W && l.settled.minY > oy && l.settled.minY <= oy + H else { continue }
+            let edge = l.settled.minY - oy
+            for (a, b) in l.visible {
+                var x = max(a, ox), column = Int(max(a, ox) / across)
+                while x <= min(b, ox + W) {
+                    let h = l.height(at: x), d = l.hang(at: x)
+                    if h > 0.4 {
+                        for row in 0...Int((h + d) / down) {
+                            let p = chance(column, row + l.id), q = chance(row + 31, column), t = chance(column + 7, row + 3)
+                            let y = edge - h + F(row) * down + (p - 0.5) * 3 * S - size * 0.1
+                            let w = size * (0.75 + 0.5 * q)
+                            ledgeLeafPool.add(images.leaves[Int(p * 9973) % images.leaves.count], x: x - ox + (q - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: t * 6.28)
+                        }
+                    }
+                    x += across; column += 1
+                }
+            }
+        }
+        ledgeLeafPool.end()
+    }
+
     private func renderLedges() {
         if isVirtual { return }
+        renderLedgeLeaves()
         let ox = screenBounds.minX, oy = screenBounds.minY
         var seen = Set<Int>()
         for l in c.ledgeList {
@@ -561,9 +713,9 @@ final class ScreenOverlay {
             var e = ledgeShapes[l.id] ?? {
                 let fill = CAShapeLayer(), line = CAShapeLayer()
                 for sl in [fill, line] { sl.frame = ledgeLayer.bounds; sl.actions = ["path": NSNull(), "hidden": NSNull()]; ledgeLayer.addSublayer(sl) }
-                fill.fillColor = C(248, 252, 255, 245)
+                fill.fillColor = c.theme.pile
                 line.fillColor = nil
-                line.strokeColor = C(170, 200, 230, 110)
+                line.strokeColor = c.theme.pileEdge
                 line.lineWidth = 1.2
                 return (fill, line, -1)
             }()
@@ -635,7 +787,37 @@ final class ScreenOverlay {
     }
 
     private var groundShown = false
+    /// A leaf pile is made of leaves: single leaves of every shape and colour lie over the pile's dark fill, in
+    /// rows from its surface down, each a little off its place and turned its own way. The fill only shows as
+    /// shade between them. (As a plain orange shape the pile looked flat and nothing like leaves.)
+    /// Which leaf lies where is fixed by its place, so the pile does not flicker; it is laid out again at most
+    /// twice a second, and only when the pile has changed.
+    private func renderLeafPile() {
+        guard c.theme.leaves else { return }
+        let sum = heap.reduce(0) { $0 + ($1 * 0.5).rounded() }
+        if sum == leafPileDrawn || c.time - leafPileAt < 0.5 { return }
+        leafPileDrawn = sum; leafPileAt = c.time
+        func chance(_ i: Int, _ j: Int) -> F { let v = sin(F(i) * 12.9898 + F(j) * 78.233) * 43758.5453; return v - v.rounded(.down) }
+        leafPool.begin()
+        let size = 15 * S, across = 7 * S, down = 5 * S
+        var x = -size / 2, column = 0
+        while x < W + size / 2 {
+            let h = heapAt(max(0, min(W - 1, x)))
+            if h > 1.5 {
+                for row in 0...Int(h / down) {
+                    let a = chance(column, row), b = chance(row + 31, column), d = chance(column + 7, row + 3)
+                    let y = groundY - h + F(row) * down + (a - 0.5) * 4 * S - size * 0.12
+                    let w = size * (0.75 + 0.55 * b)
+                    leafPool.add(images.leaves[Int(a * 9973) % images.leaves.count], x: x + (b - 0.5) * across, y: y, w: w, h: w, opacity: 1, rotation: d * 6.28)
+                }
+            }
+            x += across; column += 1
+        }
+        leafPool.end()
+    }
+
     private func renderGround() {
+        renderLeafPile()
         let mx = heap.max() ?? 0
         if mx < 0.5 {
             if groundShown { groundFill.isHidden = true; groundLine.isHidden = true; groundShown = false }
@@ -684,13 +866,40 @@ final class ScreenOverlay {
         santaSprite.place(CGRect(x: sx - 330 * sc, y: sy - 135 * sc, width: 660 * sc, height: 195 * sc), redraw: frameNo % 2 == 0 || santaSprite.layer.isHidden)   // moves every frame, limbs at half rate
     }
 
+    /// One goose flying toward +x, seen from the side: grey-brown, neck stretched out, orange beak.
+    private func drawGoose(_ g: CGContext, _ x: F, _ y: F, _ phase: F, _ t: F) {
+        let flap: F = sin(t * 7 + phase)
+        let body = C(140, 125, 105), dark = C(96, 84, 68), neck = C(118, 104, 88)
+        // the far wing, a little shorter and lighter
+        g.fillPoly(C(168, 154, 134), [(x + 5, y - 3), (x - 7, y - 3), (x - 5, y - 3 - 20 * flap), (x + 3, y - 3 - 21 * flap)])
+        g.fillPoly(dark, [(x - 15, y - 2), (x - 26, y - 0.5), (x - 15, y + 3)])
+        g.fillEllipse(body, x - 17, y - 5, 34, 10)
+        g.fillEllipse(C(208, 198, 178), x - 11, y + 0.5, 21, 4.5)
+        g.line(neck, 3.4, x + 14, y - 1, x + 31, y - 5, round: true)
+        g.fillEllipse(neck, x + 28.5, y - 9, 8.5, 6.5)
+        g.fillPoly(C(236, 140, 36), [(x + 36, y - 7.2), (x + 42.5, y - 5.4), (x + 36, y - 4.2)])
+        g.fillEllipse(C(25, 25, 28), x + 33, y - 7.6, 1.8, 1.8)
+        // the near wing over the body
+        g.fillPoly(dark, [(x + 8, y - 2), (x - 9, y - 2), (x - 11, y - 2 - 25 * flap), (x - 2, y - 2 - 27 * flap)])
+        g.line(C(70, 60, 48), 1.6, x - 11, y - 2 - 25 * flap, x - 2, y - 2 - 27 * flap, round: true)
+    }
+
     private func drawSanta(_ g: CGContext) {
         let sc = c.santaScale * 1.1
         let sx = c.santaX - screenBounds.minX, sy = c.santaY - screenBounds.minY
         g.translateBy(x: sx, y: sy)
         g.scaleBy(x: c.santaDir * sc, y: sc)
-        g.rotate(by: cos(c.santaPhase * 0.9) * -4 * c.santaDir * .pi / 180)
         let t = c.santaPhase
+        if c.theme == .efteraar {
+            // Autumn's flyer: geese on their way south in a wedge, the leader in front and one arm longer than
+            // the other. Each bird beats its wings in its own time and rides a little up and down.
+            let places: [(F, F)] = [(250, -35), (182, -54), (114, -73), (46, -92), (-22, -111), (182, -16), (114, 3), (46, 22)]
+            for (i, p) in places.enumerated().reversed() {
+                drawGoose(g, p.0, p.1 + sin(t * 1.7 + F(i) * 1.3) * 3, F(i) * 1.9, t)
+            }
+            return
+        }
+        g.rotate(by: cos(c.santaPhase * 0.9) * -4 * c.santaDir * .pi / 180)
 
         let rx: [F] = [80, 140, 200, 260]
         let ry = (0..<4).map { i in -40 + sin(t * 6 + F(i) * 0.8) * 3 }
@@ -773,9 +982,68 @@ final class ScreenOverlay {
         }
     }
 
+    // ------------------------------------------------------------------ drage (efterår)
+    // A kite hangs in the wind over the primary screen, its string tied to the scarecrow's hand (or to the
+    // ground there, until the scarecrow has an arm). It drifts with the wind: further out and higher when it
+    // blows, nearer and lower when it is calm. The kite and string move every other frame, the tail flutters.
+    private let kiteString = CAShapeLayer()
+    private var kiteSprite: Sprite!
+    private var kiteX: F = 0, kiteY: F = 0, kiteLean: F = 0, kiteSet = false
+
+    private func renderKite() {
+        guard isPrimary && !isVirtual && cfg.kite && c.theme == .efteraar else { kiteSprite.hide(); kiteString.isHidden = true; return }
+        guard frameNo % 2 == 0 || kiteSprite.layer.isHidden else { return }
+        let baseX = W * 0.78, baseY = groundY - heapAt(W * 0.78) + 3 * S
+        let held = cfg.snowman && c.snowmanStage >= 5
+        let ax = baseX + (held ? 54 : 30) * S, ay = held ? baseY - 80 * S : baseY - 2 * S
+        let blow = max(-1, min(1, c.wind / 90))
+        let strength = min(1, abs(c.wind) / 60)
+        // the wind carries it to the lee side; with no wind it hangs to the left, over the open screen
+        let side: F = abs(blow) < 0.08 ? -1 : (blow < 0 ? -1 : 1)
+        let wantX = max(60 * S, min(W - 60 * S, ax + side * (170 + 150 * strength) * S + F(sin(c.time * 0.5)) * 14 * S))
+        let wantY = max(lightsTop + 110 * S, ay - H * (0.34 + 0.16 * strength) + F(sin(c.time * 0.8 + 1)) * 10 * S)
+        if !kiteSet { kiteX = wantX; kiteY = wantY; kiteSet = true }
+        kiteX += (wantX - kiteX) * 0.04
+        kiteY += (wantY - kiteY) * 0.04
+        kiteLean = max(-0.6, min(0.6, (kiteX - ax) / (300 * S) * 0.45))
+        kiteSprite.place(CGRect(x: kiteX - 60 * S, y: kiteY - 60 * S, width: 120 * S, height: 170 * S))
+        // the string sags a little between the hand and the kite's lower corner
+        let kx = kiteX - sin(kiteLean) * 34 * S, ky = kiteY + cos(kiteLean) * 34 * S
+        let p = CGMutablePath()
+        p.move(to: CGPoint(x: ax, y: H - ay))
+        p.addQuadCurve(to: CGPoint(x: kx, y: H - ky), control: CGPoint(x: (ax + kx) / 2, y: H - ((ay + ky) / 2 + 50 * S)))
+        kiteString.path = p
+        kiteString.isHidden = false
+    }
+
+    private func drawKite(_ g: CGContext) {
+        g.translateBy(x: kiteX, y: kiteY)
+        g.scaleBy(x: S, y: S)
+        g.rotate(by: kiteLean)
+        let red = C(206, 62, 40), yellow = C(242, 184, 52), spar = C(70, 45, 25)
+        // a diamond in four panels
+        g.fillPoly(red, [(0, -34), (22, -8), (0, -8)])
+        g.fillPoly(yellow, [(0, -34), (-22, -8), (0, -8)])
+        g.fillPoly(yellow, [(0, -8), (22, -8), (0, 34)])
+        g.fillPoly(red, [(0, -8), (-22, -8), (0, 34)])
+        g.line(spar, 1.2, 0, -34, 0, 34)
+        g.line(spar, 1.2, -22, -8, 22, -8)
+        // the tail: a line of bows that flutters
+        let t = F(c.time)
+        var px: F = 0, py: F = 34
+        for k in 1...4 {
+            let nx = sin(t * 3.1 + F(k) * 1.2) * (4 + F(k) * 2.2) - kiteLean * F(k) * 9, ny = 34 + F(k) * 17
+            g.line(C(235, 225, 200, 200), 1, px, py, nx, ny)
+            let bow = k % 2 == 0 ? red : yellow
+            g.fillPoly(bow, [(nx, ny), (nx - 6, ny - 3.5), (nx - 6, ny + 3.5)])
+            g.fillPoly(bow, [(nx, ny), (nx + 6, ny - 3.5), (nx + 6, ny + 3.5)])
+            px = nx; py = ny
+        }
+    }
+
     // ------------------------------------------------------------------ snemand (bygges lidt mere hver dag)
     private func renderSnowman() {
-        guard isPrimary && cfg.snowman else { snowmanPos = nil; snowmanSprite.hide(); return }
+        guard isPrimary && cfg.snowman && c.theme.hasSnowman else { snowmanPos = nil; snowmanSprite.hide(); return }
         let x = W * 0.78, y = groundY - heapAt(W * 0.78) + 3 * S
         snowmanPos = CGPoint(x: screenBounds.minX + x, y: screenBounds.minY + y)
         let key = "\(c.snowmanStage) \(Int(y))"
@@ -784,11 +1052,106 @@ final class ScreenOverlay {
         snowmanKey = key
     }
 
+    /// Autumn's form of the snowman: a haystack that grows (stage 1–3) and a scarecrow put up beside it piece
+    /// by piece (4–12), in the same place and the same frame as the snowman. Origin at the ground, y up is negative.
+    private func drawScarecrow(_ g: CGContext, _ stage: Int) {
+        g.fillEllipse(C(50, 35, 20, 50), -58, -3, 120, 6)
+        let wood = C(110, 70, 35), straw = C(228, 188, 84), strawDark = C(160, 110, 35, 170), coal = C(35, 35, 40)
+
+        // the haystack: a dome with loose straws
+        let cx: F = -22
+        let w: F = stage == 1 ? 18 : stage == 2 ? 27 : 34
+        let h: F = stage == 1 ? 14 : stage == 2 ? 30 : 46
+        let stack = CGMutablePath()
+        stack.start(cx - w, 0)
+        stack.curve(cx - w, -h * 0.9, cx - w * 0.55, -h, cx, -h)
+        stack.curve(cx + w * 0.55, -h, cx + w, -h * 0.9, cx + w, 0)
+        stack.closeSubpath()
+        g.fillGradient(stack, C(238, 200, 100), C(188, 138, 48), from: CGPoint(x: cx - w * 0.5, y: -h), to: CGPoint(x: cx + w * 0.5, y: 0))
+        g.stroke(C(140, 95, 30, 110), 1, stack)
+        let straws = stage == 1 ? 6 : stage == 2 ? 12 : 20
+        for i in 0..<straws {
+            let t: F = (F(i) + 0.5) / F(straws)
+            let u: F = (F(i) * 0.618).truncatingRemainder(dividingBy: 1)
+            let px: F = cx + (t * 2 - 1) * w * 0.8
+            let off: F = (px - cx) / w
+            let top: F = -h * (1 - off * off).squareRoot()
+            let py: F = top * (0.12 + u * 0.7)
+            let lean: F = (off < 0 ? -3 : 3) * (0.4 + u)
+            g.line(i % 3 == 0 ? C(250, 225, 150, 170) : strawDark, 1.2, px, py, px + lean, py + 8, round: true)
+        }
+        if stage >= 3 {
+            g.line(straw, 1.4, cx - 4, -h + 1, cx - 9, -h - 6, round: true)
+            g.line(straw, 1.4, cx + 2, -h + 1, cx + 4, -h - 7, round: true)
+            g.line(straw, 1.4, cx + w - 3, -6, cx + w + 5, -9, round: true)
+        }
+
+        // the scarecrow
+        let x: F = 30
+        if stage >= 4 { g.line(wood, 3.4, x, 0, x, -104, round: true) }
+        if stage >= 5 { g.line(wood, 3, x - 24, -80, x + 24, -80, round: true) }
+        if stage >= 7 {
+            let shirt = C(170, 62, 40), check = C(235, 190, 110, 120)
+            g.fillPoly(shirt, [(x - 10, -87), (x + 10, -87), (x + 12, -44), (x - 12, -44)])
+            g.fillPoly(shirt, [(x - 10, -87), (x - 22, -85), (x - 22, -75), (x - 10, -73)])
+            g.fillPoly(shirt, [(x + 10, -87), (x + 22, -85), (x + 22, -75), (x + 10, -73)])
+            for dx in [F(-5), 0, 5] { g.line(check, 1, x + dx, -87, x + dx * 1.2, -44) }
+            for y in [F(-76), -65, -54] { g.line(check, 1, x - 11, y, x + 11, y) }
+            g.fillRect(C(60, 90, 140), x + 2, -62, 6, 6)
+            for dx in [F(-9), -4, 3, 8] { g.line(straw, 1.3, x + dx, -44, x + dx * 1.25, -37, round: true) }
+        }
+        if stage >= 8 {
+            for dy in [F(-5), 0, 5] {
+                g.line(straw, 1.4, x - 22, -80, x - 30, -80 + dy, round: true)
+                g.line(straw, 1.4, x + 22, -80, x + 30, -80 + dy, round: true)
+            }
+        }
+        if stage >= 6 {
+            g.fillEllipse(C(222, 196, 150), x - 11, -109, 22, 22)
+            g.strokeEllipse(C(150, 120, 80, 130), 1, x - 11, -109, 22, 22)
+            g.line(C(120, 80, 40), 1.6, x - 7, -88.5, x + 7, -88.5, round: true)
+        }
+        if stage >= 9 {
+            let stitch = C(95, 55, 30)
+            g.fillEllipse(coal, x - 6, -102, 3.6, 3.6)
+            g.fillEllipse(coal, x + 2.4, -102, 3.6, 3.6)
+            g.fillPoly(C(205, 95, 40), [(x - 1.5, -97.5), (x + 3, -95.5), (x - 1.5, -94)])
+            g.bezier(stitch, 1.2, x - 6, -93, x - 3, -89.5, x + 3, -89.5, x + 6, -93)
+            for dx in [F(-3.5), 0, 3.5] { g.line(stitch, 1, x + dx, -92.6, x + dx, -89.4) }
+        }
+        if stage >= 10 {
+            let scarf = C(40, 120, 90)
+            g.fillRect(scarf, x - 9, -90, 18, 5)
+            g.fillPoly(scarf, [(x + 3, -87), (x + 9, -87), (x + 13, -68), (x + 7, -68)])
+            g.line(C(240, 225, 170), 1.3, x + 7.5, -74, x + 12, -74)
+        }
+        if stage >= 11 {
+            let hat = C(214, 170, 72)
+            g.fillEllipse(hat, x - 17, -112, 34, 7)
+            g.fillPoly(hat, [(x - 9, -109), (x + 9, -109), (x + 6, -123), (x - 6, -123)])
+            g.fillRect(C(150, 50, 35), x - 8.4, -113, 16.8, 3)
+            g.line(straw, 1.2, x - 15, -108, x - 20, -104, round: true)
+        }
+        if stage >= 12 {
+            // a pumpkin at its foot and a crow that is not the least bit scared
+            g.fillEllipse(C(226, 120, 26), x + 10, -13, 19, 13)
+            g.strokeEllipse(C(180, 86, 16), 1, x + 15.5, -13, 8, 13)
+            g.line(C(70, 110, 40), 2, x + 19.5, -13, x + 20.5, -17, round: true)
+            let bx: F = x - 19
+            g.fillPoly(coal, [(bx + 5, -87), (bx + 11, -89), (bx + 7, -84)])
+            g.fillEllipse(coal, bx - 5, -91, 11, 7)
+            g.fillEllipse(coal, bx - 7, -94, 6, 6)
+            g.fillPoly(C(230, 170, 40), [(bx - 6.5, -92), (bx - 10.5, -90.8), (bx - 6.5, -89.8)])
+            g.line(coal, 1, bx, -84.5, bx, -81.5)
+        }
+    }
+
     private func drawSnowman(_ g: CGContext) {
         let stage = c.snowmanStage
         let x = W * 0.78, y = groundY - heapAt(x) + 3 * S
         g.translateBy(x: x, y: y)
         g.scaleBy(x: S, y: S)
+        if c.theme == .efteraar { drawScarecrow(g, stage); return }
 
         g.fillEllipse(C(60, 80, 110, 50), -30, -3, 60, 6)
         let wood = C(110, 70, 35)
@@ -889,7 +1252,24 @@ final class ScreenOverlay {
         if plowOnScreen {
             let gy = groundY - heapAt(plowX) + S
             let ph = plowPileHeight
-            if ph > 10 {
+            if c.theme.leaves {
+                // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
+                if ph > 6 {
+                    plowChunkAcc += dt * 14
+                    while plowChunkAcc >= 1 {
+                        plowChunkAcc -= 1
+                        let b = PlowBit()
+                        b.x = plowX + plowDir * (58 + R() * 26) * sc
+                        b.y = gy - (2 + R() * 10) * sc
+                        b.vx = plowDir * (R() - 0.35) * 110 * S
+                        b.vy = -(90 + R() * 150) * S
+                        b.max = 2; b.life = 2
+                        b.size = (4 + R() * 3) * S
+                        b.kind = Int(R() * 1000)
+                        plowBits.append(b)
+                    }
+                }
+            } else if ph > 10 {
                 plowChunkAcc += dt * 30
                 while plowChunkAcc >= 1 {
                     plowChunkAcc -= 1
@@ -935,6 +1315,11 @@ final class ScreenOverlay {
     private func renderPlow() {
         plowBitPool.begin()
         for b in plowBits {
+            if !b.smoke && c.theme.leaves {
+                plowBitPool.add(images.leaves[b.kind % images.leaves.count], x: b.x, y: b.y, w: b.size * 2.6, h: b.size * 2.6,
+                                opacity: 1, rotation: b.life * 7 + F(b.kind))
+                continue
+            }
             plowBitPool.add(b.smoke ? images.smoke : images.chunk, x: b.x, y: b.y, w: b.size * 2, h: b.size * 2,
                             opacity: b.smoke ? 90 / 255 * b.life / b.max : 235 / 255)
         }
@@ -952,13 +1337,28 @@ final class ScreenOverlay {
         g.translateBy(x: plowX, y: gy)
         g.scaleBy(x: plowDir * sc, y: sc)
 
-        let o = C(235, 130, 20), od = C(185, 95, 10), dark = C(50, 50, 55), grey = C(110, 110, 115), glass = C(175, 210, 235)
+        // Autumn's form is a leaf collector: the same truck in green, with a suction nozzle and hose in place
+        // of the blade, and an open body heaped with leaves in place of the salt spreader.
+        let autumn = c.theme == .efteraar
+        let o = autumn ? C(72, 138, 78) : C(235, 130, 20), od = autumn ? C(44, 96, 52) : C(185, 95, 10)
+        let dark = C(50, 50, 55), grey = C(110, 110, 115), glass = C(175, 210, 235)
         // exhaust stack
         g.fillRect(grey, -4, -76, 4, 30)
-        // salt spreader at the back, with a spinning disc
-        g.fillRect(grey, -92, -32, 12, 16)
-        let sa = plowWheel * 2
-        g.line(C(70, 70, 75), 2, -86 - cos(sa) * 6, -14, -86 + cos(sa) * 6, -14)
+        if autumn {
+            // the hose rises in front of the cab and bends back over it into the body (drawn first, so the cab hides part of it)
+            g.bezier(C(38, 38, 42), 8, 62, -12, 66, -62, 38, -80, -10, -56)
+            g.bezier(C(90, 90, 96), 1.5, 62, -12, 66, -62, 38, -80, -10, -56)
+            // leaves heaped over the edge of the body
+            for (i, lx) in [F(-74), -63, -52, -41, -30, -19].enumerated() {
+                g.fillEllipse(Theme.leafColours[(i * 2) % Theme.leafColours.count], lx - 8, -62 + F(i % 2) * 3, 16, 12)
+                g.fillEllipse(Theme.leafColours[(i * 2 + 1) % Theme.leafColours.count], lx - 2, -59 - F(i % 2) * 3, 12, 9)
+            }
+        } else {
+            // salt spreader at the back, with a spinning disc
+            g.fillRect(grey, -92, -32, 12, 16)
+            let sa = plowWheel * 2
+            g.line(C(70, 70, 75), 2, -86 - cos(sa) * 6, -14, -86 + cos(sa) * 6, -14)
+        }
         // dump body with ribs and a reflective stripe
         g.fillRect(o, -80, -50, 74, 36)
         g.fillRect(od, -82, -53, 78, 5)
@@ -986,6 +1386,16 @@ final class ScreenOverlay {
                 let dx = cos(a) * 5, dy = sin(a) * 5
                 g.line(C(60, 60, 65), 1.6, wx - dx, -10 - dy, wx + dx, -10 + dy)
             }
+        }
+        if autumn {
+            // the leaves it is about to take, and the wide nozzle at the ground with a warning stripe
+            for (i, lx) in [F(74), 82, 90, 98].enumerated() where F(i) * 7 < ph {
+                g.fillEllipse(Theme.leafColours[i % Theme.leafColours.count], lx - 7, -7 - F(i % 2) * 3, 14, 9)
+            }
+            g.line(C(80, 80, 85), 3, 42, -12, 56, -14)
+            g.fillPoly(dark, [(54, -18), (70, -18), (80, 2), (50, 2)])
+            g.fillRect(C(250, 195, 30), 51, -3, 28, 3)
+            return
         }
         // snow pile in front of the blade
         let pile = CGMutablePath()
@@ -1030,7 +1440,8 @@ final class ScreenOverlay {
             else if R() < 0.7 { nisseOffset += nisseOffset > 0 ? -1 : 1 }
             else { nisseOffset = max(-2, min(2, nisseOffset + (nisseOffset > 0 ? 1 : -1))) }
         }
-        let target = cfg.nisser ? max(1, cfg.nisseCount + nisseOffset) : 0
+        let nisserOn = cfg.nisser && c.theme.hasNisser
+        let target = nisserOn ? max(1, cfg.nisseCount + nisseOffset) : 0
         if ProcessInfo.processInfo.environment["JULE_NISSE_SECONDS"] != nil, frameNo % 40 == 0, isPrimary {
             FileHandle.standardError.write("t=\(Int(c.time)) target=\(target) nisser=\(nisser.count) leaving=\(nisser.filter { $0.leaving }.count) entering=\(nisser.filter { $0.entering }.count) snow=\(String(format: "%.2f", c.snowIntensity))\n".data(using: .utf8)!)
         }
@@ -1040,7 +1451,7 @@ final class ScreenOverlay {
             let arriving = !nisser.isEmpty || c.time > 2
             for _ in 0..<(arriving ? 1 : target - staying) { addNisse(walkingIn: arriving) }
         } else if staying > target {
-            if !cfg.nisser {
+            if !nisserOn {
                 while !nisser.isEmpty { removeNisse(at: nisser.count - 1) }
             } else if let n = nisser.last(where: { !$0.leaving && !$0.entering && !$0.crossing }) {
                 // Walks off at an edge with no screen beyond it if there is one (so the count really goes down),
@@ -1227,7 +1638,7 @@ final class ScreenOverlay {
         let img = renderImage(width: 64 * maxSc, height: 80 * maxSc, scale: backingScale) { g in
             g.scaleBy(x: maxSc, y: maxSc)
             g.translateBy(x: 32, y: 72)
-            drawNisse(g, n, frame)
+            if c.theme.animals { drawAnimal(g, n, frame) } else { drawNisse(g, n, frame) }
         }!
         nisseFrames[key] = img
         return img
@@ -1298,13 +1709,118 @@ final class ScreenOverlay {
         g.fillEllipse(C(255, 255, 255), tipX - 3, tipY - 3, 6, 6)
     }
 
+    // ------------------------------------------------------------------ pindsvin og egern (efterår)
+    /// The autumn theme's walkers. They are nisser in everything but looks: they walk, stop, wave, cross to the
+    /// next screen and meet to hand over what they carry. A hedgehog carries an apple on its spines, a squirrel an
+    /// acorn in its paws. Which animal a walker is follows its clothes' number, so it stays the same animal.
+    /// Drawn like a nisse: feet at (0, 0), y up is negative, facing right.
+    private func drawAnimal(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let p: F = n.state == 0 ? F(frame) / F(Self.walkFrames) * 4 * .pi : 0
+        let standPhase: F = n.state == 1 ? F(frame) / F(Self.standFrames) * 2 * .pi : 0
+        let wavePhase: F = n.state == 2 ? F(frame) / F(Self.waveFrames) * 2 * .pi : 0
+        let walking = n.state == 0
+        let dark = C(52, 36, 26)
+        g.fillEllipse(C(60, 40, 20, 50), -13, -2, 26, 4)
+
+        if n.tunicIndex % 2 == 0 {
+            // ---- hedgehog
+            let spine = C(104, 74, 50), spineDark = C(70, 48, 32), fur = C(216, 182, 142)
+            let bob: F = walking ? -abs(sin(p)) * 1.0 : 0
+            // sniffing the air when it "waves"
+            let sniff: F = n.state == 2 ? -4 - sin(wavePhase) * 2 : sin(standPhase) * 0.6
+            for (hx, phase) in [(F(-10), F(0)), (-4, .pi), (5, .pi), (11, 0)] {
+                let fx = hx + (walking ? sin(p + phase) * 3 : 0)
+                g.line(spineDark, 3.6, hx, -5 + bob, fx, 0, round: true)
+            }
+            g.translateBy(x: 0, y: bob)
+            // the face: a tan cone ending in the nose
+            let face = CGMutablePath()
+            face.start(4, -22)
+            face.curve(14, -22, 20, -14, 25, -7 + sniff)
+            face.curve(22, -3, 14, -2, 4, -2)
+            face.closeSubpath()
+            g.fill(fur, face)
+            // the spiny back
+            let back = CGMutablePath()
+            back.start(-19, -2)
+            back.curve(-22, -22, -6, -29, 6, -24)
+            back.curve(12, -20, 12, -8, 8, -2)
+            back.closeSubpath()
+            g.fill(spine, back)
+            for i in 0..<10 {
+                let a = F.pi * (1.02 - 0.84 * F(i) / 9)
+                let bx = -5 + cos(a) * 15, by = -11 - sin(a) * 15
+                g.line(spineDark, 1.8, bx, by, bx + cos(a) * 6, by - sin(a) * 6, round: true)
+            }
+            for i in 0..<6 {
+                let a = F.pi * (0.9 - 0.7 * F(i) / 5)
+                let bx = -5 + cos(a) * 8, by = -9 - sin(a) * 8
+                g.line(spineDark, 1.4, bx, by, bx + cos(a) * 5, by - sin(a) * 5, round: true)
+            }
+            g.fillEllipse(spine, 6, -22, 6, 6)                      // ear
+            g.fillEllipse(dark, 14, -15 + sniff * 0.4, 3.2, 3.2)     // eye
+            g.fillEllipse(dark, 22.5, -9.5 + sniff, 4.5, 4.5)        // nose
+            if n.carriesGift && n.state != 2 {
+                // an apple stuck on the spines
+                let apple = [C(206, 48, 44), C(196, 176, 52), C(222, 120, 40)][n.giftIndex % 3]
+                g.fillEllipse(apple, -11, -41, 13, 12)
+                g.line(spineDark, 1.6, -4.5, -41, -3.5, -45, round: true)
+                g.fillEllipse(C(88, 150, 60), -3.5, -47, 6, 3.5)
+                g.fillEllipse(C(255, 255, 255, 120), -8.5, -39, 3, 3)
+            }
+        } else {
+            // ---- squirrel
+            let rust = C(192, 94, 46), rustDark = C(150, 66, 30), cream = C(242, 222, 190)
+            let bob: F = walking ? -abs(sin(p)) * 3.0 : 0
+            let flick: F = walking ? sin(p * 0.5) * 2 : sin(standPhase) * 1.5 + (n.state == 2 ? sin(wavePhase) * 3 : 0)
+            g.translateBy(x: 0, y: bob)
+            // the bushy tail, curling up behind the back
+            let tail = CGMutablePath()
+            tail.start(-7, -5)
+            tail.curve(-31, -6, -33 + flick, -38, -16 + flick, -47)
+            tail.curve(-7 + flick, -51, -1 + flick, -41, -8, -35)
+            tail.curve(-17, -28, -13, -15, -5, -9)
+            tail.closeSubpath()
+            g.fill(rust, tail)
+            g.line(rustDark, 1.4, -18 + flick * 0.6, -40, -22, -20, round: true)
+            // hind leg and foot
+            let step: F = walking ? sin(p) * 3 : 0
+            g.fillEllipse(rustDark, -7, -11, 15, 10)
+            g.line(rustDark, 4, 1, -3, 8 + step, -1, round: true)
+            // body and belly
+            g.fillEllipse(rust, -9, -30, 17, 27)
+            g.fillEllipse(cream, -1, -25, 8, 19)
+            // head, ear, eye, nose
+            g.fillEllipse(rust, 0, -43, 16, 14)
+            let ear = CGMutablePath()
+            ear.start(3, -41); ear.to(5, -51); ear.to(10, -42); ear.closeSubpath()
+            g.fill(rustDark, ear)
+            g.fillEllipse(cream, 9, -36, 7, 6)
+            g.fillEllipse(dark, 9.5, -39, 3, 3)
+            g.fillEllipse(dark, 15, -35, 2.6, 2.6)
+            // the front paw: holding the acorn, waving, or swinging
+            let hand: CGPoint
+            if n.state == 2 { hand = CGPoint(x: 11, y: -37 + sin(wavePhase) * 3) }
+            else if n.carriesGift { hand = CGPoint(x: 11, y: -24) }
+            else { hand = CGPoint(x: 9 + (walking ? sin(p) * 2 : 0), y: -20) }
+            if n.carriesGift && n.state != 2 {
+                g.fillEllipse(C(176, 128, 66), 9, -27, 8, 10)
+                g.fillEllipse(C(104, 70, 34), 8.5, -29, 9, 5)
+                g.line(C(104, 70, 34), 1.4, 13, -29, 13, -31.5, round: true)
+            }
+            g.line(rustDark, 3.4, 3, -25, hand.x, hand.y, round: true)
+        }
+    }
+
     // ------------------------------------------------------------------ julelys
     static let bulbColors = [C(255, 60, 60), C(60, 220, 90), C(255, 200, 60), C(80, 150, 255), C(255, 110, 200)]
+    /// The lanterns on autumn's garland all burn warm.
+    static let lanternColors = [C(255, 170, 50), C(255, 140, 40), C(255, 200, 90)]
 
     // The wire, sockets and dimmed bulbs are drawn once. Each bulb's bright version (glow, colour, shine)
     // is a separate layer whose opacity twinkles via a Core Animation loop, so the twinkle costs no CPU.
     private func renderLightsLayer() {
-        guard cfg.lights else { lightsSprite.hide(); lightsLayer.isHidden = true; return }
+        guard cfg.lights && c.theme.hasLights else { lightsSprite.hide(); lightsLayer.isHidden = true; return }
         if lightsSprite.layer.isHidden { lightsSprite.place(CGRect(x: 0, y: lightsTop, width: W, height: lightsHeight)) }
         if !bulbsBuilt { buildBulbs(); bulbsBuilt = true }
         lightsLayer.isHidden = false
@@ -1337,11 +1853,19 @@ final class ScreenOverlay {
     private func buildBulbs() {
         let scale = backingScale
         let w = 7 * S, h = 11 * S, bw = 26 * S, bh = 28 * S
-        let bright = Self.bulbColors.map { col in
+        let autumn = c.theme == .efteraar
+        let S = self.S
+        let bright = (autumn ? Self.lanternColors : Self.bulbColors).map { col in
             renderImage(width: bw, height: bh, scale: scale) { g in
                 g.fillEllipse(withAlpha(col, 70), 0, 1 * S, 26 * S, 26 * S)
-                g.fillEllipse(col, bw / 2 - w / 2, 3 * S, w, h)
-                g.fillEllipse(C(255, 255, 255, 160), bw / 2 - w / 4, 5 * S, w / 3, h / 3)
+                if autumn {
+                    // the lit pane of a small lantern, with its flame
+                    g.fillRect(col, bw / 2 - 3.5 * S, 4.5 * S, 7 * S, 9 * S)
+                    g.fillEllipse(C(255, 250, 215, 230), bw / 2 - 1.5 * S, 7.5 * S, 3 * S, 5 * S)
+                } else {
+                    g.fillEllipse(col, bw / 2 - w / 2, 3 * S, w, h)
+                    g.fillEllipse(C(255, 255, 255, 160), bw / 2 - w / 4, 5 * S, w / 3, h / 3)
+                }
             }
         }
         forEachBulb { idx, bx, by in
@@ -1357,7 +1881,10 @@ final class ScreenOverlay {
 
     private func renderLights(_ g: CGContext) {
         let span = 230 * S, sag = 22 * S, top = lightsTop + 1
-        let wire = C(25, 60, 35, 220), socket = C(30, 70, 40)
+        // Autumn's form is a garland: a brown vine with leaves hanging from it, and small lanterns where the
+        // bulbs are (their lit panes are the twinkling layers, see buildBulbs).
+        let autumn = c.theme == .efteraar
+        let wire = autumn ? C(104, 68, 34, 235) : C(25, 60, 35, 220), socket = C(30, 70, 40)
         var x0 = -span * 0.3
         while x0 < W {
             g.setStrokeColor(wire); g.setLineWidth(2 * S); g.setLineCap(.round)
@@ -1369,6 +1896,32 @@ final class ScreenOverlay {
             }
             g.strokePath()
             x0 += span
+        }
+        if autumn {
+            // leaves along the vine, each hanging by its stalk at its own angle (none where a lantern hangs)
+            var n = 0
+            var lx0 = -span * 0.3
+            while lx0 < W {
+                for k in 0..<12 where k % 3 != 1 {
+                    let u = (F(k) + 0.5) / 12
+                    let size = (15 + F((n * 7) % 5) * 1.5) * S
+                    g.saveGState()
+                    g.translateBy(x: lx0 + u * span, y: top + sag * (1 - (2 * u - 1) * (2 * u - 1)))
+                    g.rotate(by: .pi / 2 + sin(F(n) * 2.3) * 0.8)
+                    g.draw(images.leaves[(n * 3) % images.leaves.count], in: CGRect(x: -1 * S, y: -size / 2, width: size, height: size))
+                    g.restoreGState()
+                    n += 1
+                }
+                lx0 += span
+            }
+            let frame = C(52, 40, 30), dim = C(120, 72, 22)
+            forEachBulb { _, bx, by in
+                g.line(frame, 1.2 * S, bx, by, bx, by + 2.5 * S)
+                g.fillRect(frame, bx - 4.5 * S, by + 2 * S, 9 * S, 2.5 * S)
+                g.fillRect(dim, bx - 3.5 * S, by + 4.5 * S, 7 * S, 9 * S)
+                g.fillRect(frame, bx - 4.5 * S, by + 13.5 * S, 9 * S, 2 * S)
+            }
+            return
         }
         let w = 7 * S, h = 11 * S
         forEachBulb { idx, bx, by in

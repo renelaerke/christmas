@@ -170,6 +170,45 @@ enum Synth {
         }
     }
 
+    /// The leaf collector's suction (autumn's form of the scraping): a rush of air through a wide hose, i.e.
+    /// noise shaped by a broad resonance and a hollow one from the hose, over the fan's steady whine.
+    static func leafSuction() -> AVAudioPCMBuffer? {
+        let len = 3.0
+        return makeBuffer(seconds: len) { out, n in
+            var rng = SeededRandom(seed: 77)
+            let over = Int(0.3 * sampleRate)
+            var air = [Float](repeating: 0, count: n + over)
+            // two resonators (state-variable band-passes): the rush around 900 Hz and the hose around 260 Hz
+            var lowA = 0.0, bandA = 0.0, lowB = 0.0, bandB = 0.0
+            let fA: Double = 2 * sin(Double.pi * 900 / sampleRate), fB: Double = 2 * sin(Double.pi * 260 / sampleRate)
+            for i in 0..<(n + over) {
+                let t: Double = Double(i) / sampleRate
+                let white: Double = Double(rng.next()) * 2 - 1
+                let highA: Double = white - lowA - 1.4 * bandA
+                bandA += fA * highA
+                lowA += fA * bandA
+                let highB: Double = white - lowB - 0.5 * bandB
+                bandB += fB * highB
+                lowB += fB * bandB
+                // the air flutters a little as leaves pass through (whole cycles per loop)
+                let w: Double = 2 * Double.pi * t / len
+                let flutter: Double = 0.85 + 0.15 * sin(w * 4) * sin(w * 11 + 0.7)
+                air[i] = Float((bandA * 0.55 + bandB * 0.12) * flutter)
+            }
+            for i in 0..<over {
+                let k = Float(i) / Float(over)
+                air[i] = air[i] * k + air[n + i] * (1 - k)
+            }
+            for i in 0..<n {
+                let t: Double = Double(i) / sampleRate
+                // the fan: a whine with a slow beat between two close tones (all whole cycles per loop)
+                let whine: Double = 0.05 * sin(2 * Double.pi * 520 * t) + 0.035 * sin(2 * Double.pi * 524 * t)
+                    + 0.02 * sin(2 * Double.pi * 1040 * t) + 0.012 * sin(2 * Double.pi * 1563 * t)
+                out[i] = air[i] * 0.8 + Float(whine * 1.6)
+            }
+        }
+    }
+
     /// Two-tone truck horn: "baa-baaa".
     static func plowHorn() -> AVAudioPCMBuffer? {
         return makeBuffer(seconds: 1.0) { out, n in
@@ -187,6 +226,94 @@ enum Synth {
             }
             honk(0, 0.22)
             honk(0.32, 0.5)
+        }
+    }
+
+    // ------------------------------------------------------------------ geese (autumn's flyer)
+
+    /// The two moods of a flock of geese passing over; each trip picks one (alone twice as often as in wind).
+    static let gooseMoods = ["alene", "blaest"]
+
+    /// The flock itself is a recording (assets/lyd/gaes-flok.wav, see KILDER.md there; copied into the app's
+    /// Resources by the build scripts): synthesized calls sounded far too artificial. It is the project's one
+    /// sound file. Mixed to mono at the synth's sample rate, peak 0.6. Nil if the file is missing: no sound then.
+    private static let gooseRecording: [Float]? = {
+        guard let url = Bundle.main.url(forResource: "gaes-flok", withExtension: "wav"),
+              let file = try? AVAudioFile(forReading: url) else { return nil }
+        let fmt = file.processingFormat
+        let frames = AVAudioFrameCount(file.length)
+        guard frames > 1, let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: frames),
+              (try? file.read(into: buf)) != nil, let ch = buf.floatChannelData else { return nil }
+        let m = Int(buf.frameLength), chans = Int(fmt.channelCount)
+        guard m > 1, chans > 0 else { return nil }
+        var mono = [Float](repeating: 0, count: m)
+        for c in 0..<chans { for i in 0..<m { mono[i] += ch[c][i] / Float(chans) } }
+        let ratio: Double = fmt.sampleRate / sampleRate
+        let outN = Int(Double(m - 1) / ratio)
+        var r = [Float](repeating: 0, count: max(0, outN))
+        var peak: Float = 0
+        for i in 0..<outN {
+            let p: Double = Double(i) * ratio
+            let j = min(m - 2, Int(p))
+            let f = Float(p - Double(j))
+            r[i] = mono[j] * (1 - f) + mono[j + 1] * f
+            peak = max(peak, abs(r[i]))
+        }
+        if peak > 0 { let k = 0.6 / peak; for i in 0..<outN { r[i] *= k } }
+        return r
+    }()
+
+    /// One seamless loop of geese calling, as long as the recording: 0 = the flock alone, 1 = farther off
+    /// (quieter and duller) over synthesized gusts of wind.
+    static func geese(mood: Int) -> AVAudioPCMBuffer? {
+        guard let rec = gooseRecording else { return nil }
+        let over = Int(0.5 * sampleRate)
+        guard rec.count > over * 4 else { return nil }
+        let seconds = Double(rec.count - over) / sampleRate
+        return makeBuffer(seconds: seconds) { out, n in fillGeese(out, n, rec, mood: mood, len: seconds) }
+    }
+
+    private static func fillGeese(_ out: UnsafeMutablePointer<Float>, _ n: Int, _ rec: [Float], mood: Int, len: Double) {
+        do {
+            var rng = SeededRandom(seed: UInt64(1200 + mood))
+            func rnd() -> Double { Double(rng.next()) }
+
+            // The recording, its tail cross-faded into its start so the loop has no seam; a far flock is
+            // quieter and has lost its brightness (a one-pole low-pass).
+            let tail = max(0, min(rec.count - n, n))
+            let level: Float = mood == 0 ? 1 : 0.6
+            let open: Float = mood == 0 ? 1 : 0.35
+            var smooth: Float = 0
+            for i in 0..<min(n, rec.count) {
+                var s = rec[i]
+                if i < tail { let k = Float(i) / Float(tail); s = s * k + rec[n + i] * (1 - k) }
+                smooth += (s - smooth) * open
+                out[i] = smooth * level
+            }
+
+            guard mood > 0 else { return }
+            // The wind under the calls: made a little longer than the loop and cross-faded into its own
+            // start, so the loop has no seam. (A third mood with rain was tried and dropped: it did not work.)
+            let over = Int(0.5 * sampleRate)
+            var bed = [Float](repeating: 0, count: n + over)
+            var lp1 = 0.0, lp2 = 0.0
+            for i in 0..<(n + over) {
+                let tt = Double(i) / sampleRate
+                let white = rnd() * 2 - 1
+                // gusts: the wind grows louder and brighter together (whole cycles per loop)
+                let w: Double = 2 * Double.pi * tt / len
+                let g: Double = 0.5 + 0.5 * (0.6 * sin(w * 2) + 0.4 * sin(w * 5 + 1.3))
+                let gust: Double = g * g
+                let a: Double = 0.012 + 0.05 * gust
+                lp1 += (white - lp1) * a
+                lp2 += (lp1 - lp2) * a
+                bed[i] = Float(lp2 * (0.25 + 0.75 * gust) * 1.9)
+            }
+            for i in 0..<over {
+                let k = Float(i) / Float(over)
+                bed[i] = bed[i] * k + bed[n + i] * (1 - k)
+            }
+            for i in 0..<n { out[i] += bed[i] }
         }
     }
 

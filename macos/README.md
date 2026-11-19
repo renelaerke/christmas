@@ -12,10 +12,31 @@ Native macOS-udgave (Swift + AppKit + Core Animation) af juleoverlayet. Samme in
 - **Sne på vinduerne** (menuen, `WindowSnow`, til som standard): cirka halvdelen af fnuggene lander på overkanten af andre apps' vinduer (ikke fuldskærm), hvor sneen hober sig op fra ingenting og runder af mod hjørnerne. Den skjules bag vinduer, der ligger foran. Flyttes vinduet, følger sneen med, når det står stille igen. Minimeres eller lukkes vinduet, falder sneen lodret ned fra stedet, hvor vinduet stod, og lander i bunken i bunden. Når bunken bliver dyb, kryber sneen langsomt ud over kanten og hænger ned foran vinduet i bløde lapper af forskellig længde (et fast mønster pr. vindue), lidt mere ved hjørnerne. Når kanten er fuld, knækker et stykke af og til af og falder ned (cirka 1 chance ud af 15 i sekundet), så sneen ikke bare bliver liggende i samme højde. Vinduerne aflæses med `CGWindowListCopyWindowInfo` 4 gange i sekundet (og hver frame, mens et vindue med sne bevæger sig), hvilket ikke kan måles i strømforbruget.
 - **Snedriver i snestorm:** Vinden flytter langsomt sne med sig langs bunken og langs vindueskanterne, så den hober sig op mod skærmkanten og vinduets ende i vindretningen. Sneen lægger sig i lange bølger, der hænger sammen på tværs af skærmene. Driverne må blive højere i storm og synker langsomt tilbage bagefter. En fuld bunke beholder bløde bugter på toppen.
 - **Nisser mødes:** Når to nisser går mod hinanden, og mindst den ene bærer en pakke, stopper de op ansigt til ansigt. Har kun den ene en pakke, får den anden den; har begge, bytter de.
-- **Lyd** (slået fra som standard, slås til hver for sig i menuen): julemandens kane spiller bjælder og en af tre melodier, valgt tilfældigt for hver tur: omkvædet af "Jingle Bells" (Pierpont 1857), "Deck the Halls" (walisisk folkemelodi) eller "We Wish You a Merry Christmas" (engelsk folkemelodi), alle fri af ophavsret. Julemandens fart varierer ±10 % fra tur til tur, og melodien spilles med samme tempo (lidt hurtigere og lysere, eller langsommere og dybere). Sneploven har dieselmotor, skraben der bliver højere med mængden af sne, og et kort horn når den kører ind. Lyden panoreres med figuren hen over skærmene, fader ind og ud ved kanterne og er slået fra under fuldskærmspause. Alt syntetiseres i koden (ingen lydfiler), og lydmotoren kører kun mens noget spiller.
+- **Lyd** (slået fra som standard, slås til hver for sig i menuen): julemandens kane spiller bjælder og en af tre melodier, valgt tilfældigt for hver tur: omkvædet af "Jingle Bells" (Pierpont 1857), "Deck the Halls" (walisisk folkemelodi) eller "We Wish You a Merry Christmas" (engelsk folkemelodi), alle fri af ophavsret. Julemandens fart varierer ±10 % fra tur til tur, og melodien spilles med samme tempo (lidt hurtigere og lysere, eller langsommere og dybere). Sneploven har dieselmotor, skraben der bliver højere med mængden af sne, og et kort horn når den kører ind. Lyden panoreres med figuren hen over skærmene, fader ind og ud ved kanterne og er slået fra under fuldskærmspause. Julens lyde syntetiseres i koden, og lydmotoren kører kun mens noget spiller. (Efterårets gæs er en optagelse, se "Efterårstema".)
 - Notifikationer når dagens låge er klar (klik åbner kalenderen).
 - "Start ved login" er et almindeligt login-emne. Appen **genstarter sig selv, hvis den crasher**: den starter som en lille vagtproces, der kører selve appen som underproces og starter den igen 5 sekunder efter et crash (den giver op efter 3 hurtige crash i træk). Afslutter man fra menuen, lukker begge. Derfor ses to `JuleHygge`-processer i Aktivitetsovervågning. (En launch agent via `SMAppService.agent` blev afvist af macOS ved hver ny ad-hoc-build — "Launch Constraint Violation" — fordi den er bundet til kodesignaturen.)
 - Indstillinger: `~/Library/Application Support/JuleHygge/settings.ini` (samme format som Windows). Fejllog: `~/Library/Logs/JuleHygge.log`.
+
+## Efterårstema
+
+Menuen **Tema** (`Theme`: 0 = jul, 1 = efterår; jul er standard) skifter hele overlayet til efterår. Hvert juleelement har sin efterårsform, og menupunkterne skifter navn med temaet. Temaet findes kun i macOS-udgaven. Idéen bag (og de andre årstider, der ikke er lavet) står i `docs/temaer/index.html`, og det, der mangler, i `docs/efteraar-udestaaende.md`.
+
+| Jul | Efterår |
+|---|---|
+| Snevejr | Løvfald: færre og større blade, der vender sig i faldet. To former, ovale blade og ahornblade (ca. 80/20), i fem farver og flere størrelser. I efterårsstormen regner det også. |
+| Sne i bunden og på vinduerne | Løvbunker af enkelte blade. De vokser, flytter sig i blæst og falder fra vinduer, præcis som sneen. |
+| Snemand over 12 dage | En høstak (trin 1–3) og derefter et fugleskræmsel ved siden af (trin 4–12). |
+| Julemanden i kane | Otte gæs i kile på vej sydpå. Størrelsen varierer fra tur til tur (dybde), uafhængigt af farten. Ingen gnister. |
+| Sneplov | Løvsuger: en grøn vogn med slange og mundstykke, der suger bunken op. |
+| Nisser, der bytter pakker | Pindsvin og egern, der bærer og bytter æbler. |
+| Julelys | En løvranke med små lygter. |
+| (intet) | En drage, der hænger i vinden (menuen "Drage", `Kite`, til som standard). |
+| Julekalender og nedtælling | Skjult: kalenderen hører julen til. |
+| Nissehue, skæg og dragt i kameraet | Sydvest og gul regnfrakke. Skæggets plads er tom. |
+
+- **Lyd** (stadig slået fra som standard): gæssene er en optagelse, `assets/lyd/gaes-flok.wav` (kilde i `assets/lyd/KILDER.md`), fordi syntetiske gåsekald ikke kom til at lyde ægte. Hver tur vælger en af to stemninger: flokken alene (to ud af tre gange) eller længere væk i blæst (altid i storm). Løvsugeren har motor, en sugelyd i stedet for sneplovens skraben, og horn.
+- **Strøm** (målt med `./measure.sh`): dragen koster ca. 0,7 % af en kerne og regnen ca. 1,8 % i storm. WindowServer er uændret.
+- **Test:** sæt `Theme=1` i en settings-fil og brug den med `JULE_SETTINGS`. `--julemand` sender gæssene afsted og `--sneplov` løvsugeren; `JULE_DEEPSNOW=1` starter med fuld løvbunke, også på vinduerne; `JULE_NO_RAIN=1` slår regnen fra (til måling); `--lyd-test=MAPPE` gemmer også `gaes-*.wav` og `loevsuger-sug.wav`.
 
 ## Byg og kør
 
@@ -47,12 +68,14 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 - **Nisser og sne foran mig i kameraet** (menuen, `CameraFront`, til som standard): kamerascenen tegnes i to lag. Himlen, julelysene, snevejret og julemanden ligger bag personen; sneen i bunden, snemanden, nisserne og sneploven ligger foran. I kameraet er julemanden mindre og flyver i et bånd, hvor hele kanen altid er inde i billedet.
 - **Nisseskæg i kameraet** og **Nissedragt i kameraet** (menuen, `CameraBeard` og `CameraSuit`, hver for sig, til som standard):
   - **Skægget:** Visions ansigtspunkter (kæbelinje, næse, læber) giver skæggets form i hvert billede. Det er et hvidt fuldskæg langs kæben og under hagen, med overskæg og åben mund, krøllet struktur og blød kant.
-  - **Dragten:** Tøjet (alt undtagen hovedet) farves julerødt, så folder og skygger bevares. Udskæringsmasken finder kroppen,. Halsen findes ved sin kontrast til tøjet: fra hudfarvede punkter lige under hagen (sammenlignet med kindernes farve, som kun læres, mens man kigger lige frem, så skygge på kinderne, når hovedet vippes bagover, ikke ændrer den) vokser et område nedad, så længe farven ligner halsen, og stopper ved kanten til tøjet. Det område holdes fri, og et hudtonefilter holder hænderne fri. `--nissedragt-test` gemmer også `hals.png` med halsen markeret med grønt.
+  - **Dragten:** Tøjet farves julerødt (i efteråret gult, som en regnfrakke), så folder og skygger bevares. Hvad der er tøj, afgør en trænet model (`Parts.swift`): Google MediaPipes "Multiclass Selfie Segmentation", som for hvert punkt siger, om det er baggrund, hår, kropshud, ansigtshud, tøj eller andet (briller). Hals, ansigt, hår og hænder går derfor fri i al slags lys, også foran tøjet. Modellen kører for hvert andet kamerabillede (ca. 20 ms pr. gang) og kræver macOS 15. Den ligger i `assets/model/` (kilde og kontrolsummer i `KILDER.md` der) og er udgivet under Apache 2.0; licensen ligger i `licenses/`, følger med i appen og vises fra menuen ("Licens for tøjmodellen i kameraet…").
+  - **Uden modellen** (macOS 14, og de første sekunder mens den indlæses) findes tøjet ved farve: et område vokser op fra brystet, så længe farven kun ændrer sig gradvist, halsen findes ved sin kontrast til tøjet, og et hudtonefilter målt på personens egne kinder holder hænderne fri. Det er mindre sikkert: en jakke i flere farver stopper væksten, og hud i skygge kan ligne tøj. `--nissedragt-test` gemmer også `hals.png` med halsen markeret med grønt.
+  - **Målt:** appen bruger 66 % af en kerne med modellen mod 82 % med farvereglen (modellen kører på grafikkort/neural-chip, farvereglen på processoren). `HUE_INGEN_MODEL=1` slår modellen fra til sammenligning.
   - **Test uden kamera:** `--nissedragt-test=MAPPE,BILLEDE`.
 - **Skiftende vejr** (menuen: Snemængde > Skiftende vejr, `SnowLevel=3`): sneen skifter selv mellem let sne, normal og snestorm i løbet af dagen. Perioderne er meget forskellige i længde: let sne 8–90 minutter, normal 6–70 og snestorm 4–25, og korte perioder er de almindeligste. Overgangene glider (en storm bygger op på 90 sekunder og klinger af over 3 minutter). Forløbet afhænger kun af datoen. `--vejr-test[=DAGE]` udskriver forløbet og fordelingen (ca. 47 % let, 44 % normal, 9 % storm); `JULE_VEJR_TID=TT:MM` starter dagens vejr på det klokkeslæt.
 - **Automatisk opdatering** (menuen: "Version x.y.z", "Opdatér automatisk", "Søg efter opdatering nu"): en udgivet app henter selv nye udgivelser fra GitHub (`rkl1976/christmas`) og genstarter i den nye version. Indstillingen `AutoUpdate` er slået til som standard. En lokalt bygget app (version 0.0.0) og en app med JuleHygge Kamera opdaterer ikke sig selv; menuen siger hvorfor. Appen skal ligge i en mappe, den selv kan skrive i (`~/Applications` eller `/Applications` for en administrator). Test: `--opdatering-test=ZIP,VERSION` og `--opdatering-test=github,-` på en kopi af appen, og `JULE_UPDATE_VERSION=x.y.z`.
 - **Nissehue på i kameraet** (menuen, `CameraHat`, til som standard): en nissehue på hvert hoved (højst 3), bygget på hovedets målte omrids i udskæringsmasken i hvert billede. Visions ansigtsvinkler (drej, nik, hældning) former kun huen. Størrelsen følger hovedets bredde. `perf:`-loggen viser tiden, `hue:`-loggen målingerne. Test uden kamera: `--nissehue-test=MAPPE` simulerer syv hovedformer og fire kameraopstillinger (`hue-NN.png` og tal), `--nissehue-test=MAPPE,BILLEDE` sætter huen på ansigtet i et billede. Se `docs/nissehue-overlevering.md`.
-- **Fejlsøgning af kameraets hue, skæg og dragt:** start appen med `open -a /Applications/JuleHygge.app --args --kamera-debug=MAPPE`. Hvert 3. sekund gemmes det færdige billede med målepunkter (`billede-NNN.png`), kameraets rå billede (`raa-NNN.jpg`) og målingerne (`log.txt`). `build/JuleHygge.app/Contents/MacOS/JuleHygge --kamera-replay=MAPPE` kører det hele igen på de rå billeder uden kamera og skriver `ud-NNN.png`. Uden parameteren gemmes intet.
+- **Fejlsøgning af kameraets hue, skæg og dragt:** start appen med `open -a /Applications/JuleHygge.app --args --kamera-debug=MAPPE`. Hvert 3. sekund gemmes det færdige billede med målepunkter (`billede-NNN.png`), kameraets rå billede (`raa-NNN.jpg`) og målingerne (`log.txt`). `build/JuleHygge.app/Contents/MacOS/JuleHygge --kamera-replay=MAPPE` kører det hele igen på de rå billeder uden kamera og skriver `ud-NNN.png` (og tøjmodellens tid pr. billede). Med `HUE_EFTERAAR=1` afspilles efterårets sydvest og regnfrakke. Uden parameteren gemmes intet. `swift tools/parts-probe.swift MODEL.mlmodelc BILLEDMAPPE UDMAPPE` viser modellens opdeling alene, med en farve pr. klasse.
 - **Send julemanden/sneploven ind i kameraet** (menuen): sender figuren kun ind i kamerabilledet, så den ses bag dig i mødet. Menupunkterne virker kun, mens kameraet er i brug. Imens kører scenen med 30 billeder/s (ellers 20). Når skærmene holder pause, går julemandens automatiske ture også ind i kameraet.
 - `--kamera-scene-test=MAPPE` gemmer kamerabaggrunden som PNG uden kamera (sender julemand og sneplov ind efter 1 s).
 
@@ -70,7 +93,10 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 | `JULE_DEBUG=1` | debuglinjer i fejlloggen |
 | `JULE_LOG=<sti>` | fejlloggen skrives her i stedet for `~/Library/Logs/JuleHygge.log` (til test i projektet) |
 | `JULE_FPS=N` | fast billedfrekvens (til målinger) |
-| `JULE_DEEPSNOW=1` | starter med fuld snedrive (til test af sneploven) |
+| `JULE_DEEPSNOW=1` | starter med fuld snedrive, også på vinduerne (til test af sneploven og af nedfald) |
+| `JULE_NO_RAIN=1` | efterår: ingen regn i stormen (til måling) |
+| `HUE_EFTERAAR=1` | kameratestene (`--kamera-replay`, `--nissehue-test`) bruger efterårets sydvest og regnfrakke |
+| `HUE_INGEN_MODEL=1` | kameraet finder tøjet ved farve i stedet for med modellen (til sammenligning) |
 | `JULE_TICKS=1` | skriver faktiske billeder/s til stderr |
 | `--skærmskift-test` | genopbygger overlay-vinduerne hvert 0,3 s (stresstest af skærmskift) |
 | `--lyd-test=MAPPE` | gemmer de syntetiserede lyde som WAV-filer (så man kan lytte til dem) og afslutter |
@@ -93,7 +119,11 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/Overlay.swift` | Ét klik-igennem vindue pr. skærm: sne, sneplov, nisser, julelys, snemand |
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
-| `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov) og delt lydmotor |
+| `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger), gåseoptagelsen og delt lydmotor |
+| `Sources/JuleHygge/Theme.swift` | Temaet (jul eller efterår) og hvad der skifter med det |
+| `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
+| `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
+| `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |
 | `Sources/JuleHygge/Icon.swift` | Snefnug-ikonet (menulinje og app-ikon, tegnes i koden) |
 | `install.sh` / `measure.sh` | installation med start ved login / CPU-måling af app og WindowServer |
 | `Sources/JuleHygge/Util.swift` | Dato, log, dataklasser og GDI+-agtige tegnehjælpere |

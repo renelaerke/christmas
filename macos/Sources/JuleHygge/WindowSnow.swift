@@ -29,6 +29,8 @@ final class Ledge {
         self.id = id; self.rect = rect; self.settled = rect
         cols = Array(repeating: 0, count: Int(rect.width / Ledge.step) + 1)
         hang = cols
+        // JULE_DEEPSNOW=1 also starts every window with a full pile, to test what falls when it is minimized
+        if ProcessInfo.processInfo.environment["JULE_DEEPSNOW"] != nil { cols = cols.map { _ in 8 }; hasSnow = true }
         makeLobes()
     }
 
@@ -150,21 +152,30 @@ extension Controller {
 
     /// The window went away: its snow falls as clumps.
     private func dropSnow(from l: Ledge) {
+        // At most 700 clumps fall at a time. The room that is left is shared evenly along the whole edge:
+        // filling it from the left let a wide window (a maximized one needs well over 700) drop its snow from
+        // its left part only, as if the window were narrower. Measured with tools/window-probe.swift: the
+        // window's reported width is right until it leaves the list, so the width was never the problem.
+        var wanted = 0
+        for (i, h0) in l.cols.enumerated() where h0 + l.hang[i] > 0.5 { wanted += min(4, Int((h0 + l.hang[i]) / 2.5) + 1) }
+        let room = max(60, 700 - clumps.count)
+        let keep: F = wanted > room ? F(room) / F(wanted) : 1
+        let bigger: F = min(1.5, (1 / keep).squareRoot())   // fewer clumps carry a little more each
         for (i, h0) in l.cols.enumerated() where h0 + l.hang[i] > 0.5 {
             let h = h0 + l.hang[i]
             let n = min(4, Int(h / 2.5) + 1)
-            for _ in 0..<n where clumps.count < 700 {
+            for _ in 0..<n where R() < keep {
                 let c = SnowClump()
                 // straight down from where the window stood, only a little spread
                 c.x = l.settled.minX + F(i) * Ledge.step + R() * Ledge.step
                 c.y = l.settled.minY - R() * h
                 c.vx = (R() - 0.5) * 6
                 c.vy = R() * 20
-                c.r = 1.6 + R() * 1.8
+                c.r = (1.6 + R() * 1.8) * bigger
                 clumps.append(c)
             }
         }
-        ErrorLog.debug("window \(l.id) gone: \(clumps.count) clumps falling")
+        ErrorLog.debug("window \(l.id) gone: wanted \(wanted) clumps over \(l.cols.count) columns, kept \(Int(keep * 100)) %, \(clumps.count) falling")
     }
 
     /// When the snow hangs far down somewhere, or the pile is nearly full, there is about a 1-in-15 chance per

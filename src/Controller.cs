@@ -504,7 +504,8 @@ namespace JuleHygge
             if (SantaActive || layers.Count == 0) return;
             var target = layers[Rnd.Next(layers.Count)];
             var b = target.ScreenBounds;
-            SantaScale = target.S;
+            // Size and pace are two separate things, each drawn per trip: ±15 % in size. The speed never follows the size.
+            SantaScale = target.S * (0.85f + R() * 0.3f);
             SantaY0 = b.Y + b.Height * (0.12f + R() * 0.25f);
 
             // flyv over alle skærme der ligger i samme højde
@@ -524,7 +525,7 @@ namespace JuleHygge
             float pace = 0.9f + R() * 0.2f;
             jingleIndex = Rnd.Next(jingles.Length);
             jingles[jingleIndex].Rate = pace;
-            SantaSpeed = 230 * pace * SantaScale * (santaMaxX - santaMinX > b.Width * 1.5f ? 1.6f : 1f);
+            SantaSpeed = 230 * pace * target.S * (santaMaxX - santaMinX > b.Width * 1.5f ? 1.6f : 1f);
             SantaPhase = 0;
             SantaActive = true;
         }

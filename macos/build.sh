@@ -21,5 +21,11 @@ if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then echo "VERSION skal se 
 if [[ "$VERSION" != 0.0.0 ]]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"; fi
 "$BIN" --icon "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/JuleHygge.icns"
+# The one sound file: the recording of geese for the autumn theme (see assets/lyd/KILDER.md).
+cp ../assets/lyd/gaes-flok.wav "$APP/Contents/Resources/gaes-flok.wav"
+# The one model file: tells clothes from skin and hair for the camera costume (see assets/model/KILDER.md).
+xcrun coremlcompiler compile ../assets/model/selfie_multiclass_256x256.mlpackage "$APP/Contents/Resources" >/dev/null
+# The model's licence goes with it (Apache 2.0); the menu shows it (Licenses.swift).
+cp licenses/Apache-2.0.txt "$APP/Contents/Resources/Apache-2.0.txt"
 codesign --force --sign - "$APP" >/dev/null
 echo "Bygget: $PWD/$APP (version $VERSION)"

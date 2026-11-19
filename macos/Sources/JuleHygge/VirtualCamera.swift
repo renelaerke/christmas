@@ -185,7 +185,10 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         statSeg += CACurrentMediaTime() - ts; statSegN += 1
         guard let maskBuffer = segmentation.results?.first?.pixelBuffer else { return nil }
         // the nisse hat: find the faces in the same camera frame
-        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard, wantsSuit = c.cfg.cameraSuit
+        // autumn: a sou'wester and a yellow raincoat, and nothing in the beard's place
+        let autumn = c.cfg.theme == Theme.efteraar.rawValue
+        CameraCostume.autumn = autumn
+        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard && !autumn, wantsSuit = c.cfg.cameraSuit
         let wantsCostume = wantsBeard || wantsSuit   // both need the face landmarks
         let now = CACurrentMediaTime()
         let dt = CGFloat(min(0.2, now - lastFrameTime)); lastFrameTime = now

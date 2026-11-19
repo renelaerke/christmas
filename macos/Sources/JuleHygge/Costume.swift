@@ -58,6 +58,8 @@ final class NisseCostume {
         var edges: (CGFloat) -> (CGFloat, CGFloat) = { _ in (-.infinity, .infinity) }
     }
     private(set) var shapes: [Shape] = []
+    /// Tells the person's clothes from skin and hair (for the suit).
+    let parts = PersonParts()
 
     /// One Euro filters for one face: every landmark coordinate, the face size and the tilt. Steady while the
     /// head is still, quick when it moves.
@@ -214,10 +216,14 @@ final class NisseCostume {
         let extent = cam.extent
         // red cloth with the clothes' own light and shade
         let gray = cam.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.25, kCIInputBrightnessKey: 0.02])
+        // (in autumn the same cloth is a yellow raincoat)
+        let autumn = CameraCostume.autumn
         let red = gray.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: 0.9, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0.13, y: 0, z: 0, w: 0),
-            "inputBVector": CIVector(x: 0.15, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-            "inputBiasVector": CIVector(x: 0.33, y: 0.02, z: 0.04, w: 0)])
+            "inputRVector": CIVector(x: autumn ? 0.50 : 0.9, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: autumn ? 0.42 : 0.10, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: autumn ? 0.03 : 0.12, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            // (dark clothes came out olive with the red suit's small lift: the yellow needs a higher floor)
+            // (both a touch clearer 2026-11-19: yellow from mustard toward oilskin, red with less grey in it)
+            "inputBiasVector": autumn ? CIVector(x: 0.60, y: 0.47, z: 0.0, w: 0) : CIVector(x: 0.38, y: 0.01, z: 0.03, w: 0)])
         // where: the person, not the head, and only the clothes
         // The cut-out fades the person out over a few pixels at the outline. The red must cover the clothes all the
         // way through that fade (what lies outside is cut away anyway); fading the red with the same mask left a
@@ -226,6 +232,15 @@ final class NisseCostume {
             "inputRVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 6, y: 0, z: 0, w: 0),
             "inputBVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
             .applyingFilter("CIColorClamp")
+        // The clothes, from the parts model when it is there (see PersonParts): it knows clothes from skin and hair
+        // by what they are, not by their colour, so neck, hands, hair and beard stay as they are in any light and
+        // whatever the clothes look like.
+        if let cloth = parts.clothes(cam: cam) {
+            let body = person.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: cloth])
+            return red.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: cam, kCIInputMaskImageKey: body]).cropped(to: extent)
+        }
+        // Without the model (before macOS 15, or while it loads) the clothes are found by colour, which is less
+        // sure: skin in shade and clothes in warm light look alike, and a jacket in several colours stops it.
         // everything but the head: a soft oval around each face and its hair (turning and tilting with the
         // head) is left out, so the red flows into all the clothes, up the neck of a hoodie too
         var notHead: CIImage?
@@ -243,7 +258,9 @@ final class NisseCostume {
         // hands stay as they are (a hue-based skin rule), and the neck is found by its contrast with the clothes
         // (see neckMask) and left free, however far down it shows and whatever the light
         var free = cam.applyingFilter("CIColorCubeWithColorSpace", parameters: [
-            "inputCubeDimension": Self.cubeSize, "inputCubeData": Self.notSkinCube, "inputColorSpace": CGColorSpace(name: CGColorSpace.sRGB)!])
+            "inputCubeDimension": Self.cubeSize, "inputCubeData": notSkinCube(cam: cam), "inputColorSpace": CGColorSpace(name: CGColorSpace.sRGB)!])
+        // HUE_INGEN_HUDREGEL=1 (replay only) leaves the skin rule out, to see what it takes away
+        if ProcessInfo.processInfo.environment["HUE_INGEN_HUDREGEL"] != nil { free = CIImage(color: CIColor(red: 1, green: 1, blue: 1)).cropped(to: extent) }
         let black = CIImage(color: CIColor(red: 0, green: 0, blue: 0)).cropped(to: extent)
         for (i, s) in shapes.enumerated() {
             guard let neck = neckMask(s, cam: cam, slot: i) else { continue }
@@ -483,8 +500,11 @@ final class NisseCostume {
     // ------------------------------------------------------------------ skin
 
     /// Colour cube: 1 for everything that is not skin-coloured, 0 for skin, soft in between. Skin is judged on
-    /// its hue (YCbCr chroma: Cb 80–125, Cr 139–173), not its brightness; grey (Cr ≈ 128) stays clothes.
-    private static let notSkinCube: Data = {
+    /// its hue (YCbCr chroma), not its brightness. With no measured skin tone the range is everything that could
+    /// be skin (Cb 80–125, Cr 139–173); grey (Cr ≈ 128) stays clothes.
+    private static let notSkinCube: Data = makeNotSkinCube(cb: 80...125, cr: 139...173)
+
+    private static func makeNotSkinCube(cb cbRange: ClosedRange<Float>, cr crRange: ClosedRange<Float>) -> Data {
         let n = cubeSize
         func ramp(_ v: Float, _ lo: Float, _ hi: Float, _ soft: Float) -> Float {
             min(max((v - (lo - soft)) / soft, 0), 1) * min(max(((hi + soft) - v) / soft, 0), 1)
@@ -495,13 +515,34 @@ final class NisseCostume {
             let y = 0.299 * R + 0.587 * G + 0.114 * B
             let cb = 128 - 0.168736 * R - 0.331264 * G + 0.5 * B
             let cr = 128 + 0.5 * R - 0.418688 * G - 0.081312 * B
-            let skin = ramp(cb, 80, 125, 6) * ramp(cr, 139, 173, 6) * min(max((y - 25) / 20, 0), 1)
+            let skin = ramp(cb, cbRange.lowerBound, cbRange.upperBound, 6) * ramp(cr, crRange.lowerBound, crRange.upperBound, 6) * min(max((y - 25) / 20, 0), 1)
             let v = 1 - skin
             let i = ((b * n + g) * n + r) * 4
             data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 1
         } } }
         return data.withUnsafeBufferPointer { Data(buffer: $0) }
-    }()
+    }
+
+    /// The skin rule for this picture: skin is what has the hue of the cheeks of the people in it, measured now
+    /// (and steadied over the last frames), not everything that could be anyone's skin. The wide range took
+    /// clothes for skin: a grey sweater in warm lamp light fell inside it in patches that changed from frame to
+    /// frame, so the suit flickered and had holes on the shoulders (live 2026-11-18).
+    private var skinTone: (cb: Float, cr: Float)?
+    private var skinCube: (cb: Float, cr: Float, data: Data)?
+    private func notSkinCube(cam: CIImage) -> Data {
+        let tones = shapes.compactMap { cheekTone($0, cam: cam) }
+        guard !tones.isEmpty else { return skinCube?.data ?? Self.notSkinCube }
+        let cb = tones.map(\.cb).reduce(0, +) / Float(tones.count), cr = tones.map(\.cr).reduce(0, +) / Float(tones.count)
+        var t: (cb: Float, cr: Float) = (cb, cr)
+        if let s = skinTone { t = (s.cb + (cb - s.cb) * 0.1, s.cr + (cr - s.cr) * 0.1) }
+        skinTone = t
+        if let c = skinCube, abs(c.cb - t.cb) < 1.5, abs(c.cr - t.cr) < 1.5 { return c.data }
+        // hands and neck differ a little from the cheeks; several people in the picture share one range
+        let spread: Float = tones.count > 1 ? 14 : 9
+        let data = Self.makeNotSkinCube(cb: (t.cb - spread)...(t.cb + spread), cr: (t.cr - spread)...(t.cr + spread))
+        skinCube = (t.cb, t.cr, data)
+        return data
+    }
 
     // ------------------------------------------------------------------ beard
 

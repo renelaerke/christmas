@@ -295,25 +295,40 @@ impl WindowSnow {
     }
 
     /// The window went away: its snow falls as clumps, straight down from where the window stood.
+    ///
+    /// At most 700 clumps fall at a time. The room that is left is shared evenly along the whole edge: filling it
+    /// from the left let a wide window (a maximized one needs well over 700) drop its snow from its left part only,
+    /// as if the window were narrower (as `DropSnow` in `src/WindowSnow.cs` and `dropSnow` in `WindowSnow.swift`).
     fn drop_snow(&mut self, l: &Ledge) {
         let u = self.u;
+        let count = |h: f32| ((h / (2.5 * u)) as usize + 1).min(4);
+        let mut wanted = 0usize;
+        for i in 0..l.cols.len() {
+            let h = l.cols[i] + l.hang[i];
+            if h > 0.5 * u {
+                wanted += count(h);
+            }
+        }
+        let room = 700usize.saturating_sub(self.clumps.len()).max(60);
+        let keep = if wanted > room { room as f32 / wanted as f32 } else { 1.0 };
+        // fewer clumps carry a little more each
+        let bigger = (1.0 / keep).sqrt().min(1.5);
         for i in 0..l.cols.len() {
             let h = l.cols[i] + l.hang[i];
             if h <= 0.5 * u {
                 continue;
             }
-            let n = ((h / (2.5 * u)) as usize + 1).min(4);
-            for _ in 0..n {
-                if self.clumps.len() >= 700 {
-                    break;
-                }
+            for _ in 0..count(h) {
                 let r = &mut self.rng;
+                if r.f() >= keep {
+                    continue;
+                }
                 self.clumps.push(Clump {
                     x: l.settled.x + i as f32 * l.step + r.f() * l.step,
                     y: l.settled.y - r.f() * h,
                     vx: (r.f() - 0.5) * 6.0 * u,
                     vy: r.f() * 20.0 * u,
-                    r: 1.6 + r.f() * 1.8,
+                    r: (1.6 + r.f() * 1.8) * bigger,
                     dead: false,
                     bulk: true,
                 });
@@ -550,6 +565,23 @@ mod tests {
             ws.update(0.05, false, false, 0.0, 1080.0);
         }
         assert!(ws.clumps.is_empty() && !ws.busy());
+    }
+
+    #[test]
+    fn a_wide_window_drops_its_snow_along_its_whole_width() {
+        let mut ws = WindowSnow::new(1.0, 5);
+        let info =
+            WinInfo { id: 3, rect: FRect { x: 0.0, y: 300.0, w: 3600.0, h: 400.0 }, visible: vec![(0.0, 3600.0)] };
+        ws.update_ledges(vec![info]);
+        // a full edge: 901 columns that each want 4 clumps, far more than the 700 there is room for
+        ws.ledges[0].cols.fill(8.0);
+        ws.ledges[0].has_snow = true;
+        ws.update_ledges(vec![]);
+        let n = ws.clumps.len();
+        assert!(n > 500 && n < 900, "{n} clumps");
+        let left = ws.clumps.iter().filter(|c| c.x < 1200.0).count();
+        let right = ws.clumps.iter().filter(|c| c.x > 2400.0).count();
+        assert!(left > n / 5 && right > n / 5, "left {left}, right {right} of {n}");
     }
 
     #[test]
