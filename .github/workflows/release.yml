@@ -1,10 +1,10 @@
 # "Make release" button (Actions tab > Make release > Run workflow). Finds the next version from the newest
 # vX.Y.Z tag (patch, minor or major), creates a draft release on the current main, builds and attaches the
-# Windows exe and the macOS zip with that version, and then publishes the release. The apps' self-update only
-# looks at published releases, so nobody sees a release before both files are on it. If a build fails, the
-# draft stays behind (delete it under Releases) and nothing is published.
+# Windows exe, the macOS zip and the Linux tarball with that version, and then publishes the release. The apps'
+# self-update only looks at published releases, so nobody sees a release before all three files are on it. If a
+# build fails, the draft stays behind (delete it under Releases) and nothing is published.
 #
-# A release made with GITHUB_TOKEN does not start other workflows, so this one calls the two build
+# A release made with GITHUB_TOKEN does not start other workflows, so this one calls the three build
 # workflows itself (workflow_call) instead of relying on their "release published" trigger.
 name: Make release
 
@@ -65,10 +65,11 @@ jobs:
             echo "## Install"
             echo "- **Windows:** download \`JuleHygge.exe\`, put it in a folder of its own that you can write to (e.g. \`%LOCALAPPDATA%\\JuleHygge\`) and run it. SmartScreen may warn on first start (unsigned): More info, then Run anyway. Version 1.4.0 and later update themselves."
             echo "- **macOS 14+:** download \`JuleHygge-macOS.zip\`, unzip and move \`JuleHygge.app\` to Applications. First start: right-click, then Open."
+            echo "- **Linux (Ubuntu 22.04+, Linux Mint 21+, x86_64):** download \`JuleHygge-linux-x86_64.tar.gz\`, unpack it and run \`./install.sh\` (no root; add \`--autostart\` to start it at login). It updates itself."
             echo
           } > notes.md
           gh release create "$TAG" --draft --target "$GITHUB_SHA" \
-            --title "JuleHygge $TAG (Windows + macOS)" --notes-file notes.md --generate-notes
+            --title "JuleHygge $TAG (Windows + macOS + Linux)" --notes-file notes.md --generate-notes
 
   windows:
     needs: prepare
@@ -82,8 +83,14 @@ jobs:
     with:
       tag: ${{ needs.prepare.outputs.tag }}
 
+  linux:
+    needs: prepare
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
   publish:
-    needs: [prepare, windows, macos]
+    needs: [prepare, windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - name: Publish the release
