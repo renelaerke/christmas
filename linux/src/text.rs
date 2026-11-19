@@ -49,8 +49,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 
 // ---------------------------------------------------------------------- the autumn theme (menu "Tema")
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
-// Windows versions). Items whose element has no autumn form on Linux yet (the plow, the sounds, the elves) are
-// left out of the menu in autumn.
+// Windows versions). The sounds have no autumn form on Linux yet and are left out of the menu in autumn.
 pub const MENU_THEME: &str = "Tema";
 pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
 pub const MENU_LEAVES: &str = "Løvfald";
@@ -61,6 +60,10 @@ pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
 pub const MENU_GEESE: &str = "Trækgæs";
 pub const MENU_SEND_GEESE: &str = "Send gæssene afsted nu!";
 pub const MENU_GARLAND: &str = "Løvranke med lygter";
+pub const MENU_LEAF_COLLECTOR: &str = "Løvsuger rydder panelet";
+pub const MENU_SEND_LEAF_COLLECTOR: &str = "Send løvsugeren ud nu!";
+pub const MENU_ANIMALS: &str = "Pindsvin og egern";
+pub const MENU_ANIMAL_COUNT: &str = "Antal dyr pr. skærm";
 pub const NOTICE_SCARECROW_TITLE: &str = "Høstakken vokser!";
 
 pub fn menu_scarecrow(stage: i32, max: i32) -> String {

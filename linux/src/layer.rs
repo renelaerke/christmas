@@ -513,7 +513,7 @@ impl Layer {
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
         self.draw_santa_and_sparks(st);
-        self.draw_elves();
+        self.draw_elves(st.autumn);
         self.draw_plow(st);
         self.draw_snow(st);
         self.canvas.surface.flush();

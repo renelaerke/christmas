@@ -348,13 +348,13 @@ impl Layer {
         crate::log::debug(&format!("elves met: gift {}", if swapped { "swapped" } else { "handed over" }));
     }
 
-    pub(super) fn draw_elves(&mut self) {
+    pub(super) fn draw_elves(&mut self, autumn: bool) {
         for i in 0..self.elves.len() {
-            self.draw_elf(i);
+            self.draw_elf(i, autumn);
         }
     }
 
-    fn draw_elf(&mut self, i: usize) {
+    fn draw_elf(&mut self, i: usize, autumn: bool) {
         let e = &self.elves[i];
         let sc = self.s * e.size;
         let gy = self.ground_y - heap_at(&self.heap, e.x) + 2.0 * self.s;
@@ -366,6 +366,11 @@ impl Layer {
         let saved = cr.matrix();
         cr.translate(ex as f64, gy as f64);
         cr.scale((dir * sc) as f64, sc as f64);
+        if autumn {
+            animal(cr, e);
+            cr.set_matrix(saved);
+            return;
+        }
 
         let walking = e.state == ElfState::Walk;
         let p = e.walk_phase as f64;
@@ -435,6 +440,147 @@ impl Layer {
         line(cr, rgb(150, 15, 25), 2.0, LineCap::Butt, -7.5, -39.5, 8.0, -39.5);
         fill_ellipse(cr, WHITE, tip_x - 3.0, tip_y - 3.0, 6.0, 6.0);
         cr.set_matrix(saved);
+    }
+}
+
+/// The autumn theme's walkers (`DrawAnimal` on Windows). They are elves in everything but looks: they walk, stop,
+/// wave, cross to the next screen and meet to hand over what they carry. A hedgehog carries an apple on its spines,
+/// a squirrel an acorn in its paws. Which animal a walker is follows its clothes, so it stays the same animal.
+/// Drawn in the elf's frame: feet at (0, 0), y up is negative, facing right.
+fn animal(cr: &cairo::Context, e: &Elf) {
+    let pi = std::f64::consts::PI;
+    let walking = e.state == ElfState::Walk;
+    let waving = e.state == ElfState::Wave;
+    let p = if walking { e.walk_phase as f64 } else { 0.0 };
+    let stand_phase = if e.state == ElfState::Stand { e.t as f64 * 1.5 } else { 0.0 };
+    let wave_phase = if waving { e.t as f64 * 11.0 } else { 0.0 };
+    let dark = rgb(52, 36, 26);
+    let round = |col: Argb, width: f64, x1: f64, y1: f64, x2: f64, y2: f64| {
+        line(cr, col, width, LineCap::Round, x1, y1, x2, y2);
+    };
+    // a filled shape of curves: the start point, then two control points and the end per curve
+    let fill_curves = |col: Argb, start: (f64, f64), xy: &[f64]| {
+        cr.new_path();
+        cr.move_to(start.0, start.1);
+        for c in xy.chunks_exact(6) {
+            cr.curve_to(c[0], c[1], c[2], c[3], c[4], c[5]);
+        }
+        cr.close_path();
+        set(cr, col);
+        let _ = cr.fill();
+    };
+    fill_ellipse(cr, (50, 60, 40, 20), -13.0, -2.0, 26.0, 4.0);
+    let carrying = e.carries_gift && !waving;
+
+    if TUNICS.iter().position(|t| *t == e.tunic).unwrap_or(0) % 2 == 0 {
+        // ---- hedgehog
+        let (spine, spine_dark, fur) = (rgb(104, 74, 50), rgb(70, 48, 32), rgb(216, 182, 142));
+        let bob = if walking { -p.sin().abs() } else { 0.0 };
+        // sniffing the air when it "waves"
+        let sniff = if waving { -4.0 - wave_phase.sin() * 2.0 } else { stand_phase.sin() * 0.6 };
+        for (fx, phase) in [(-10.0, 0.0), (-4.0, pi), (5.0, pi), (11.0, 0.0)] {
+            let to = fx + if walking { (p + phase).sin() * 3.0 } else { 0.0 };
+            round(spine_dark, 3.6, fx, -5.0 + bob, to, 0.0);
+        }
+        cr.translate(0.0, bob);
+        // the face: a tan cone ending in the nose
+        fill_curves(
+            fur,
+            (4.0, -22.0),
+            &[14.0, -22.0, 20.0, -14.0, 25.0, -7.0 + sniff, 22.0, -3.0, 14.0, -2.0, 4.0, -2.0],
+        );
+        // the spiny back
+        fill_curves(
+            spine,
+            (-19.0, -2.0),
+            &[-22.0, -22.0, -6.0, -29.0, 6.0, -24.0, 12.0, -20.0, 12.0, -8.0, 8.0, -2.0],
+        );
+        for i in 0..10 {
+            let a = pi * (1.02 - 0.84 * i as f64 / 9.0);
+            let (bx, by) = (-5.0 + a.cos() * 15.0, -11.0 - a.sin() * 15.0);
+            round(spine_dark, 1.8, bx, by, bx + a.cos() * 6.0, by - a.sin() * 6.0);
+        }
+        for i in 0..6 {
+            let a = pi * (0.9 - 0.7 * i as f64 / 5.0);
+            let (bx, by) = (-5.0 + a.cos() * 8.0, -9.0 - a.sin() * 8.0);
+            round(spine_dark, 1.4, bx, by, bx + a.cos() * 5.0, by - a.sin() * 5.0);
+        }
+        fill_ellipse(cr, spine, 6.0, -22.0, 6.0, 6.0); // ear
+        fill_ellipse(cr, dark, 14.0, -15.0 + sniff * 0.4, 3.2, 3.2); // eye
+        fill_ellipse(cr, dark, 22.5, -9.5 + sniff, 4.5, 4.5); // nose
+        if carrying {
+            // an apple stuck on the spines
+            let apples = [rgb(206, 48, 44), rgb(196, 176, 52), rgb(222, 120, 40)];
+            let which = GIFTS.iter().position(|g| *g == e.gift).unwrap_or(0) % 3;
+            fill_ellipse(cr, apples[which], -11.0, -41.0, 13.0, 12.0);
+            round(spine_dark, 1.6, -4.5, -41.0, -3.5, -45.0);
+            fill_ellipse(cr, rgb(88, 150, 60), -3.5, -47.0, 6.0, 3.5);
+            fill_ellipse(cr, (120, 255, 255, 255), -8.5, -39.0, 3.0, 3.0);
+        }
+    } else {
+        // ---- squirrel
+        let (rust, rust_dark, cream) = (rgb(192, 94, 46), rgb(150, 66, 30), rgb(242, 222, 190));
+        let bob = if walking { -p.sin().abs() * 3.0 } else { 0.0 };
+        let flick = if walking {
+            (p * 0.5).sin() * 2.0
+        } else {
+            stand_phase.sin() * 1.5 + if waving { wave_phase.sin() * 3.0 } else { 0.0 }
+        };
+        cr.translate(0.0, bob);
+        // the bushy tail, curling up behind the back
+        fill_curves(
+            rust,
+            (-7.0, -5.0),
+            &[
+                -31.0,
+                -6.0,
+                -33.0 + flick,
+                -38.0,
+                -16.0 + flick,
+                -47.0,
+                -7.0 + flick,
+                -51.0,
+                -1.0 + flick,
+                -41.0,
+                -8.0,
+                -35.0,
+                -17.0,
+                -28.0,
+                -13.0,
+                -15.0,
+                -5.0,
+                -9.0,
+            ],
+        );
+        round(rust_dark, 1.4, -18.0 + flick * 0.6, -40.0, -22.0, -20.0);
+        // hind leg and foot
+        let step = if walking { p.sin() * 3.0 } else { 0.0 };
+        fill_ellipse(cr, rust_dark, -7.0, -11.0, 15.0, 10.0);
+        round(rust_dark, 4.0, 1.0, -3.0, 8.0 + step, -1.0);
+        // body and belly
+        fill_ellipse(cr, rust, -9.0, -30.0, 17.0, 27.0);
+        fill_ellipse(cr, cream, -1.0, -25.0, 8.0, 19.0);
+        // head, ear, eye, nose
+        fill_ellipse(cr, rust, 0.0, -43.0, 16.0, 14.0);
+        fill_polygon(cr, rust_dark, &[(3.0, -41.0), (5.0, -51.0), (10.0, -42.0)]);
+        fill_ellipse(cr, cream, 9.0, -36.0, 7.0, 6.0);
+        fill_ellipse(cr, dark, 9.5, -39.0, 3.0, 3.0);
+        fill_ellipse(cr, dark, 15.0, -35.0, 2.6, 2.6);
+        // the front paw: holding the acorn, waving, or swinging
+        let (hand_x, hand_y) = if waving {
+            (11.0, -37.0 + wave_phase.sin() * 3.0)
+        } else if e.carries_gift {
+            (11.0, -24.0)
+        } else {
+            (9.0 + if walking { p.sin() * 2.0 } else { 0.0 }, -20.0)
+        };
+        if carrying {
+            let cup = rgb(104, 70, 34);
+            fill_ellipse(cr, rgb(176, 128, 66), 9.0, -27.0, 8.0, 10.0);
+            fill_ellipse(cr, cup, 8.5, -29.0, 9.0, 5.0);
+            round(cup, 1.4, 13.0, -29.0, 13.0, -31.5);
+        }
+        round(rust_dark, 3.4, 3.0, -25.0, hand_x, hand_y);
     }
 }
 

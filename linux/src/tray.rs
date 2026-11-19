@@ -135,9 +135,9 @@ impl ksni::Tray for AppTray {
             items.push(disabled(self.status.clone()));
             items.push(MenuItem::Separator);
         }
-        // The autumn theme: the calendar and the countdown belong to Christmas. The plow, the sounds and the
-        // elves have no autumn form on Linux yet: they are left out of the menu in autumn (and off on the screen,
-        // see the controller), never shown in their Christmas form.
+        // The autumn theme: the calendar and the countdown belong to Christmas. The sounds have no autumn form on
+        // Linux yet: they are left out of the menu in autumn (and silent, see the controller), never played in
+        // their Christmas form.
         let autumn = c.theme == 1;
         if !autumn {
             items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
@@ -175,23 +175,33 @@ impl ksni::Tray for AppTray {
         items.push(item(send, || TrayMsg::Santa));
         items.push(MenuItem::Separator);
 
-        if !autumn {
-            items.push(toggle(text::MENU_PLOW.into(), c.plow, |s| &mut s.plow));
-            items.push(item(text::MENU_SEND_PLOW, || TrayMsg::Plow));
-            items.push(MenuItem::Separator);
+        let (plow, send) = if autumn {
+            (text::MENU_LEAF_COLLECTOR, text::MENU_SEND_LEAF_COLLECTOR)
+        } else {
+            (text::MENU_PLOW, text::MENU_SEND_PLOW)
+        };
+        items.push(toggle(plow.into(), c.plow, |s| &mut s.plow));
+        items.push(item(send, || TrayMsg::Plow));
+        items.push(MenuItem::Separator);
 
+        if !autumn {
             // sound is off by default; each source is switched on separately
             items.push(toggle(text::MENU_SOUND.into(), c.sound, |s| &mut s.sound));
             items.push(toggle(text::MENU_PLOW_SOUND.into(), c.plow_sound, |s| &mut s.plow_sound));
             items.push(choice(text::MENU_VOLUME, &text::VOLUMES, &[0, 1, 2], c.sound_level, |s| &mut s.sound_level));
             items.push(MenuItem::Separator);
-
-            items.push(toggle(text::MENU_ELVES.into(), c.elves, |s| &mut s.elves));
-            let counts: Vec<String> = ELF_COUNTS.iter().map(|n| n.to_string()).collect();
-            let counts: Vec<&str> = counts.iter().map(|s| s.as_str()).collect();
-            items.push(choice(text::MENU_ELF_COUNT, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
-            items.push(MenuItem::Separator);
         }
+
+        let (elves, elf_count) = if autumn {
+            (text::MENU_ANIMALS, text::MENU_ANIMAL_COUNT)
+        } else {
+            (text::MENU_ELVES, text::MENU_ELF_COUNT)
+        };
+        items.push(toggle(elves.into(), c.elves, |s| &mut s.elves));
+        let counts: Vec<String> = ELF_COUNTS.iter().map(|n| n.to_string()).collect();
+        let counts: Vec<&str> = counts.iter().map(|s| s.as_str()).collect();
+        items.push(choice(elf_count, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
+        items.push(MenuItem::Separator);
 
         let power: Vec<&str> = POWER_ORDER.iter().map(|&v| text::POWER_SAVE[v as usize]).collect();
         items.push(choice(text::MENU_POWER_SAVE, &power, &POWER_ORDER, c.power_save, |s| &mut s.power_save));
