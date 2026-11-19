@@ -300,7 +300,7 @@ impl Controller {
 
         let mut notice: Option<(&str, String, bool)> = None;
         if self.snowman_stage > self.cfg.snowman_seen_stage {
-            if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman {
+            if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman && self.cfg.theme != 1 {
                 let step = text::SNOWMAN_STEPS[self.snowman_stage as usize - 1];
                 notice = Some((text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(step), false));
                 self.celebrate_at = Some(self.time + 2.0);
@@ -345,19 +345,25 @@ impl Controller {
             TrayMsg::Quit => {}
             TrayMsg::CheckUpdate => self.check_for_update(true),
             TrayMsg::Calendar => self.show_calendar(),
-            TrayMsg::Santa => {
+            // (neither has an autumn form yet, and the autumn menu does not offer them)
+            TrayMsg::Santa if self.cfg.theme != 1 => {
                 let screens = self.screen_infos();
                 self.figures.launch_santa(&screens);
             }
-            TrayMsg::Plow => {
+            TrayMsg::Plow if self.cfg.theme != 1 => {
                 let screens = self.screen_infos();
                 self.figures.send_plow(&screens);
             }
+            TrayMsg::Santa | TrayMsg::Plow => {}
             TrayMsg::Settings(m) => {
                 let old = self.cfg.take_menu_fields(&m);
                 self.cfg.save();
                 crate::log::debug("settings changed in the menu");
-                if old.all_screens != self.cfg.all_screens {
+                if old.all_screens != self.cfg.all_screens || old.theme != self.cfg.theme {
+                    // (a new theme starts from empty screens: nothing of the old one is left falling or lying)
+                    if old.theme != self.cfg.theme {
+                        self.finish_runs();
+                    }
                     self.build_screens();
                 }
                 if old.power_save != self.cfg.power_save {
@@ -746,7 +752,10 @@ impl Controller {
             self.time += dt as f64;
             self.timers(dt);
             let screens = self.screen_infos();
-            self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
+            // The autumn theme: so far only the leaves and their piles have their autumn form here. What has none
+            // (Santa, the plow, the elves, the snowman, the lights) is off in autumn, never shown as at Christmas.
+            let autumn = self.cfg.theme == 1;
+            self.figures.update(dt, self.time, &screens, self.cfg.santa && !autumn, self.cfg.plow && !autumn);
 
             let amount = self.snow_amount();
             let level = if amount > 1.5 {
@@ -771,10 +780,10 @@ impl Controller {
                 fullscreen: self.fullscreen,
                 pause_fullscreen: self.cfg.pause_fullscreen,
                 power_save: self.power_save,
-                lights: self.cfg.lights,
-                elves: self.cfg.elves,
+                lights: self.cfg.lights && !autumn,
+                elves: self.cfg.elves && !autumn,
                 elf_count: self.cfg.elf_count,
-                snowman_stage: if self.cfg.snowman { self.snowman_stage } else { 0 },
+                snowman_stage: if self.cfg.snowman && !autumn { self.snowman_stage } else { 0 },
                 santa: self.figures.santa.as_ref(),
                 sparks: &self.figures.sparks,
                 plow: Some(&self.figures.plow),
@@ -782,6 +791,7 @@ impl Controller {
                 ledges: &self.window_snow.ledges,
                 clumps: &self.window_snow.clumps,
                 ledge_u: self.display.dpi_scale,
+                autumn,
             };
             let busy = Instant::now();
             frame_all(&mut self.display, &mut self.screens, dt, &st);

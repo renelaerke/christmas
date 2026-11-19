@@ -114,6 +114,15 @@ jobs:
           ls -l "$RUNNER_TEMP/shots"
           test -s "$RUNNER_TEMP/shots/screen0.png"
           cp "$RUNNER_TEMP/shots/screen0.png" build/
+          # the same in the autumn theme, with a full pile, kept as a second picture to look at
+          printf 'Theme=1\n' > "$RUNNER_TEMP/efteraar.ini"
+          set +e
+          JULE_SETTINGS="$RUNNER_TEMP/efteraar.ini" JULE_DEEPSNOW=1 xvfb-run -a -s "-screen 0 1920x1080x24" timeout 10 build/JuleHygge --snapshot="$RUNNER_TEMP/shots-efteraar,4"
+          code=$?
+          set -e
+          [ "$code" = 124 ] || exit 1
+          test -s "$RUNNER_TEMP/shots-efteraar/screen0.png"
+          cp "$RUNNER_TEMP/shots-efteraar/screen0.png" build/screen0-efteraar.png
 
       - name: Keep as workflow artifact
         uses: actions/upload-artifact@v7
@@ -122,6 +131,7 @@ jobs:
           path: |
             linux/build/JuleHygge-linux-x86_64.tar.gz
             linux/build/screen0.png
+            linux/build/screen0-efteraar.png
             linux/Cargo.lock
 
       - name: Attach to the release

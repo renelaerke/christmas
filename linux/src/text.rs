@@ -47,6 +47,23 @@ pub const MENU_DEV_VERSION: &str = "Udviklerversion (opdaterer ikke)";
 pub const MENU_AUTO_UPDATE: &str = "Opdatér automatisk";
 pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 
+// ---------------------------------------------------------------------- the autumn theme (menu "Tema")
+// The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
+// Windows versions). Items whose element has no autumn form on Linux yet are left out of the menu in autumn.
+pub const MENU_THEME: &str = "Tema";
+pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
+pub const MENU_LEAVES: &str = "Løvfald";
+pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
+pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
+pub const MENU_LEAF_GROUND: &str = "Blade på panelet";
+pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
+pub const FRAME_RATES_AUTUMN: [&str; 4] = [
+    "12 billeder/s - mindst strøm",
+    "20 billeder/s - normal",
+    "30 billeder/s - glattere løvfald",
+    "60 billeder/s - mest strøm",
+];
+
 pub fn menu_version(v: &str) -> String {
     format!("Version {v}")
 }

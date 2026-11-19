@@ -148,7 +148,7 @@ impl Layer {
             snowman::draw(cr, x as f64, y as f64, s as f64, stage);
         }
         if max >= 0.5 {
-            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64);
+            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.autumn);
         }
         cr.restore().ok();
         img.surface.flush();
@@ -182,8 +182,10 @@ impl Layer {
     }
 }
 
-/// The pile: a white bank with a faint blue outline along its top, as on Windows.
-fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64) {
+/// The pile: a white bank with a faint blue outline along its top, as on Windows. In the autumn theme it is a
+/// pile of leaves: so far only its dark ground colour, without an outline (the single leaves that lie over it in
+/// the macOS and Windows versions are not laid out here yet).
+fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64, autumn: bool) {
     let top = |cr: &Context| {
         for (i, h) in heap.iter().enumerate() {
             cr.line_to((i * HEAP_STEP) as f64, g - *h as f64);
@@ -194,6 +196,11 @@ fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64) {
     cr.line_to(w, g + 1.0);
     cr.line_to(0.0, g + 1.0);
     cr.close_path();
+    if autumn {
+        cr.set_source_rgba(122.0 / 255.0, 62.0 / 255.0, 24.0 / 255.0, 245.0 / 255.0);
+        let _ = cr.fill();
+        return;
+    }
     cr.set_source_rgba(248.0 / 255.0, 252.0 / 255.0, 1.0, 245.0 / 255.0);
     let _ = cr.fill();
     cr.new_path();
