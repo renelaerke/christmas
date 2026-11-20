@@ -16,6 +16,8 @@ namespace JuleHygge
         public int PowerSave = 2;          // 0 = off, 1 = always on, 2 = only on battery
         public int SoundLevel = 1;         // 0 = low, 1 = medium, 2 = high
         public int FrameRate = 20;         // frames/s while the scene is calm: 12, 20, 30 or 60 (same default as macOS)
+        public int Theme = 0;              // 0 = jul, 1 = efterår (as macOS; see Controller.Autumn)
+        public bool Kite = true;           // autumn's kite over the primary screen
         public bool AutoUpdate = true;     // install new GitHub releases by itself
         public string LastVersion = "";  // the version that ran last time, to announce an update
         public int SnowmanSeenStage = 0;
@@ -75,6 +77,8 @@ namespace JuleHygge
             s.SoundLevel = Math.Max(0, Math.Min(2, I(d, "SoundLevel", s.SoundLevel)));
             s.FrameRate = I(d, "FrameRate", s.FrameRate);
             if (Array.IndexOf(new[] { 12, 20, 30, 60 }, s.FrameRate) < 0) s.FrameRate = 20;
+            s.Theme = I(d, "Theme", 0) == 1 ? 1 : 0;
+            s.Kite = B(d, "Kite", s.Kite);
             s.SnowLevel = Math.Max(0, Math.Min(3, I(d, "SnowLevel", s.SnowLevel)));
             s.NisseCount = Math.Max(1, Math.Min(12, I(d, "NisseCount", s.NisseCount)));
             s.PowerSave = Math.Max(0, Math.Min(2, I(d, "PowerSave", s.PowerSave)));
@@ -108,7 +112,7 @@ namespace JuleHygge
                     "Snow=" + B(Snow), "SnowGround=" + B(SnowGround), "Santa=" + B(Santa),
                     "Nisser=" + B(Nisser), "Lights=" + B(Lights), "PauseFullscreen=" + B(PauseFullscreen),
                     "Snowman=" + B(Snowman), "AllScreens=" + B(AllScreens), "Plow=" + B(Plow), "WindowSnow=" + B(WindowSnow), "Sound=" + B(Sound), "PlowSound=" + B(PlowSound), "SoundLevel=" + SoundLevel,
-                    "SnowLevel=" + SnowLevel, "NisseCount=" + NisseCount, "PowerSave=" + PowerSave, "FrameRate=" + FrameRate, "AutoUpdate=" + B(AutoUpdate), "LastVersion=" + LastVersion,
+                    "SnowLevel=" + SnowLevel, "NisseCount=" + NisseCount, "PowerSave=" + PowerSave, "FrameRate=" + FrameRate, "Theme=" + Theme, "Kite=" + B(Kite), "AutoUpdate=" + B(AutoUpdate), "LastVersion=" + LastVersion,
                     "SnowmanSeenStage=" + SnowmanSeenStage, "CalendarYear=" + CalendarYear,
                     "FirstRun=" + Ds(FirstRun), "LastDoorNotice=" + Ds(LastDoorNotice),
                     "OpenedDoors=" + string.Join(",", OpenedDoors.OrderBy(x => x)) });

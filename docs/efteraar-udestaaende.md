@@ -23,12 +23,15 @@ Status pr. 2026-11-19. Temaet er bygget på macOS, element for element (se `docs
 
 ## Uden for selve temaet
 
-- **Windows.** Efterårstemaet findes kun i macOS-udgaven. To ting er dog lavet i `src/`: nedfaldet fra vinduer deler
-  nu pladsen jævnt (`WindowSnow.cs`), og julemandens størrelse varierer uafhængigt af farten (`Controller.cs`).
-  Ingen af dem er kompileret eller afprøvet på Windows.
-- **Linux.** Har heller ikke efterårstemaet. Nedfaldsrettelsen er lavet i `linux/src/window_snow.rs` med en test, men
-  er ikke kompileret (Rust er ikke installeret på Mac'en); originalens Linux-workflow bygger og tester den ved en
-  pull request. Julemandens størrelse varierer endnu ikke på Linux.
+- **Windows.** Temaet er skrevet til Windows 2026-11-19 (`src/LayerAutumn.cs`, `src/Layer.cs`, `src/Controller.cs`):
+  menuen "Tema" med skiftende tekster, løvfald og løvbunker, høstak med fugleskræmsel, gæs, løvsuger, pindsvin og
+  egern, løvranke med lygter, drage og regn. Det kompilerer (mono på Mac'en, C# 5), men er **aldrig set køre**, og
+  CPU-forbruget er ikke målt. Lydene er med: gæssenes to stemninger (optagelsen bygges ind i exe-filen af
+  `build.ps1`, ca. 2 MB) og løvsugerens sug; de er ikke hørt på Windows. Kameraet findes ikke på Windows.
+- **Linux.** Har efterårstemaet uden kameraet (2026-11-19): skrevet af efter Windows-koden uden Rust på Mac'en og
+  kun bygget og set som stillbilleder i CI (`screen0-efteraar.png`). Ikke set køre, ikke hørt, CPU ikke målt, og
+  bladene på vinduerne er aldrig tegnet (ingen vinduer under Xvfb). Nedfaldsrettelsen i `linux/src/window_snow.rs`
+  har en test. Julemandens størrelse varierer endnu ikke på Linux (gæssenes gør).
 - **Gåsene som syntetisk lyd.** Undersøgt 2026-11-19 med optagelsen som forlæg (`macos/tools/sound-probe.swift` måler,
   `macos/tools/goose-synth.swift` laver en prøve, der matcher optagelsens tonehøjde, overtoner og spektrum). REL
   valgte at beholde optagelsen og ændre reglen i `AGENTS.md` i stedet.

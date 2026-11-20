@@ -20,6 +20,7 @@ use std::f32::consts::{FRAC_PI_3, TAU};
 use cairo::{Context, Format, ImageSurface};
 
 pub(crate) mod draw;
+mod autumn;
 mod elves;
 mod ground;
 mod ledges;
@@ -74,6 +75,10 @@ pub struct SceneState<'a> {
     pub ledges: &'a [Ledge],
     pub clumps: &'a [Clump],
     pub ledge_u: f32,
+    /// The autumn theme (setting `Theme` = 1): leaves for snow.
+    pub autumn: bool,
+    /// Autumn's kite over the primary screen (setting `Kite`).
+    pub kite: bool,
 }
 
 /// Width in pixels of one column of the snow pile, as on Windows.
@@ -93,6 +98,150 @@ struct Flake {
     crystal: bool,
     /// About half the flakes can land on a window's top edge (the rest fall past to the ground).
     catches: bool,
+    /// Autumn theme: which leaf this is, its shape and colour (see `leaf_sprite`).
+    kind: usize,
+}
+
+// ---------------------------------------------------------------------- autumn: leaves
+// The autumn theme has leaves for snow, as the macOS and Windows versions: two kinds in five colours, a pointed
+// oval and, one in five, a maple. Each is drawn once as a small picture and then turned and scaled straight into
+// the pixel buffer (`blend_leaf`), as the flakes are (`blend_dot`).
+const LEAF_PX: usize = 64;
+/// Four ovals for every maple in each colour, so any pick gives 80 % ovals.
+const LEAF_KINDS: usize = 25;
+const LEAF_COLOURS: [draw::Argb; 5] =
+    [draw::rgb(217, 84, 30), draw::rgb(232, 160, 32), draw::rgb(168, 67, 26), draw::rgb(201, 162, 39), draw::rgb(138, 59, 18)];
+
+/// The picture for leaf `kind`: per colour an oval, then a maple.
+fn leaf_sprite(kind: usize) -> usize {
+    let k = kind % LEAF_KINDS;
+    (k / 5) * 2 + usize::from(k % 5 == 4)
+}
+
+/// The ten leaf pictures, premultiplied ARGB, `LEAF_PX` square, stalk at the left and tip at the right.
+fn make_leaf_sprites() -> Res<Vec<Vec<u32>>> {
+    use cairo::LineCap;
+    let m = LEAF_PX as f64 / 2.0;
+    // The maple has the eleven points of a sugar maple: the tip, and on each side the top lobe's side point, the
+    // side lobe's three points and the small bottom lobe. (Along the axis 0..1 from blade to tip, and out from the
+    // axis in units of the leaf's length.)
+    const HALF: [(f64, f64); 12] = [
+        (0.14, 0.0),
+        (0.17, 0.26),
+        (0.24, 0.22),
+        (0.30, 0.44),
+        (0.34, 0.40),
+        (0.46, 0.50),
+        (0.50, 0.42),
+        (0.60, 0.44),
+        (0.50, 0.17),
+        (0.74, 0.22),
+        (0.72, 0.12),
+        (1.0, 0.0),
+    ];
+    let mut maple: Vec<(f64, f64)> = HALF.iter().map(|&(a, b)| (12.0 + a * 51.0, m - b * 58.0)).collect();
+    let lower: Vec<(f64, f64)> = maple[1..maple.len() - 1].iter().rev().map(|&(x, y)| (x, 2.0 * m - y)).collect();
+    maple.extend(lower);
+    // The veins are faint and light. Dark ones made a small leaf read as a beetle seen from the side.
+    let vein: draw::Argb = (70, 90, 44, 14);
+    let side: draw::Argb = (50, 255, 236, 196);
+    let mut all = Vec::with_capacity(LEAF_COLOURS.len() * 2);
+    for colour in LEAF_COLOURS {
+        for shape in 0..2 {
+            let img = draw::Image::new(LEAF_PX as i32, LEAF_PX as i32)?;
+            let cr = &img.cr;
+            if shape == 0 {
+                // two curves through (34, 2) and (34, 62)
+                let (up, down) = (m + (2.0 - m) * 2.0 / 3.0, m + (62.0 - m) * 2.0 / 3.0);
+                cr.new_path();
+                cr.move_to(10.0, m);
+                cr.curve_to(26.0, up, 43.33, up, 62.0, m);
+                cr.curve_to(43.33, down, 26.0, down, 10.0, m);
+                cr.close_path();
+                draw::set(cr, colour);
+                let _ = cr.fill();
+                draw::line(cr, vein, 2.5, LineCap::Round, 1.0, m, 56.0, m);
+                draw::line(cr, side, 1.5, LineCap::Butt, 26.0, m, 36.0, m - 12.0);
+                draw::line(cr, side, 1.5, LineCap::Butt, 26.0, m, 36.0, m + 12.0);
+                draw::line(cr, side, 1.5, LineCap::Butt, 40.0, m, 48.0, m - 9.0);
+                draw::line(cr, side, 1.5, LineCap::Butt, 40.0, m, 48.0, m + 9.0);
+            } else {
+                draw::fill_polygon(cr, colour, &maple);
+                draw::line(cr, vein, 2.5, LineCap::Round, 1.0, m, 58.0, m);
+                draw::line(cr, side, 1.5, LineCap::Butt, 21.0, m, 35.0, 6.0);
+                draw::line(cr, side, 1.5, LineCap::Butt, 21.0, m, 35.0, 58.0);
+            }
+            img.surface.flush();
+            all.push(img.pixels.clone());
+        }
+    }
+    Ok(all)
+}
+
+/// Which leaf lies where in a pile is fixed by its place, so the pile does not flicker: 0..1 from two whole
+/// numbers (as `Chance` on Windows).
+fn chance(i: i32, j: i32) -> f32 {
+    let v = (i as f64 * 12.9898 + j as f64 * 78.233).sin() * 43758.5453;
+    (v - v.floor()) as f32
+}
+
+/// One leaf, turned by `rot` and `size` pixels across, blended into a premultiplied buffer of `bw` x `bh` pixels
+/// (the screen's, or a cached picture's). Each pixel is looked up in the leaf's picture, between its four nearest
+/// points.
+#[allow(clippy::too_many_arguments)]
+fn blend_leaf(buf: &mut [u32], bw: i32, bh: i32, sprite: &[u32], cx: f32, cy: f32, size: f32, rot: f32, alpha: i32) {
+    if size < 2.0 || sprite.len() != LEAF_PX * LEAF_PX || buf.len() < bw as usize * bh as usize {
+        return;
+    }
+    let reach = size * 0.7072;
+    let x0 = ((cx - reach) as i32).max(0);
+    let x1 = ((cx + reach) as i32 + 1).min(bw - 1);
+    let y0 = ((cy - reach) as i32).max(0);
+    let y1 = ((cy + reach) as i32 + 1).min(bh - 1);
+    if x0 > x1 || y0 > y1 {
+        return;
+    }
+    let n = LEAF_PX as f32;
+    let (k, mid) = (n / size, n * 0.5 - 0.5);
+    let (cs, sn) = (rot.cos() * k, rot.sin() * k);
+    let f = alpha.clamp(0, 255) as f32 / 255.0;
+    let w = bw as usize;
+    for y in y0..=y1 {
+        let dy = y as f32 + 0.5 - cy;
+        let row = &mut buf[y as usize * w..(y as usize + 1) * w];
+        for x in x0..=x1 {
+            let dx = x as f32 + 0.5 - cx;
+            // back into the leaf's picture
+            let (u, v) = (dx * cs + dy * sn + mid, dy * cs - dx * sn + mid);
+            if u < 0.0 || v < 0.0 || u >= n - 1.0 || v >= n - 1.0 {
+                continue;
+            }
+            let (iu, iv) = (u as usize, v as usize);
+            let i = iv * LEAF_PX + iu;
+            let (a, b, c, d) = (sprite[i], sprite[i + 1], sprite[i + LEAF_PX], sprite[i + LEAF_PX + 1]);
+            if (a | b | c | d) >> 24 == 0 {
+                continue;
+            }
+            let (fu, fv) = (u - iu as f32, v - iv as f32);
+            let (wa, wb, wc, wd) = ((1.0 - fu) * (1.0 - fv), fu * (1.0 - fv), (1.0 - fu) * fv, fu * fv);
+            let channel = |shift: u32| -> u32 {
+                let p = |q: u32| ((q >> shift) & 0xFF) as f32;
+                (((p(a) * wa + p(b) * wb + p(c) * wc + p(d) * wd) * f) as u32).min(255)
+            };
+            let sa = channel(24);
+            if sa == 0 {
+                continue;
+            }
+            let (sr, sg, sb) = (channel(16).min(sa), channel(8).min(sa), channel(0).min(sa));
+            let o = row[x as usize];
+            let inv = 255 - sa;
+            let da = sa + ((o >> 24) & 0xFF) * inv / 255;
+            let dr = sr + ((o >> 16) & 0xFF) * inv / 255;
+            let dg = sg + ((o >> 8) & 0xFF) * inv / 255;
+            let db = sb + (o & 0xFF) * inv / 255;
+            row[x as usize] = (da << 24) | (dr << 16) | (dg << 8) | db;
+        }
+    }
 }
 
 /// Memory that holds a screen's pixels: a plain `Vec<u32>`, or a shared memory segment the X server reads
@@ -179,6 +328,9 @@ pub struct Layer {
     lights_shown: bool,
     /// Where the snowman stands, in global coordinates (for the celebration sparks in phase 4).
     snowman_pos: Option<(f32, f32)>,
+    /// Autumn's kite and the rain of an autumn storm (`layer/autumn.rs`).
+    kite: Option<autumn::Kite>,
+    rain: Vec<autumn::RainDrop>,
     plow_bits: Vec<plow::PlowBit>,
     plow_smoke_timer: f32,
     plow_chunk_acc: f32,
@@ -192,6 +344,8 @@ pub struct Layer {
     /// scale), and clumps that reached this screen's pile; the controller applies them.
     ledge_hits: Vec<(usize, f32, f32)>,
     clumps_landed: Vec<usize>,
+    /// The leaves' pictures for the autumn theme (`make_leaf_sprites`).
+    leaf_sprites: Vec<Vec<u32>>,
 }
 
 impl Layer {
@@ -245,6 +399,8 @@ impl Layer {
             ledge_cache: Vec::new(),
             lights_shown: false,
             snowman_pos: None,
+            kite: None,
+            rain: Vec::new(),
             plow_bits: Vec::new(),
             plow_smoke_timer: 0.0,
             plow_chunk_acc: 0.0,
@@ -257,6 +413,7 @@ impl Layer {
             elf_change_timer: 90.0,
             ledge_hits: Vec::new(),
             clumps_landed: Vec::new(),
+            leaf_sprites: make_leaf_sprites()?,
         })
     }
 
@@ -349,6 +506,7 @@ impl Layer {
         self.update_snow(dt, st);
         self.update_plow(dt, st);
         self.update_elves(dt, st);
+        self.update_rain(dt, st);
 
         // Clear what was drawn last frame (Cairo must finish before the buffer is touched directly).
         self.canvas.surface.flush();
@@ -364,8 +522,10 @@ impl Layer {
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
         self.draw_santa_and_sparks(st);
-        self.draw_elves();
+        self.draw_kite(dt, st);
+        self.draw_elves(st.autumn);
         self.draw_plow(st);
+        self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
         self.canvas.surface.flush();
 
@@ -436,7 +596,9 @@ impl Layer {
         // between two levels while the weather changes
         let amount = st.snow_amount.clamp(0.0, 2.0);
         let lower = (amount as usize).min(1);
-        let wanted = BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32);
+        // (leaves are much bigger than flakes, so far fewer are needed)
+        let wanted = (BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32))
+            * if st.autumn { 0.2 } else { 1.0 };
         let logical_area = self.w as f32 * self.h as f32 / (self.dpi_scale * self.dpi_scale);
         // Snow covers the whole screen also in power-save mode; power-save only lowers the frame rate.
         let target = if st.snow_on {
@@ -609,7 +771,47 @@ impl Layer {
         let rot = self.rng.f() * TAU;
         let rot_spd = (self.rng.f() - 0.5) * 2.0;
         let catches = self.rng.f() < 0.5;
-        Flake { x, y, r, vy, phase, sway, sway_spd, rot, rot_spd, a, crystal, catches }
+        let mut f = Flake { x, y, r, vy, phase, sway, sway_spd, rot, rot_spd, a, crystal, catches, kind: 0 };
+        if st.autumn {
+            // a leaf: bigger, opaque, swaying wide and turning as it falls
+            f.r = (5.0 + depth * 7.0) * s;
+            f.vy = (30.0 + depth * 40.0 + self.rng.f() * 20.0) * s * if st.snow_level == 2 { 1.4 } else { 1.0 };
+            f.sway = (25.0 + self.rng.f() * 45.0) * s;
+            f.sway_spd = 0.6 + self.rng.f() * 1.0;
+            f.a = (215.0 + depth * 40.0) as i32;
+            f.crystal = false;
+            f.rot_spd = (self.rng.f() - 0.5) * 5.0;
+            f.kind = self.rng.range(0, LEAF_KINDS as i32) as usize;
+        }
+        f
+    }
+
+    /// The falling leaves, and the leaves of a window's pile that falls when the window goes away.
+    fn draw_leaves(&mut self, st: &SceneState) {
+        let (w, h) = (self.w, self.h);
+        for i in 0..self.flakes.len() {
+            let (x, y, size, rot, a, kind) = {
+                let f = &self.flakes[i];
+                (f.x, f.y, f.r * 2.6, f.rot, f.a, f.kind)
+            };
+            if y < -size {
+                continue;
+            }
+            self.mark(x - size * 0.71, y - size * 0.71, size * 1.42, size * 1.42);
+            let Some(sprite) = self.leaf_sprites.get(leaf_sprite(kind)) else { continue };
+            blend_leaf(&mut self.canvas.pixels[..], w, h, sprite, x, y, size, rot, a);
+        }
+        let (ox, oy) = (self.rect.x as f32, self.rect.y as f32);
+        for c in st.clumps {
+            let (x, y, size) = (c.x - ox, c.y - oy, c.r * 2.0 * self.s);
+            if c.dead || x < -10.0 || x > w as f32 + 10.0 || y < -10.0 || y > h as f32 + 10.0 {
+                continue;
+            }
+            self.mark(x - size * 0.71, y - size * 0.71, size * 1.42, size * 1.42);
+            let Some(sprite) = self.leaf_sprites.get(leaf_sprite(c.x.abs() as usize)) else { continue };
+            blend_leaf(&mut self.canvas.pixels[..], w, h, sprite, x, y, size, 0.0, 242);
+        }
+        self.canvas.surface.mark_dirty();
     }
 
     /// A soft white dot blended straight into the premultiplied buffer (much faster than Cairo for thousands
@@ -653,6 +855,10 @@ impl Layer {
     fn draw_snow(&mut self, st: &SceneState) {
         // Dots go straight into the buffer, so Cairo must finish the figures first.
         self.canvas.surface.flush();
+        if st.autumn {
+            self.draw_leaves(st);
+            return;
+        }
         for i in 0..self.flakes.len() {
             let (x, y, r, a, crystal) = {
                 let f = &self.flakes[i];
@@ -782,6 +988,8 @@ mod tests {
             ledges: &[],
             clumps: &[],
             ledge_u: 1.0,
+            autumn: false,
+            kite: false,
         }
     }
 
@@ -808,6 +1016,33 @@ mod tests {
                 "trail at {x},{y}"
             );
         }
+    }
+
+    #[test]
+    fn autumn_has_leaves_for_snow() {
+        let mut l = Layer::new(Rect::new(0, 0, 1200, 800), false, 1.0, 3).unwrap();
+        let st = SceneState { autumn: true, ..state() };
+        for _ in 0..40 {
+            l.frame(0.05, &st);
+        }
+        assert!(l.flake_count() > 0);
+        // snow is white; a leaf has far more red than blue
+        let leafy = |p: &u32| (p >> 24) > 0 && ((p >> 16) & 0xFF) > (p & 0xFF) + 20;
+        assert!(l.pixels().iter().any(leafy), "no leaves drawn");
+        // far fewer leaves than flakes
+        let mut snow = Layer::new(Rect::new(0, 0, 1200, 800), false, 1.0, 3).unwrap();
+        snow.frame(0.05, &state());
+        assert!(l.flake_count() * 3 < snow.flake_count());
+    }
+
+    #[test]
+    fn leaf_pictures_are_ovals_four_times_out_of_five() {
+        let sprites = make_leaf_sprites().unwrap();
+        assert_eq!(sprites.len(), 10);
+        assert!(sprites.iter().all(|s| s.len() == LEAF_PX * LEAF_PX && s.iter().any(|p| p >> 24 == 255)));
+        let maples = (0..LEAF_KINDS).filter(|k| leaf_sprite(*k) % 2 == 1).count();
+        assert_eq!(maples, 5);
+        assert!((0..1000).all(|k| leaf_sprite(k) < 10));
     }
 
     #[test]

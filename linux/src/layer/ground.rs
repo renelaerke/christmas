@@ -12,7 +12,7 @@
 use cairo::Context;
 
 use super::draw::Image;
-use super::{heap_at, snowman, Layer, SceneState, HEAP_STEP};
+use super::{blend_leaf, chance, heap_at, leaf_sprite, snowman, Layer, SceneState, HEAP_STEP};
 use crate::x11::{Rect, Res};
 
 pub(super) struct GroundImage {
@@ -102,7 +102,9 @@ impl Layer {
 
         // what to redraw: where the pile and the snowman were, and where they are now
         let pile_rect = (max >= 0.5).then(|| {
-            let top = (g - max - 4.0 * s).floor() as i32 - 2;
+            // (in autumn with room for the leaves lying over the pile's top)
+            let over = if st.autumn { 16.0 * s } else { 0.0 };
+            let top = (g - max - 4.0 * s - over).floor() as i32 - 2;
             Rect::new(0, top, w, (g + 4.0 * s).ceil() as i32 + 3 - top)
         });
         let snowman_rect = snowman.map(|(_, x, y)| {
@@ -145,13 +147,24 @@ impl Layer {
         cr.clip();
         cr.translate(0.0, -gi.y0 as f64);
         if let Some((stage, x, y)) = snowman {
-            snowman::draw(cr, x as f64, y as f64, s as f64, stage);
+            snowman::draw(cr, x as f64, y as f64, s as f64, stage, st.autumn);
         }
         if max >= 0.5 {
-            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64);
+            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.autumn);
         }
         cr.restore().ok();
         img.surface.flush();
+        // a leaf pile is made of leaves: they are laid over its dark fill, in the pile's strip only (it is always
+        // cleared and redrawn whole, so no leaf is laid twice)
+        if let Some(pr) = pile_rect.filter(|_| st.autumn).map(|r| clip_to(r, band)) {
+            let rows = (g.ceil() as i32 + 2).min(pr.bottom()) - pr.y;
+            if rows > 0 && pr.w == w {
+                let start = (pr.y - gi.y0) as usize * w as usize;
+                let buf = &mut img.pixels[start..start + rows as usize * w as usize];
+                lay_leaves(buf, w, rows, &self.heap, &self.leaf_sprites, g - pr.y as f32, s);
+                img.surface.mark_dirty();
+            }
+        }
 
         // copy the redrawn parts to the screen and send them
         self.canvas.surface.flush();
@@ -182,8 +195,32 @@ impl Layer {
     }
 }
 
-/// The pile: a white bank with a faint blue outline along its top, as on Windows.
-fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64) {
+/// The leaves of a leaf pile (`DrawLeafPile` on Windows): single leaves of every shape and colour over the pile's
+/// dark fill, in rows from its surface down, each a little off its place and turned its own way. Which leaf lies
+/// where is fixed by its place (`chance`), so the pile does not flicker. `buf` is the pile's strip of the ground
+/// image, `rows` high, with the ground line at row `gy`.
+fn lay_leaves(buf: &mut [u32], w: i32, rows: i32, heap: &[f32], sprites: &[Vec<u32>], gy: f32, s: f32) {
+    let (size, across, down) = (15.0 * s, 7.0 * s, 5.0 * s);
+    let (mut x, mut column) = (-size / 2.0, 0i32);
+    while x < w as f32 + size / 2.0 {
+        let h = heap_at(heap, x.clamp(0.0, w as f32 - 1.0));
+        if h > 1.5 {
+            for row in 0..=(h / down) as i32 {
+                let (a, b, d) = (chance(column, row), chance(row + 31, column), chance(column + 7, row + 3));
+                let y = gy - h + row as f32 * down + (a - 0.5) * 4.0 * s - size * 0.12;
+                if let Some(sprite) = sprites.get(leaf_sprite((a * 9973.0) as usize)) {
+                    blend_leaf(buf, w, rows, sprite, x + (b - 0.5) * across, y, size * (0.75 + 0.55 * b), d * std::f32::consts::TAU, 255);
+                }
+            }
+        }
+        x += across;
+        column += 1;
+    }
+}
+
+/// The pile: a white bank with a faint blue outline along its top, as on Windows. In the autumn theme it is a
+/// pile of leaves: here its dark fill, without an outline; the leaves are laid over it afterwards (`lay_leaves`).
+fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64, autumn: bool) {
     let top = |cr: &Context| {
         for (i, h) in heap.iter().enumerate() {
             cr.line_to((i * HEAP_STEP) as f64, g - *h as f64);
@@ -194,6 +231,11 @@ fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64) {
     cr.line_to(w, g + 1.0);
     cr.line_to(0.0, g + 1.0);
     cr.close_path();
+    if autumn {
+        cr.set_source_rgba(122.0 / 255.0, 62.0 / 255.0, 24.0 / 255.0, 245.0 / 255.0);
+        let _ = cr.fill();
+        return;
+    }
     cr.set_source_rgba(248.0 / 255.0, 252.0 / 255.0, 1.0, 245.0 / 255.0);
     let _ = cr.fill();
     cr.new_path();

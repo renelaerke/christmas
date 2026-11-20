@@ -10,8 +10,11 @@
 use cairo::{Context, LineCap};
 
 use super::draw::*;
-use super::{Layer, SceneState};
+use super::{blend_leaf, leaf_sprite, Layer, SceneState};
 use crate::x11::{Rect, Res};
+
+/// The lanterns' light in the autumn theme (`LanternColors` on Windows).
+const LANTERN_COLORS: [Argb; 3] = [rgb(255, 170, 50), rgb(255, 140, 40), rgb(255, 200, 90)];
 
 const BULB_COLORS: [Argb; 5] =
     [rgb(255, 60, 60), rgb(60, 220, 90), rgb(255, 200, 60), rgb(80, 150, 255), rgb(255, 110, 200)];
@@ -35,12 +38,14 @@ pub(super) struct LightsImage {
     pub(super) h: i32,
     w: i32,
     timer: f32,
+    /// The autumn theme's form: a vine of leaves with small lanterns (`MakeGarland` on Windows).
+    autumn: bool,
 }
 
 impl LightsImage {
-    fn new(w: i32, h: i32, s: f64) -> Res<LightsImage> {
+    fn new(w: i32, h: i32, s: f64, autumn: bool, leaves: &[Vec<u32>]) -> Res<LightsImage> {
         let (span, sag, top) = (230.0 * s, 22.0 * s, 1.0);
-        let wire = Image::new(w, h)?;
+        let mut wire = Image::new(w, h)?;
         let mut bulbs = Vec::new();
         let mut x0 = -span * 0.3;
         while x0 < w as f64 {
@@ -52,7 +57,11 @@ impl LightsImage {
                 .collect();
             wire.cr.new_path();
             curve_path(&wire.cr, &pts);
-            stroke(&wire.cr, (220, 25, 60, 35), 2.0 * s, LineCap::Butt);
+            if autumn {
+                stroke(&wire.cr, (235, 104, 68, 34), 2.0 * s, LineCap::Round);
+            } else {
+                stroke(&wire.cr, (220, 25, 60, 35), 2.0 * s, LineCap::Butt);
+            }
             for b in 0..PER_SPAN {
                 let u = (b as f64 + 0.5) / PER_SPAN as f64;
                 let (x, y) = (x0 + u * span, top + sag * (1.0 - (2.0 * u - 1.0) * (2.0 * u - 1.0)));
@@ -64,13 +73,52 @@ impl LightsImage {
                     (28.0 * s) as i32 + 3,
                     (29.0 * s) as i32 + 3,
                 );
-                bulbs.push(Bulb { x, y, color: BULB_COLORS[index % BULB_COLORS.len()], index, rect: r.clip(w, h) });
+                let color = if autumn {
+                    LANTERN_COLORS[index % LANTERN_COLORS.len()]
+                } else {
+                    BULB_COLORS[index % BULB_COLORS.len()]
+                };
+                bulbs.push(Bulb { x, y, color, index, rect: r.clip(w, h) });
             }
             x0 += span;
         }
         wire.surface.flush();
+        if autumn {
+            // leaves along the vine, each hanging by its stalk at its own angle (none where a lantern hangs)
+            let (sf, mut n) = (s as f32, 0usize);
+            let mut x0 = -span * 0.3;
+            while x0 < w as f64 {
+                for k in (0..12).filter(|k| k % 3 != 1) {
+                    let u = (k as f64 + 0.5) / 12.0;
+                    let size = (15.0 + ((n * 7) % 5) as f32 * 1.5) * sf;
+                    let rot = (std::f64::consts::FRAC_PI_2 + (n as f64 * 2.3).sin() * 0.8) as f32;
+                    let px = (x0 + u * span) as f32;
+                    let py = (top + sag * (1.0 - (2.0 * u - 1.0) * (2.0 * u - 1.0))) as f32;
+                    // the stalk (the left end of the leaf's picture) sits on the vine
+                    let reach = size / 2.0 - sf;
+                    if let Some(sprite) = leaves.get(leaf_sprite(n * 3)) {
+                        let (cx, cy) = (px + rot.cos() * reach, py + rot.sin() * reach);
+                        blend_leaf(&mut wire.pixels, w, h, sprite, cx, cy, size, rot, 255);
+                    }
+                    n += 1;
+                }
+                x0 += span;
+            }
+            wire.surface.mark_dirty();
+            // the lanterns: a hook, a roof, the unlit pane and a foot
+            let (frame, dim) = (rgb(52, 40, 30), rgb(120, 72, 22));
+            let cr = &wire.cr;
+            for b in &bulbs {
+                let (bx, by) = (b.x, b.y);
+                line(cr, frame, 1.2 * s, LineCap::Butt, bx, by, bx, by + 2.5 * s);
+                fill_rect(cr, frame, bx - 4.5 * s, by + 2.0 * s, 9.0 * s, 2.5 * s);
+                fill_rect(cr, dim, bx - 3.5 * s, by + 4.5 * s, 7.0 * s, 9.0 * s);
+                fill_rect(cr, frame, bx - 4.5 * s, by + 13.5 * s, 9.0 * s, 2.0 * s);
+            }
+            wire.surface.flush();
+        }
         let current = Image::new(w, h)?;
-        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0 };
+        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn };
         l.current.pixels.copy_from_slice(&l.wire.pixels);
         Ok(l)
     }
@@ -89,7 +137,11 @@ impl LightsImage {
         }
         cur.surface.mark_dirty();
         for b in &self.bulbs {
-            draw_bulb(&cur.cr, b, s, time);
+            if self.autumn {
+                draw_lantern(&cur.cr, b, s, time);
+            } else {
+                draw_bulb(&cur.cr, b, s, time);
+            }
         }
         cur.surface.flush();
     }
@@ -105,6 +157,16 @@ fn draw_bulb(cr: &Context, b: &Bulb, s: f64, time: f64) {
     let bulb = rgb((col.1 as f64 * k) as u8, (col.2 as f64 * k) as u8, (col.3 as f64 * k) as u8);
     fill_ellipse(cr, bulb, bx - bw / 2.0, by + 3.0 * s, bw, bh);
     fill_ellipse(cr, ((160.0 * br) as u8, 255, 255, 255), bx - bw / 4.0, by + 5.0 * s, bw / 3.0, bh / 3.0);
+}
+
+/// The lit pane of a small lantern with its flame, over the unlit lantern in the vine's image. The same slow
+/// twinkle as the bulbs.
+fn draw_lantern(cr: &Context, b: &Bulb, s: f64, time: f64) {
+    let (bx, by, col, idx) = (b.x, b.y, b.color, b.index);
+    let br = 0.55 + 0.45 * (time * (1.3 + ((idx * 37) % 10) as f64 * 0.12) + idx as f64 * 1.7).sin();
+    fill_ellipse(cr, ((70.0 * br) as u8, col.1, col.2, col.3), bx - 13.0 * s, by + s, 26.0 * s, 26.0 * s);
+    fill_rect(cr, ((255.0 * br) as u8, col.1, col.2, col.3), bx - 3.5 * s, by + 4.5 * s, 7.0 * s, 9.0 * s);
+    fill_ellipse(cr, ((230.0 * br) as u8, 255, 250, 215), bx - 1.5 * s, by + 7.5 * s, 3.0 * s, 5.0 * s);
 }
 
 impl Layer {
@@ -159,8 +221,8 @@ impl Layer {
             }
             return;
         }
-        if self.lights.as_ref().is_none_or(|l| l.h != lh) {
-            match LightsImage::new(self.w, lh, self.s as f64) {
+        if self.lights.as_ref().is_none_or(|l| l.h != lh || l.autumn != st.autumn) {
+            match LightsImage::new(self.w, lh, self.s as f64, st.autumn, &self.leaf_sprites) {
                 Ok(l) => self.lights = Some(l),
                 Err(e) => {
                     crate::log::error(&format!("lights: {e}"));

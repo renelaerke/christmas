@@ -80,6 +80,11 @@ pub struct Figures {
     pub santa_pace: f32,
     /// A new trip started since the last call to `take_new_trip` (the sound picks a tune for it).
     new_trip: bool,
+    /// The autumn theme (set by the controller): geese fly in Santa's place, at varying distance and with no
+    /// trail of sparks.
+    pub autumn: bool,
+    /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
+    pub flyer_depth: f32,
 }
 
 /// The screen directly to the left (dir < 0) or right (dir > 0) of screen `i`: edge to edge and overlapping
@@ -115,6 +120,8 @@ impl Figures {
             rng: Rng::new(seed),
             santa_pace: 1.0,
             new_trip: false,
+            autumn: false,
+            flyer_depth: 1.0,
         }
     }
 
@@ -153,7 +160,9 @@ impl Figures {
         }
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
         let b = target.rect;
-        let scale = target.s;
+        // the geese pass at very different distances (as `flyerDepth` on Windows)
+        self.flyer_depth = if self.autumn { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
+        let scale = target.s * self.flyer_depth;
         let y0 = b.y as f32 + b.h as f32 * (0.12 + self.rng.f() * 0.25);
         // fly over every screen at the same height
         let (mut min_x, mut max_x) = (b.x as f32, b.right() as f32);
@@ -188,7 +197,9 @@ impl Figures {
         };
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
-        self.spark_acc += dt * 45.0;
+        if !self.autumn {
+            self.spark_acc += dt * 45.0;
+        }
         let r = &mut self.rng;
         while self.spark_acc >= 1.0 {
             self.spark_acc -= 1.0;

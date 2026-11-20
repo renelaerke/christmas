@@ -36,6 +36,10 @@ pub struct Settings {
     pub sound_level: i32,
     /// Frames per second while the scene is calm: 12, 20, 30 or 60.
     pub frame_rate: i32,
+    /// 0 = jul, 1 = efterår (the autumn theme, as in the macOS and Windows versions). Key `Theme`.
+    pub theme: i32,
+    /// Autumn's kite over the primary screen. Key `Kite`.
+    pub kite: bool,
     pub auto_update: bool,
     /// The version that ran last time, to announce an update.
     pub last_version: String,
@@ -68,6 +72,8 @@ impl Default for Settings {
             power_save: 2,
             sound_level: 1,
             frame_rate: 20,
+            theme: 0,
+            kite: true,
             auto_update: true,
             last_version: String::new(),
             snowman_seen_stage: 0,
@@ -138,6 +144,8 @@ impl Settings {
             plow_sound: b("PlowSound", def.plow_sound),
             sound_level: i("SoundLevel", def.sound_level).clamp(0, 2),
             frame_rate,
+            theme: i32::from(i("Theme", def.theme) == 1),
+            kite: b("Kite", def.kite),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),
             elf_count: i("NisseCount", def.elf_count).clamp(1, 12),
             power_save: i("PowerSave", def.power_save).clamp(0, 2),
@@ -179,6 +187,8 @@ impl Settings {
             format!("NisseCount={}", self.elf_count),
             format!("PowerSave={}", self.power_save),
             format!("FrameRate={}", self.frame_rate),
+            format!("Theme={}", self.theme),
+            format!("Kite={}", b(self.kite)),
             format!("AutoUpdate={}", b(self.auto_update)),
             format!("LastVersion={}", self.last_version),
             format!("SnowmanSeenStage={}", self.snowman_seen_stage),
@@ -210,6 +220,8 @@ impl Settings {
         self.elf_count = m.elf_count;
         self.power_save = m.power_save;
         self.frame_rate = m.frame_rate;
+        self.theme = m.theme;
+        self.kite = m.kite;
         self.lights = m.lights;
         self.all_screens = m.all_screens;
         self.pause_fullscreen = m.pause_fullscreen;
@@ -253,6 +265,8 @@ mod tests {
         let s = Settings {
             snow_level: 2,
             frame_rate: 30,
+            theme: 1,
+            kite: false,
             sound: true,
             last_version: "1.5.0".into(),
             first_run: NaiveDate::from_ymd_opt(2026, 11, 20),

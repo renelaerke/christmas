@@ -135,45 +135,86 @@ impl ksni::Tray for AppTray {
             items.push(disabled(self.status.clone()));
             items.push(MenuItem::Separator);
         }
-        items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
-        items.push(disabled(self.countdown.clone()));
-        items.push(MenuItem::Separator);
+        // The autumn theme: the calendar and the countdown belong to Christmas and are left out of the menu in
+        // autumn; everything else has its autumn form and its autumn name.
+        let autumn = c.theme == 1;
+        if !autumn {
+            items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
+            items.push(disabled(self.countdown.clone()));
+            items.push(MenuItem::Separator);
+        }
 
-        items.push(toggle(text::MENU_SNOW.into(), c.snow, |s| &mut s.snow));
-        items.push(choice(text::MENU_SNOW_LEVEL, &text::SNOW_LEVELS, &[0, 1, 2, 3], c.snow_level, |s| {
-            &mut s.snow_level
-        }));
-        items.push(toggle(text::MENU_SNOW_GROUND.into(), c.snow_ground, |s| &mut s.snow_ground));
-        items.push(toggle(text::MENU_WINDOW_SNOW.into(), c.window_snow, |s| &mut s.window_snow));
-        let snowman = text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE);
+        items.push(choice(text::MENU_THEME, &text::THEMES, &[0, 1], c.theme, |s| &mut s.theme));
+        let snow = if autumn { text::MENU_LEAVES } else { text::MENU_SNOW };
+        items.push(toggle(snow.into(), c.snow, |s| &mut s.snow));
+        let (level, levels) = if autumn {
+            (text::MENU_LEAF_LEVEL, &text::LEAF_LEVELS)
+        } else {
+            (text::MENU_SNOW_LEVEL, &text::SNOW_LEVELS)
+        };
+        items.push(choice(level, levels, &[0, 1, 2, 3], c.snow_level, |s| &mut s.snow_level));
+        let ground = if autumn { text::MENU_LEAF_GROUND } else { text::MENU_SNOW_GROUND };
+        items.push(toggle(ground.into(), c.snow_ground, |s| &mut s.snow_ground));
+        let on_windows = if autumn { text::MENU_WINDOW_LEAVES } else { text::MENU_WINDOW_SNOW };
+        items.push(toggle(on_windows.into(), c.window_snow, |s| &mut s.window_snow));
+        let snowman = if autumn {
+            text::menu_scarecrow(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        } else {
+            text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        };
         items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
+        // (the kite only exists in autumn)
+        if autumn {
+            items.push(toggle(text::MENU_KITE.into(), c.kite, |s| &mut s.kite));
+        }
         items.push(MenuItem::Separator);
 
-        items.push(toggle(text::MENU_SANTA.into(), c.santa, |s| &mut s.santa));
-        items.push(item(text::MENU_SEND_SANTA, || TrayMsg::Santa));
+        let (santa, send) = if autumn {
+            (text::MENU_GEESE, text::MENU_SEND_GEESE)
+        } else {
+            (text::MENU_SANTA, text::MENU_SEND_SANTA)
+        };
+        items.push(toggle(santa.into(), c.santa, |s| &mut s.santa));
+        items.push(item(send, || TrayMsg::Santa));
         items.push(MenuItem::Separator);
 
-        items.push(toggle(text::MENU_PLOW.into(), c.plow, |s| &mut s.plow));
-        items.push(item(text::MENU_SEND_PLOW, || TrayMsg::Plow));
+        let (plow, send) = if autumn {
+            (text::MENU_LEAF_COLLECTOR, text::MENU_SEND_LEAF_COLLECTOR)
+        } else {
+            (text::MENU_PLOW, text::MENU_SEND_PLOW)
+        };
+        items.push(toggle(plow.into(), c.plow, |s| &mut s.plow));
+        items.push(item(send, || TrayMsg::Plow));
         items.push(MenuItem::Separator);
 
         // sound is off by default; each source is switched on separately
-        items.push(toggle(text::MENU_SOUND.into(), c.sound, |s| &mut s.sound));
-        items.push(toggle(text::MENU_PLOW_SOUND.into(), c.plow_sound, |s| &mut s.plow_sound));
+        let (sound, plow_sound) = if autumn {
+            (text::MENU_GOOSE_SOUND, text::MENU_LEAF_COLLECTOR_SOUND)
+        } else {
+            (text::MENU_SOUND, text::MENU_PLOW_SOUND)
+        };
+        items.push(toggle(sound.into(), c.sound, |s| &mut s.sound));
+        items.push(toggle(plow_sound.into(), c.plow_sound, |s| &mut s.plow_sound));
         items.push(choice(text::MENU_VOLUME, &text::VOLUMES, &[0, 1, 2], c.sound_level, |s| &mut s.sound_level));
         items.push(MenuItem::Separator);
 
-        items.push(toggle(text::MENU_ELVES.into(), c.elves, |s| &mut s.elves));
+        let (elves, elf_count) = if autumn {
+            (text::MENU_ANIMALS, text::MENU_ANIMAL_COUNT)
+        } else {
+            (text::MENU_ELVES, text::MENU_ELF_COUNT)
+        };
+        items.push(toggle(elves.into(), c.elves, |s| &mut s.elves));
         let counts: Vec<String> = ELF_COUNTS.iter().map(|n| n.to_string()).collect();
         let counts: Vec<&str> = counts.iter().map(|s| s.as_str()).collect();
-        items.push(choice(text::MENU_ELF_COUNT, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
+        items.push(choice(elf_count, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
         items.push(MenuItem::Separator);
 
         let power: Vec<&str> = POWER_ORDER.iter().map(|&v| text::POWER_SAVE[v as usize]).collect();
         items.push(choice(text::MENU_POWER_SAVE, &power, &POWER_ORDER, c.power_save, |s| &mut s.power_save));
-        items
-            .push(choice(text::MENU_FRAME_RATE, &text::FRAME_RATES, &FRAME_RATES, c.frame_rate, |s| &mut s.frame_rate));
-        items.push(toggle(text::MENU_LIGHTS.into(), c.lights, |s| &mut s.lights));
+        let rates = if autumn { &text::FRAME_RATES_AUTUMN } else { &text::FRAME_RATES };
+        items.push(choice(text::MENU_FRAME_RATE, rates, &FRAME_RATES, c.frame_rate, |s| &mut s.frame_rate));
+        let lights = if autumn { text::MENU_GARLAND } else { text::MENU_LIGHTS };
+        items.push(toggle(lights.into(), c.lights, |s| &mut s.lights));
         items.push(toggle(text::MENU_ALL_SCREENS.into(), c.all_screens, |s| &mut s.all_screens));
         items.push(toggle(text::MENU_PAUSE_FULLSCREEN.into(), c.pause_fullscreen, |s| &mut s.pause_fullscreen));
         items.push(

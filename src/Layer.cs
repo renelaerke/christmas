@@ -9,7 +9,7 @@ using System.Windows.Forms;
 namespace JuleHygge
 {
     // Ét gennemsigtigt, klik-igennem overlay-vindue for én skærm.
-    class Layer : Form
+    partial class Layer : Form
     {
         #region Win32
         const int WS_EX_LAYERED = 0x80000, WS_EX_TRANSPARENT = 0x20, WS_EX_TOOLWINDOW = 0x80,
@@ -85,6 +85,7 @@ namespace JuleHygge
         IntPtr ulwDst, ulwSize, ulwSrc, ulwBlend, ulwDirty;
 
         bool PS { get { return c.PowerSave; } }
+        bool NisserOn { get { return cfg.Nisser; } }
         int LightsHeight { get { return (int)(70 * S); } }
 
         static readonly Color SantaRed = Color.FromArgb(205, 25, 35), Gold = Color.FromArgb(235, 195, 70),
@@ -123,6 +124,8 @@ namespace JuleHygge
         {
             FreeSurface();
             if (lightsBmp != null) { lightsBmp.Dispose(); lightsBmp = null; }
+            if (pileBmp != null) { pileBmp.Dispose(); pileBmp = null; }
+            DisposeAutumn();
             foreach (var p in flakePens) p.Dispose();
             base.OnFormClosed(e);
         }
@@ -293,6 +296,7 @@ namespace JuleHygge
 
 
             UpdateSnow(dt);
+            UpdateRain(dt);
             UpdatePlow(dt);
             UpdateNisser(dt);
 
@@ -317,10 +321,12 @@ namespace JuleHygge
             DrawLedges();
             if (lightsDraw) DrawLightsStrip();
             DrawSantaAndSparks();
+            if (IsPrimary && cfg.Kite && c.Autumn) DrawKite(dt); else kiteSet = false;
             if (IsPrimary && cfg.Snowman) DrawSnowman(); else SnowmanPos = PointF.Empty;
             DrawGround();
             foreach (var n in nisser) DrawNisse(n);
             DrawPlow();
+            DrawRain();   // behind the leaves
             DrawSnow();
             PresentRegions(cleared, dirty, presentOnly);
 
@@ -337,6 +343,8 @@ namespace JuleHygge
             float amount = Math.Max(0f, Math.Min(2f, c.SnowAmount));
             int lower = Math.Min(1, (int)amount);
             float flakesWanted = baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - lower);
+            // (leaves are much bigger than flakes, so far fewer are needed)
+            if (c.Autumn) flakesWanted *= 0.2f;
             float logicalArea = W * (float)H / (dpiScale * dpiScale);
             // Snow covers the whole screen also in power-save mode (like macOS); power-save only lowers the frame rate.
             // SnowIntensity makes the amount drift slowly between ~60% and ~140% of the chosen level.
@@ -448,7 +456,275 @@ namespace JuleHygge
             f.Rot = Rnd() * 6.28f;
             f.RotSpd = (Rnd() - 0.5f) * 2f;
             f.Catches = Rnd() < 0.5f;
+            if (c.Autumn)
+            {
+                // a leaf: bigger, opaque, swaying wide and turning as it falls
+                f.R = (5 + depth * 7) * S;
+                f.Vy = (30 + depth * 40 + Rnd() * 20) * S * (c.EffectiveSnowLevel == 2 ? 1.4f : 1f);
+                f.Sway = (25 + Rnd() * 45) * S;
+                f.SwaySpd = 0.6f + Rnd() * 1.0f;
+                f.A = (int)(215 + depth * 40);
+                f.Crystal = false;
+                f.RotSpd = (Rnd() - 0.5f) * 5;
+                f.Kind = rnd.Next(LeafKinds);
+            }
             return f;
+        }
+
+        // ------------------------------------------------------------------ efterår: blade
+        // The autumn theme (Controller.Autumn) has leaves for snow, as the macOS version (Overlay.swift): two
+        // kinds in five colours, a pointed oval and, one in five, a maple. Each is drawn once as a small picture
+        // and then turned and scaled straight into the pixel buffer (BlendLeaf), as the flakes are (BlendDot).
+        static readonly Color[] LeafColours = {
+            Color.FromArgb(217, 84, 30), Color.FromArgb(232, 160, 32), Color.FromArgb(168, 67, 26),
+            Color.FromArgb(201, 162, 39), Color.FromArgb(138, 59, 18) };
+        // The dark between the leaves of a pile (the leaves themselves lie over it).
+        static readonly Color PileFill = Color.FromArgb(245, 122, 62, 24);
+        const int LeafPx = 64;
+        // Four ovals for every maple in each colour, so any pick gives 80 % ovals.
+        const int LeafKinds = 25;
+        static int[][] leafSprites;   // premultiplied ARGB, LeafPx x LeafPx: per colour an oval, then a maple
+
+        static int[] LeafSprite(int kind)
+        {
+            if (leafSprites == null) leafSprites = MakeLeafSprites();
+            kind = ((kind % LeafKinds) + LeafKinds) % LeafKinds;
+            return leafSprites[(kind / 5) * 2 + (kind % 5 == 4 ? 1 : 0)];
+        }
+
+        static int[][] MakeLeafSprites()
+        {
+            var all = new int[LeafColours.Length * 2][];
+            float m = LeafPx / 2f;
+            // The maple has the eleven points of a sugar maple: the tip, and on each side the top lobe's side
+            // point, the side lobe's three points and the small bottom lobe. (Along the axis 0..1 from blade to
+            // tip, and out from the axis in units of the leaf's length.)
+            float[,] half = { { 0.14f, 0 }, { 0.17f, 0.26f }, { 0.24f, 0.22f }, { 0.30f, 0.44f }, { 0.34f, 0.40f }, { 0.46f, 0.50f },
+                              { 0.50f, 0.42f }, { 0.60f, 0.44f }, { 0.50f, 0.17f }, { 0.74f, 0.22f }, { 0.72f, 0.12f }, { 1, 0 } };
+            int n = half.GetLength(0);
+            var maple = new PointF[2 * n - 2];
+            for (int i = 0; i < n; i++) maple[i] = new PointF(12 + half[i, 0] * 51, m - half[i, 1] * 58);
+            for (int i = n - 2; i >= 1; i--) maple[2 * n - 2 - i] = new PointF(maple[i].X, 2 * m - maple[i].Y);
+            // The veins are faint and light. Dark ones made a small leaf read as a beetle seen from the side.
+            using (var vein = new Pen(Color.FromArgb(70, 90, 44, 14), 2.5f))
+            using (var side = new Pen(Color.FromArgb(50, 255, 236, 196), 1.5f))
+            {
+                vein.StartCap = LineCap.Round; vein.EndCap = LineCap.Round;
+                for (int ci = 0; ci < LeafColours.Length; ci++)
+                    for (int shape = 0; shape < 2; shape++)
+                        using (var bmp = new Bitmap(LeafPx, LeafPx, PixelFormat.Format32bppPArgb))
+                        {
+                            using (var lg = Graphics.FromImage(bmp))
+                            using (var fill = new SolidBrush(LeafColours[ci]))
+                            {
+                                lg.SmoothingMode = SmoothingMode.AntiAlias;
+                                lg.Clear(Color.Transparent);
+                                if (shape == 0)
+                                {
+                                    // stalk at the left, tip at the right; two curves through (34, 2) and (34, 62)
+                                    using (var path = new GraphicsPath())
+                                    {
+                                        path.AddBezier(10, m, 26, m + (2 - m) * 2 / 3, 43.33f, m + (2 - m) * 2 / 3, 62, m);
+                                        path.AddBezier(62, m, 43.33f, m + (62 - m) * 2 / 3, 26, m + (62 - m) * 2 / 3, 10, m);
+                                        path.CloseFigure();
+                                        lg.FillPath(fill, path);
+                                    }
+                                    lg.DrawLine(vein, 1, m, 56, m);
+                                    lg.DrawLine(side, 26, m, 36, m - 12); lg.DrawLine(side, 26, m, 36, m + 12);
+                                    lg.DrawLine(side, 40, m, 48, m - 9); lg.DrawLine(side, 40, m, 48, m + 9);
+                                }
+                                else
+                                {
+                                    lg.FillPolygon(fill, maple);
+                                    lg.DrawLine(vein, 1, m, 58, m);
+                                    lg.DrawLine(side, 21, m, 35, 6); lg.DrawLine(side, 21, m, 35, 58);
+                                }
+                            }
+                            var px = new int[LeafPx * LeafPx];
+                            var data = bmp.LockBits(new Rectangle(0, 0, LeafPx, LeafPx), ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+                            Marshal.Copy(data.Scan0, px, 0, px.Length);
+                            bmp.UnlockBits(data);
+                            all[ci * 2 + shape] = px;
+                        }
+            }
+            return all;
+        }
+
+        // One leaf, turned by rot and `size` pixels across, blended into a premultiplied pixel buffer (the
+        // screen's, or a cached picture's). Each screen pixel is looked up in the leaf's picture, between its
+        // four nearest points.
+        static unsafe void BlendLeaf(uint* buf, int bw, int bh, int[] sprite, float cx, float cy, float size, float rot, int alpha)
+        {
+            if (size < 2) return;
+            float reach = size * 0.7072f;
+            int x0 = Math.Max(0, (int)(cx - reach)), x1 = Math.Min(bw - 1, (int)(cx + reach) + 1);
+            int y0 = Math.Max(0, (int)(cy - reach)), y1 = Math.Min(bh - 1, (int)(cy + reach) + 1);
+            if (x0 > x1 || y0 > y1) return;
+            float k = LeafPx / size, mid = LeafPx * 0.5f - 0.5f;
+            float cs = (float)Math.Cos(rot) * k, sn = (float)Math.Sin(rot) * k;
+            fixed (int* sp = sprite)
+            {
+                for (int y = y0; y <= y1; y++)
+                {
+                    float dy = y + 0.5f - cy;
+                    uint* row = buf + (long)y * bw;
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        float dx = x + 0.5f - cx;
+                        float u = dx * cs + dy * sn + mid, v = dy * cs - dx * sn + mid;
+                        if (u < 0 || v < 0 || u >= LeafPx - 1 || v >= LeafPx - 1) continue;
+                        int iu = (int)u, iv = (int)v;
+                        int* p = sp + iv * LeafPx + iu;
+                        uint a = (uint)p[0], b = (uint)p[1], cc = (uint)p[LeafPx], d = (uint)p[LeafPx + 1];
+                        if (((a | b | cc | d) >> 24) == 0) continue;
+                        float fu = u - iu, fv = v - iv;
+                        float wa = (1 - fu) * (1 - fv), wb = fu * (1 - fv), wc = (1 - fu) * fv, wd = fu * fv;
+                        float f = alpha / 255f;
+                        int sa = (int)((((a >> 24) & 0xFF) * wa + ((b >> 24) & 0xFF) * wb + ((cc >> 24) & 0xFF) * wc + ((d >> 24) & 0xFF) * wd) * f);
+                        if (sa <= 0) continue;
+                        int sr = (int)((((a >> 16) & 0xFF) * wa + ((b >> 16) & 0xFF) * wb + ((cc >> 16) & 0xFF) * wc + ((d >> 16) & 0xFF) * wd) * f);
+                        int sg = (int)((((a >> 8) & 0xFF) * wa + ((b >> 8) & 0xFF) * wb + ((cc >> 8) & 0xFF) * wc + ((d >> 8) & 0xFF) * wd) * f);
+                        int sb = (int)(((a & 0xFF) * wa + (b & 0xFF) * wb + (cc & 0xFF) * wc + (d & 0xFF) * wd) * f);
+                        uint o = row[x];
+                        int inv = 255 - sa;
+                        uint da = (uint)(sa + (((o >> 24) & 0xFF) * inv) / 255);
+                        uint dr = (uint)(sr + (((o >> 16) & 0xFF) * inv) / 255);
+                        uint dg = (uint)(sg + (((o >> 8) & 0xFF) * inv) / 255);
+                        uint db = (uint)(sb + ((o & 0xFF) * inv) / 255);
+                        row[x] = (da << 24) | (dr << 16) | (dg << 8) | db;
+                    }
+                }
+            }
+        }
+
+        // The falling leaves, and the leaves of a window's pile that falls when the window goes away.
+        unsafe void DrawLeaves()
+        {
+            g.Flush(FlushIntention.Sync);
+            uint* buf = (uint*)pixels.ToPointer();
+            foreach (var f in flakes)
+            {
+                float size = f.R * 2.6f;
+                if (f.Y < -size) continue;
+                Mark(f.X - size * 0.71f, f.Y - size * 0.71f, size * 1.42f, size * 1.42f);
+                BlendLeaf(buf, W, H, LeafSprite(f.Kind), f.X, f.Y, size, f.Rot, f.A);
+            }
+            float ox = ScreenBounds.X, oy = ScreenBounds.Y;
+            foreach (var cl in c.Clumps)
+            {
+                if (cl.Dead) continue;
+                float x = cl.X - ox, y = cl.Y - oy, size = cl.R * 2 * S;
+                if (x < -10 || x > W + 10 || y < -10 || y > H + 10) continue;
+                Mark(x - size * 0.71f, y - size * 0.71f, size * 1.42f, size * 1.42f);
+                BlendLeaf(buf, W, H, LeafSprite((int)Math.Abs(cl.X)), x, y, size, 0, 242);
+            }
+        }
+
+        // Which leaf lies where in a pile is fixed by its place, so the pile does not flicker: 0..1 from two whole numbers.
+        static float Chance(int i, int j)
+        {
+            double v = Math.Sin(i * 12.9898 + j * 78.233) * 43758.5453;
+            return (float)(v - Math.Floor(v));
+        }
+
+        Bitmap pileBmp;
+        float pileDrawn = -1;
+        double pileAt = -10;
+
+        // A leaf pile is made of leaves: single leaves of every shape and colour lie over the pile's dark fill,
+        // in rows from its surface down, each a little off its place and turned its own way. (As a plain shape
+        // the pile looked flat and nothing like leaves.) That is far too many leaves to lay out every frame, so
+        // the pile is kept as a picture and laid out again only when it has changed, at most twice a second.
+        unsafe void DrawLeafPile()
+        {
+            float max = 0;
+            for (int i = 0; i < heap.Length; i++) if (heap[i] > max) max = heap[i];
+            if (max < 0.5f) return;
+            float size = 15 * S, across = 7 * S, down = 5 * S;
+            int room = (int)(34 * S + size);   // the highest drift (30 S in a storm) and the leaves lying over its top
+            int bw = W, bh = room + 2;
+            if (pileBmp == null || pileBmp.Width != bw || pileBmp.Height != bh)
+            {
+                if (pileBmp != null) pileBmp.Dispose();
+                pileBmp = new Bitmap(bw, bh, PixelFormat.Format32bppPArgb);
+                pileDrawn = -1;
+            }
+            float sum = 0;
+            for (int i = 0; i < heap.Length; i++) sum += (float)Math.Round(heap[i] * 0.5f);
+            if (pileDrawn < 0 || (sum != pileDrawn && c.Time - pileAt >= 0.5))
+            {
+                pileDrawn = sum; pileAt = c.Time;
+                float gy = room;   // the ground's height in the picture
+                using (var pg = Graphics.FromImage(pileBmp))
+                using (var fill = new SolidBrush(PileFill))
+                {
+                    pg.SmoothingMode = SmoothingMode.AntiAlias;
+                    pg.Clear(Color.Transparent);
+                    var pts = new PointF[heap.Length + 2];
+                    for (int i = 0; i < heap.Length; i++) pts[i] = new PointF(i * HeapStep, gy - heap[i]);
+                    pts[heap.Length] = new PointF(W, gy + 1);
+                    pts[heap.Length + 1] = new PointF(0, gy + 1);
+                    pg.FillPolygon(fill, pts);
+                }
+                var data = pileBmp.LockBits(new Rectangle(0, 0, bw, bh), ImageLockMode.ReadWrite, PixelFormat.Format32bppPArgb);
+                uint* buf = (uint*)data.Scan0.ToPointer();
+                int column = 0;
+                for (float x = -size / 2; x < W + size / 2; x += across, column++)
+                {
+                    float h = HeapAt(Math.Max(0, Math.Min(W - 1, x)));
+                    if (h <= 1.5f) continue;
+                    int rows = (int)(h / down);
+                    for (int row = 0; row <= rows; row++)
+                    {
+                        float a = Chance(column, row), b = Chance(row + 31, column), d = Chance(column + 7, row + 3);
+                        float y = gy - h + row * down + (a - 0.5f) * 4 * S - size * 0.12f;
+                        BlendLeaf(buf, bw, bh, LeafSprite((int)(a * 9973)), x + (b - 0.5f) * across, y, size * (0.75f + 0.55f * b), d * 6.28f, 255);
+                    }
+                }
+                pileBmp.UnlockBits(data);
+            }
+            Mark(0, groundY - max - size, W, max + size + 4 * S);
+            g.CompositingMode = CompositingMode.SourceOver;
+            g.DrawImageUnscaled(pileBmp, 0, (int)groundY - room);
+        }
+
+        // The piles on the windows are made of leaves too: single leaves over the dark fill, from the pile's top
+        // down to where it hangs below the window's edge. (Sizes in the window snow's own unit, Ledge.U.)
+        unsafe void DrawLedgeLeaves()
+        {
+            g.Flush(FlushIntention.Sync);
+            uint* buf = (uint*)pixels.ToPointer();
+            float ox = ScreenBounds.X, oy = ScreenBounds.Y, u = Ledge.U;
+            float size = 13 * u, across = 6 * u, down = 4.5f * u;
+            foreach (var l in c.LedgeList)
+            {
+                bool dragged = l.Moving && l.Rect.Size == l.Settled.Size;
+                if (!l.HasSnow || dragged) continue;
+                if (l.Settled.Right <= ox || l.Settled.Left >= ox + W || l.Settled.Top <= oy || l.Settled.Top > oy + H) continue;
+                float edge = l.Settled.Top - oy;
+                int id = (int)(l.Id & 0xFFFF);
+                foreach (var seg in l.Visible)
+                {
+                    float x0 = Math.Max(seg[0], ox), x1 = Math.Min(seg[1], ox + W);
+                    if (x1 - x0 < 4) continue;
+                    float top = 0, low = 0;
+                    int column = (int)(x0 / across);
+                    for (float x = x0; x <= x1; x += across, column++)
+                    {
+                        float h = l.HeightAt(x), d = l.HangAt(x);
+                        if (h <= 0.4f * u) continue;
+                        top = Math.Max(top, h); low = Math.Max(low, d);
+                        int rows = (int)((h + d) / down);
+                        for (int row = 0; row <= rows; row++)
+                        {
+                            float p = Chance(column, row + id), q = Chance(row + 31, column), t = Chance(column + 7, row + 3);
+                            float y = edge - h + row * down + (p - 0.5f) * 3 * u - size * 0.1f;
+                            BlendLeaf(buf, W, H, LeafSprite((int)(p * 9973)), x - ox + (q - 0.5f) * across, y, size * (0.75f + 0.5f * q), t * 6.28f, 255);
+                        }
+                    }
+                    if (top > 0) Mark(x0 - ox - size, edge - top - size, x1 - x0 + 2 * size, top + low + 2 * size);
+                }
+            }
         }
 
         void Deposit(float x, float r)
@@ -511,6 +787,7 @@ namespace JuleHygge
 
         void DrawSnow()
         {
+            if (c.Autumn) { DrawLeaves(); return; }
             g.Flush(FlushIntention.Sync);
             foreach (var f in flakes)
             {
@@ -553,8 +830,10 @@ namespace JuleHygge
             var xs = new List<float>();
             var hs = new List<float>();
             var ds = new List<float>();
-            using (var fill = new SolidBrush(Color.FromArgb(245, 248, 252, 255)))
-            using (var line = new Pen(Color.FromArgb(110, 170, 200, 230), 1.2f * u))
+            // (in autumn the piles are leaves: the dark between them here, without an outline, and the leaves over it below)
+            bool autumn = c.Autumn;
+            using (var fill = new SolidBrush(autumn ? PileFill : Color.FromArgb(245, 248, 252, 255)))
+            using (var line = new Pen(Color.FromArgb(autumn ? 0 : 110, 170, 200, 230), 1.2f * u))
             {
                 foreach (var l in c.LedgeList)
                 {
@@ -589,6 +868,7 @@ namespace JuleHygge
                     }
                 }
             }
+            if (autumn) DrawLedgeLeaves();
         }
 
         // One stretch: the pile's top from left to right, then back along the drape hanging below the edge.
@@ -612,6 +892,7 @@ namespace JuleHygge
                 path.CloseFigure();
                 g.FillPath(fill, path);
             }
+            if (c.Autumn) return;   // a leaf pile has no outline
             g.DrawCurve(line, top, 0.5f);
             // a faint outline under the drape where it hangs down, for depth
             if (maxD > Ledge.U) g.DrawCurve(line, low, 0.5f);
@@ -619,6 +900,7 @@ namespace JuleHygge
 
         void DrawGround()
         {
+            if (c.Autumn) { DrawLeafPile(); return; }
             float max = 0;
             for (int i = 0; i < heap.Length; i++) if (heap[i] > max) max = heap[i];
             if (max < 0.5f) return;
@@ -670,8 +952,9 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(sx, sy);
             g.ScaleTransform(c.SantaDir * sc, sc);
-            g.RotateTransform((float)Math.Cos(c.SantaPhase * 0.9) * -4f * c.SantaDir);
             float t = c.SantaPhase;
+            if (c.Autumn) { DrawGeese(t); g.Restore(st); return; }
+            g.RotateTransform((float)Math.Cos(c.SantaPhase * 0.9) * -4f * c.SantaDir);
 
             float[] rx = { 80, 140, 200, 260 };
             float[] ry = new float[4];
@@ -806,6 +1089,7 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(x, y);
             g.ScaleTransform(S, S);
+            if (c.Autumn) { DrawScarecrow(stage); g.Restore(st); return; }
 
             using (var shadow = new SolidBrush(Color.FromArgb(50, 60, 80, 110))) g.FillEllipse(shadow, -30, -3, 60, 6);
             using (var wood = new Pen(Color.FromArgb(110, 70, 35), 2.6f))
@@ -893,7 +1177,8 @@ namespace JuleHygge
         // ------------------------------------------------------------------ snow plow
         // An orange plow truck clears the taskbar when the snow gets high, alternating direction each run.
         // Snow it scrapes up builds a growing pile in front of the blade and is thrown up as chunks.
-        class PlowBit { public float X, Y, VX, VY, Life, Max, Size; public bool Smoke; }
+        // (Kind: which leaf this is, when the plow is autumn's leaf collector)
+        class PlowBit { public float X, Y, VX, VY, Life, Max, Size; public bool Smoke; public int Kind; }
         readonly List<PlowBit> plowBits = new List<PlowBit>();
         float plowSmokeTimer, plowChunkAcc;
         const float PlowScale = Controller.PlowScale;
@@ -937,7 +1222,28 @@ namespace JuleHygge
             {
                 float gy = groundY - HeapAt(plowX) + S;
                 float ph = PlowPileHeight;
-                if (ph > 10)
+                if (c.Autumn)
+                {
+                    // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
+                    if (ph > 6)
+                    {
+                        plowChunkAcc += dt * 14;
+                        while (plowChunkAcc >= 1)
+                        {
+                            plowChunkAcc -= 1;
+                            var b = new PlowBit();
+                            b.X = plowX + plowDir * (58 + Rnd() * 26) * sc;
+                            b.Y = gy - (2 + Rnd() * 10) * sc;
+                            b.VX = plowDir * (Rnd() - 0.35f) * 110 * S;
+                            b.VY = -(90 + Rnd() * 150) * S;
+                            b.Max = b.Life = 2f;
+                            b.Size = (4 + Rnd() * 3) * S;
+                            b.Kind = rnd.Next(1000);
+                            plowBits.Add(b);
+                        }
+                    }
+                }
+                else if (ph > 10)
                 {
                     plowChunkAcc += dt * 30;
                     while (plowChunkAcc >= 1)
@@ -988,10 +1294,27 @@ namespace JuleHygge
             }
         }
 
-        void DrawPlow()
+        // The leaves the leaf collector whirls up, turning as they fly (straight into the pixel buffer, as the falling ones).
+        unsafe void DrawPlowLeaves()
         {
+            g.Flush(FlushIntention.Sync);
+            uint* buf = (uint*)pixels.ToPointer();
             foreach (var b in plowBits)
             {
+                if (b.Smoke) continue;
+                float size = b.Size * 2.6f;
+                Mark(b.X - size * 0.71f, b.Y - size * 0.71f, size * 1.42f, size * 1.42f);
+                BlendLeaf(buf, W, H, LeafSprite(b.Kind), b.X, b.Y, size, b.Life * 7 + b.Kind, 255);
+            }
+        }
+
+        void DrawPlow()
+        {
+            bool autumn = c.Autumn;
+            if (autumn && plowBits.Count > 0) DrawPlowLeaves();
+            foreach (var b in plowBits)
+            {
+                if (autumn && !b.Smoke) continue;
                 Mark(b.X - b.Size, b.Y - b.Size, b.Size * 2, b.Size * 2);
                 int a = b.Smoke ? (int)(90 * b.Life / b.Max) : 235;
                 using (var br = new SolidBrush(b.Smoke ? Color.FromArgb(a, 120, 120, 125) : Color.FromArgb(a, 250, 252, 255)))
@@ -1007,6 +1330,7 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(plowX, gy);
             g.ScaleTransform(plowDir * sc, sc);
+            if (autumn) { DrawLeafCollector(ph); g.Restore(st); return; }
 
             Color orange = Color.FromArgb(235, 130, 20), orangeDark = Color.FromArgb(185, 95, 10);
             using (var o = new SolidBrush(orange))
@@ -1125,7 +1449,7 @@ namespace JuleHygge
                 else if (Rnd() < 0.7f) nisseOffset += nisseOffset > 0 ? -1 : 1;
                 else nisseOffset = Math.Max(-2, Math.Min(2, nisseOffset + (nisseOffset > 0 ? 1 : -1)));
             }
-            int target = cfg.Nisser ? Math.Max(1, cfg.NisseCount + nisseOffset) : 0;
+            int target = NisserOn ? Math.Max(1, cfg.NisseCount + nisseOffset) : 0;
             int staying = 0;
             foreach (var n in nisser) if (!n.Leaving) staying++;
             if (staying < target)
@@ -1136,7 +1460,7 @@ namespace JuleHygge
             }
             else if (staying > target)
             {
-                if (!cfg.Nisser) nisser.Clear();
+                if (!NisserOn) nisser.Clear();
                 else
                 {
                     Nisse n = null;
@@ -1225,7 +1549,7 @@ namespace JuleHygge
                 if (!(n.Leaving || n.Crossing) || (n.X >= -45 * S && n.X <= W + 45 * S)) continue;
                 nisser.RemoveAt(i);
                 var next = c.Neighbor(this, n.Dir);
-                if (next != null && cfg.Nisser) next.ReceiveNisse(n, S);
+                if (next != null && NisserOn) next.ReceiveNisse(n, S);
             }
         }
 
@@ -1318,6 +1642,7 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(n.X, gy);
             g.ScaleTransform(n.Dir * sc, sc);
+            if (c.Autumn) { DrawAnimal(n); g.Restore(st); return; }
 
             bool walking = n.State == 0;
             float p = n.WalkPhase;
@@ -1448,6 +1773,7 @@ namespace JuleHygge
 
         void RenderLights(Graphics lg)
         {
+            if (c.Autumn) { RenderGarland(lg); return; }
             float span = 230 * S, sag = 22 * S, top = 1;
             int perSpan = 4, idx = 0;
             using (var wire = new Pen(Color.FromArgb(220, 25, 60, 35), 2f * S))
