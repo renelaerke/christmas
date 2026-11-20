@@ -28,7 +28,9 @@ de menupunkter og den notifikation, der nævner nisser.
   "Land eller område"; på Linux er den `LC_TIME`/`LC_MONETARY` (skrivebordets "Formater") eller `LANG`.
 - **Julekalenderens tekster** nævner nisser (låge 1, 11, 18, 21 og teksten før 1. december). Låge 11 handler om
   nissen på gården og giver kun mening for nisser.
-- **Kameraet.** "Nissehue", "Nisseskæg" og "Nissedragt" hedder det samme og ser ens ud for begge: rød hue med
-  pelskant, hvidt skæg, rød dragt. En alfehue med spidse ører er ikke lavet.
+- **Kameraet** (macOS) følger nu folket: hue, skæg og dragt pr. folk (`CameraLook`). Set på genafspillede
+  kamerabilleder (`--kamera-replay` med `HUE_FOLK`), og installeret og prøvet live af REL 2026-11-20 ("works as
+  expected"). Mangler: spidse ører til
+  alfen (intet måler ørerne), og `--nissehue-test` (simuleringen) er ikke kørt for de nye former.
 - **README.md** (forsiden) nævner kun nisser.
 - **Sproget.** Al tekst er dansk, også for dem, der får alfer. En oversættelse er en opgave for sig.

@@ -688,19 +688,20 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     // ------------------------------------------------------------------ menulinje-ikon og menu
     /// Menu items whose text follows the theme: the Christmas title, and the autumn one (nil = the element has no
     /// autumn form yet, so the item is hidden there). Applied each time the menu opens (menuNeedsUpdate).
-    /// `alfer` is the Christmas title when the walkers are elves and not nisser (nil = the same title for both).
-    private var themedItems: [(item: NSMenuItem, jul: String, efteraar: String?, alfer: String?)] = []
+    /// `folk` holds the Christmas title for a folk that is not called nisser there (none = the same title; an empty
+    /// title = that folk has no such thing, so the item is hidden).
+    private var themedItems: [(item: NSMenuItem, jul: String, efteraar: String?, folk: [Folk: String])] = []
     private var folkItem: NSMenuItem!
 
-    private func themed(_ it: NSMenuItem, _ efteraar: String?, alfer: String? = nil) -> NSMenuItem {
-        themedItems.append((it, it.title, efteraar, alfer))
+    private func themed(_ it: NSMenuItem, _ efteraar: String?, alfer: String? = nil, folk: [Folk: String] = [:]) -> NSMenuItem {
+        themedItems.append((it, it.title, efteraar, alfer.map { [.alfer: $0] } ?? folk))
         return it
     }
 
     /// The same for a submenu's own title and its choices (nil keeps a choice's text).
     private func themed(_ parent: NSMenuItem, _ efteraar: String, choices: [String?], alfer: String? = nil) -> NSMenuItem {
-        themedItems.append((parent, parent.title, efteraar, alfer))
-        for (it, name) in zip(parent.submenu?.items ?? [], choices) { if let name { themedItems.append((it, it.title, name, nil)) } }
+        themedItems.append((parent, parent.title, efteraar, alfer.map { [.alfer: $0] } ?? [:]))
+        for (it, name) in zip(parent.submenu?.items ?? [], choices) { if let name { themedItems.append((it, it.title, name, [:])) } }
         return parent
     }
 
@@ -767,9 +768,12 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         plowCameraItem = item("Send sneploven ind i kameraet") { [unowned self] _ in sendPlowToCamera() }
         menu.addItem(themed(santaCameraItem, "Send gæssene ind i kameraet"))
         menu.addItem(themed(plowCameraItem, "Send løvsugeren ind i kameraet"))
-        menu.addItem(themed(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }), "Sydvest på i kameraet"))
-        menu.addItem(themed(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }), nil))
-        menu.addItem(themed(toggle("Nissedragt i kameraet", { $0.cameraSuit }, { $0.cameraSuit = $1 }), "Regnfrakke i kameraet"))
+        menu.addItem(themed(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }), "Sydvest på i kameraet",
+                            folk: [.alfer: "Alfehue på i kameraet", .wichtel: "Wichtelhue på i kameraet", .kabouter: "Kabouterhue på i kameraet", .paekapikk: "Päkapikk-hue på i kameraet"]))
+        menu.addItem(themed(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }), nil,
+                            folk: [.alfer: "", .wichtel: "Wichtelskæg i kameraet", .kabouter: "Kabouterskæg i kameraet", .paekapikk: ""]))
+        menu.addItem(themed(toggle("Nissedragt i kameraet", { $0.cameraSuit }, { $0.cameraSuit = $1 }), "Regnfrakke i kameraet",
+                            folk: [.alfer: "Alfedragt i kameraet", .wichtel: "Wichtelfrakke i kameraet", .kabouter: "Kabouterjakke i kameraet", .paekapikk: "Päkapikk-dragt i kameraet"]))
         menu.addItem(themed(toggle("Nisser og sne foran mig i kameraet", { $0.cameraFront }, { $0.cameraFront = $1 }), "Dyr og blade foran mig i kameraet", alfer: "Alfer og sne foran mig i kameraet"))
         menu.addItem(item("Installér JuleHygge Kamera (baggrund i Teams)…") { [unowned self] _ in cameraInstaller.install() })
         menu.addItem(toggle("Pause skærmene mens JuleHygge Kamera bruges", { $0.cameraPausesScreens }, { $0.cameraPausesScreens = $1 }))
@@ -806,8 +810,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         plowCameraItem.toolTip = santaCameraItem.toolTip
         let autumn = theme == .efteraar
         for t in themedItems {
-            t.item.isHidden = autumn && t.efteraar == nil
-            if !t.item.isSeparatorItem { t.item.title = autumn ? (t.efteraar ?? t.jul) : folk == .alfer ? (t.alfer ?? t.jul) : t.jul }
+            let own = t.folk[folk]
+            t.item.isHidden = autumn ? t.efteraar == nil : own == ""
+            if !t.item.isSeparatorItem { t.item.title = autumn ? (t.efteraar ?? t.jul) : (own ?? t.jul) }
         }
         folkItem.submenu?.items.first?.title = "Automatisk efter sprog og land (\(Folk.system.name.lowercased()))"
         kiteItem.isHidden = !autumn
