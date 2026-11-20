@@ -28,6 +28,8 @@ Snemand (trin {0} af {1}) = Schneemann (Schritt {0} von {1})
 2. Change `@name` and translate the right-hand sides.
 3. Add the file to `BUILT_IN` in `linux/src/lang.rs` (Windows and macOS pick up every file here by themselves).
 4. Run `python3 tools/sprog-check.py`. It says what is missing or no longer matches.
+5. If you can, add a front page in the language too: copy `README.en.md` at the top of the repository to
+   `README.xx.md`, translate it, and add the language to the line of links at the top of every `README*.md`.
 
 To try a language without building the app, put the file in a folder `sprog` beside the app's `settings.ini`
 and restart the app. A file there also wins over the app's own file for the same language.

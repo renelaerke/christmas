@@ -1,6 +1,8 @@
 # JuleHygge 🎄
 
-Et lille juleoverlay til Windows og macOS: snevejr, sne der lægger sig på proceslinjen, julemanden i kane med rensdyr (og Rudolf), nisser der går rundt på proceslinjen, julelys langs toppen af skærmen, en snemand der bliver bygget lidt mere hver dag, og en julekalender med 24 låger.
+[Dansk](README.md) · [English](README.en.md) · [Svenska](README.sv.md) · [Deutsch](README.de.md) · [Nederlands](README.nl.md)
+
+Et lille juleoverlay til Windows, macOS og Linux: snevejr, sne der lægger sig på proceslinjen, julemanden i kane med rensdyr (og Rudolf), nisser der går rundt på proceslinjen, julelys langs toppen af skærmen, en snemand der bliver bygget lidt mere hver dag, og en julekalender med 24 låger.
 
 ![Santa flies across the screen in a snowstorm, and the snow plow clears the taskbar](docs/media/julehygge.gif)
 
@@ -16,6 +18,8 @@ Et lille juleoverlay til Windows og macOS: snevejr, sne der lægger sig på proc
 - **Julekalender:** Fra 1. december kan du åbne en ny låge hver dag. Bag lågerne er der vittigheder, hyggetips og julefakta, og nogle låger sætter gang i en effekt: julemanden, snestorm, nissefest eller stjerneregn. Du får en besked ved uret, når dagens låge er klar.
 - **Snemand:** Står på proceslinjen og bliver bygget færdig over 12 dage, regnet fra første gang programmet startede. Først kommer sneboldene, så ansigtet, armene, halstørklædet og hatten, og til sidst kosten.
 - Animationen pauser automatisk, når et program kører i fuldskærm (spil, film).
+- **Sprog:** Menuen vises på computerens sprog, når der er en oversættelse til det (dansk, engelsk, svensk, tysk, hollandsk), og ellers på engelsk. Du kan vælge et andet under *Sprog / Language* i menuen. Julekalenderen og beskederne er indtil videre kun på dansk. Et nyt sprog er en ny fil: se [assets/sprog/README.md](assets/sprog/README.md).
+- **Nisser eller alfer:** Hvem der går på skærmen, følger sprog og land: nisser i Norden, Wichtel i Tyskland, Østrig og Schweiz, kabouters i Holland, päkapikud i Estland og julealfer i resten af verden. Du kan vælge andre under *Nisser eller alfer* i menuen.
 - Indstillingerne gemmes i `%APPDATA%\JuleHygge\settings.ini`.
 
 ### Also on Windows (ported from the macOS version)
@@ -29,6 +33,9 @@ Et lille juleoverlay til Windows og macOS: snevejr, sne der lægger sig på proc
 - **Sound** (off by default, switched on separately in the menu): sleigh bells and one of three public-domain tunes for Santa — "Jingle Bells" (Pierpont 1857), "Deck the Halls" or "We Wish You a Merry Christmas" — played a little faster or slower with Santa's ±10% pace; engine, scraping and horn for the snow plow. Panned with the figure across the screens and synthesized in code (no sound files).
 - **Restarts itself after a crash:** a small supervisor process runs the app and restarts it after 5 s (it gives up after 3 quick crashes). Quitting from the menu closes both, so two `JuleHygge.exe` processes are expected.
 - **Updates itself:** a release build checks GitHub releases 1 minute after start and then every 6 hours. A newer `JuleHygge.exe` is downloaded next to the running one, checked (GitHub's SHA-256 digest, and its version must match the release tag), swapped in, and the app restarts into it. Menu: *Opdatér automatisk* (on by default) and *Søg efter opdatering nu*. Local builds are version 0.0.0 and never update. The exe must sit in a folder the user can write to.
+
+## Linux
+Se [linux/README.md](linux/README.md) (på engelsk): native udgave til Ubuntu og Linux Mint med snefnugget i panelet. Installér fra udgivelsens `JuleHygge-linux-x86_64.tar.gz` med `./install.sh`.
 
 ## macOS
 Se [macos/README.md](macos/README.md) — native Swift-udgave i menulinjen med samme figurer og julekalender. Byg med `macos/build.sh`.
