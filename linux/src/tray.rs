@@ -13,6 +13,7 @@ use std::sync::mpsc::Sender;
 use ksni::blocking::TrayMethods;
 use ksni::menu::{CheckmarkItem, MenuItem, RadioGroup, RadioItem, StandardItem, SubMenu};
 
+use crate::folk::{self, Folk};
 use crate::settings::Settings;
 use crate::text;
 
@@ -200,6 +201,8 @@ impl ksni::Tray for AppTray {
 
         let (elves, elf_count) = if autumn {
             (text::MENU_ANIMALS, text::MENU_ANIMAL_COUNT)
+        } else if folk::chosen(c.folk) == Folk::Alfer {
+            (text::MENU_ALFER, text::MENU_ALF_COUNT)
         } else {
             (text::MENU_ELVES, text::MENU_ELF_COUNT)
         };
@@ -207,6 +210,14 @@ impl ksni::Tray for AppTray {
         let counts: Vec<String> = ELF_COUNTS.iter().map(|n| n.to_string()).collect();
         let counts: Vec<&str> = counts.iter().map(|s| s.as_str()).collect();
         items.push(choice(elf_count, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
+        // Nisser or elves: automatic follows the language and region; the other two are for when that is wrong.
+        // (in autumn animals walk here, so there is nothing to choose)
+        if !autumn {
+            let automatic = text::menu_folk_automatic(text::FOLK[folk::system().index()]);
+            let mut names = vec![automatic.as_str()];
+            names.extend(text::FOLK);
+            items.push(choice(text::MENU_FOLK, &names, &[0, 1, 2, 3, 4, 5], c.folk, |s| &mut s.folk));
+        }
         items.push(MenuItem::Separator);
 
         let power: Vec<&str> = POWER_ORDER.iter().map(|&v| text::POWER_SAVE[v as usize]).collect();

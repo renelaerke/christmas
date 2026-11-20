@@ -1424,6 +1424,9 @@ final class ScreenOverlay {
     // ------------------------------------------------------------------ nisser
     static let tunics = [C(115, 120, 130), C(40, 105, 65), C(150, 35, 45), C(70, 85, 145)]
     static let gifts = [C(40, 140, 70), C(60, 100, 200), C(200, 40, 60), C(150, 80, 180)]
+    /// The elves' clothes (see Folk): the tunic and cap, and the colour of collar, cap band and mittens that goes with it.
+    static let elfTunics = [C(46, 139, 74), C(196, 42, 52), C(30, 110, 92), C(112, 158, 58)]
+    static let elfTrims = [C(205, 40, 50), C(46, 139, 74), C(235, 195, 70), C(205, 40, 50)]
 
     func nisseWave(_ seconds: F) {
         for n in nisser { n.state = 2; n.stateTimer = seconds }
@@ -1622,7 +1625,8 @@ final class ScreenOverlay {
             case 1: frame = Int((n.t * 1.5 / (2 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.standFrames)) % Self.standFrames
             default: frame = Int((n.t * 11 / (2 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.waveFrames)) % Self.waveFrames
             }
-            let key = "\(n.variant)-\(n.state)-\(frame)"
+            // the folk is part of the key, so a change in the menu shows at once and both sets of pictures are kept
+            let key = "\(c.folk.rawValue)-\(n.variant)-\(n.state)-\(frame)"
             let img = nisseFrames[key] ?? renderNisseFrame(n, frame, key)
             let l = nisseLayers[i]
             if l.contents == nil || (l.contents as! CGImage) !== img { l.contents = img }
@@ -1638,7 +1642,15 @@ final class ScreenOverlay {
         let img = renderImage(width: 64 * maxSc, height: 80 * maxSc, scale: backingScale) { g in
             g.scaleBy(x: maxSc, y: maxSc)
             g.translateBy(x: 32, y: 72)
-            if c.theme.animals { drawAnimal(g, n, frame) } else { drawNisse(g, n, frame) }
+            if c.theme.animals { drawAnimal(g, n, frame) } else {
+                switch c.folk {
+                case .nisser: drawNisse(g, n, frame)
+                case .alfer: drawElf(g, n, frame)
+                case .wichtel: drawWichtel(g, n, frame)
+                case .kabouter: drawKabouter(g, n, frame)
+                case .paekapikk: drawPaekapikk(g, n, frame)
+                }
+            }
         }!
         nisseFrames[key] = img
         return img
@@ -1707,6 +1719,276 @@ final class ScreenOverlay {
         g.fill(Self.hatRed, hat)
         g.line(C(150, 15, 25), 2, -7.5, -39.5, 8, -39.5)
         g.fillEllipse(C(255, 255, 255), tipX - 3, tipY - 3, 6, 6)
+    }
+
+    /// The Christmas elf, for the parts of the world where a nisse means nothing (see Folk). It has the nisse's
+    /// skeleton and poses, so walking, waving, meeting and gifts are the same; only the looks differ: a green or red
+    /// tunic with a jagged collar and hem, striped stockings, shoes with a curled toe, a pointed ear, and a pointed
+    /// cap with a bell where the nisse has its pompom. No beard. An original figure like the nisse: no known character.
+    private func drawElf(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let p: F = n.state == 0 ? F(frame) / F(Self.walkFrames) * 4 * .pi : 0
+        let standPhase: F = n.state == 1 ? F(frame) / F(Self.standFrames) * 2 * .pi : 0
+        let wavePhase: F = n.state == 2 ? F(frame) / F(Self.waveFrames) * 2 * .pi : 0
+        let walking = n.state == 0
+        let legA: F = walking ? sin(p) * 0.55 : 0
+        let bob: F = walking ? -abs(sin(p)) * 1.5 : 0
+        let ti = n.tunicIndex % Self.elfTunics.count
+        let tunic = Self.elfTunics[ti], trim = Self.elfTrims[ti]
+        let stripe = ti == 1 ? Self.elfTunics[0] : C(205, 40, 50)   // the red tunic gets green stripes
+
+        g.fillEllipse(C(60, 80, 110, 50), -11, -2, 22, 4)
+
+        func leg(_ hx: F, _ hy: F, _ a: F) {
+            let dx = sin(a), dy = cos(a)
+            let fx = hx + dx * 12, fy = hy + dy * 12
+            g.line(C(248, 246, 240), 4.6, hx, hy, fx, fy, round: true)
+            for k: F in [0.34, 0.62, 0.9] {
+                g.line(stripe, 4.6, hx + dx * 12 * (k - 0.09), hy + dy * 12 * (k - 0.09), hx + dx * 12 * (k + 0.09), hy + dy * 12 * (k + 0.09))
+            }
+            let shoe = CGMutablePath()
+            shoe.start(fx - 3.5, fy + 3)
+            shoe.curve(fx - 4.5, fy - 1.5, fx + 0.5, fy - 3, fx + 4.5, fy + 0.3)
+            shoe.curve(fx + 6.5, fy + 1.5, fx + 8.5, fy - 0.5, fx + 8.8, fy - 3.8)
+            shoe.curve(fx + 11.5, fy + 0.5, fx + 9, fy + 3, fx + 6, fy + 3)
+            shoe.closeSubpath()
+            g.fill(C(34, 92, 58), shoe)
+            g.fillEllipse(Self.gold, fx + 7.6, fy - 5.6, 2.4, 2.4)
+        }
+        leg(-2, -15 + bob, legA)
+        leg(2, -15 + bob, -legA)
+
+        g.translateBy(x: 0, y: bob)
+        let backArm: F, frontArm: F
+        if n.state == 2 { backArm = -legA * 0.8; frontArm = 2.5 + sin(wavePhase) * 0.45 }
+        else if n.carriesGift { backArm = 1.3; frontArm = 1.3 }
+        else { backArm = -legA * 0.9; frontArm = legA * 0.9 }
+
+        func arm(_ sx: F, _ sy: F, _ a: F) {
+            let hx = sx + sin(a) * 10, hy = sy + cos(a) * 10
+            g.line(tunic, 4.2, sx, sy, hx, hy, round: true)
+            g.fillEllipse(trim, hx - 2.5, hy - 2.5, 5, 5)
+        }
+        arm(-1, -29, backArm)
+        g.fillEllipse(tunic, -9, -34, 18, 20)
+        g.fillPoly(tunic, [(-8.7, -19), (-9.5, -12.5), (-6, -15.5), (-3, -12), (0, -15.5), (3, -12), (6, -15.5), (9.5, -12.5), (8.7, -19)])
+        g.fillRect(C(35, 30, 30), -8.8, -21, 17.6, 3)
+        g.fillRect(Self.gold, 1.5, -21.5, 3.5, 4)
+        g.fillPoly(trim, [(-7, -34), (-5.6, -28.5), (-3, -31.3), (-0.5, -27.8), (2, -31.3), (4.6, -28.5), (7, -34)])
+
+        if n.carriesGift && n.state != 2 {
+            g.fillRect(n.gift, 6, -31, 11, 10)
+            g.line(Self.gold, 1.6, 11.5, -31, 11.5, -21)
+            g.line(Self.gold, 1.6, 6, -26, 17, -26)
+            g.strokeEllipse(Self.gold, 1.6, 9, -34, 3, 3)
+            g.strokeEllipse(Self.gold, 1.6, 12, -34, 3, 3)
+        }
+
+        g.fillPoly(Self.skin, [(-4.5, -36), (-11.5, -42), (-3.5, -41)])
+        g.line(C(225, 170, 140), 0.8, -5.2, -38, -9, -41)
+        g.fillEllipse(Self.skin, -6, -44, 13, 12)
+        g.fillEllipse(C(245, 150, 140, 150), 0.8, -36.4, 3.2, 2.4)
+        g.fillEllipse(C(45, 32, 30), 2.7, -38.4, 1.7, 2)
+        g.bezier(C(150, 70, 60), 0.8, 2.6, -34.4, 3.6, -33.4, 5, -33.5, 5.9, -34.6)
+        arm(1, -29, frontArm)
+        g.fillEllipse(C(240, 160, 150), 5.2, -38, 3.2, 3.2)
+
+        let sway = sin(walking ? p * 0.5 : standPhase) * 2.5
+        let tipX = -13 + sway, tipY: F = -60
+        let hat = CGMutablePath()
+        hat.start(-6.5, -41)
+        hat.to(7.5, -41)
+        hat.curve(7.5, -52, 1, -60, tipX, tipY)
+        hat.curve(-6, -56, -6.5, -49, -6.5, -41)
+        hat.closeSubpath()
+        g.fill(tunic, hat)
+        g.fillPoly(trim, [(-7.5, -43), (8.5, -43), (8.5, -40.8), (6.5, -39.2), (4.5, -40.8), (2.5, -39.2), (0.5, -40.8),
+                          (-1.5, -39.2), (-3.5, -40.8), (-5.5, -39.2), (-7.5, -40.8)])
+        g.fillEllipse(Self.gold, tipX - 2.6, tipY - 2.6, 5.2, 5.2)
+        g.line(C(150, 110, 20), 0.9, tipX - 1.4, tipY + 0.7, tipX + 1.4, tipY + 0.7)
+    }
+
+    // ------------------------------------------------------------------ Wichtel, kabouter og päkapikk
+    // Three more looks for the same walker (see Folk), for the countries whose own figure is close to the nisse
+    // but not the same. Each has the nisse's skeleton and poses. Original figures: no known characters.
+    static let wichtelCoats = [C(120, 122, 128), C(138, 44, 50), C(84, 108, 64), C(72, 86, 112)]
+    static let wichtelCaps = [C(150, 38, 46), C(96, 100, 108), C(150, 38, 46), C(176, 128, 52)]
+    static let kabouterJackets = [C(62, 122, 82), C(190, 140, 52), C(152, 88, 52), C(70, 112, 140)]
+    static let paekapikkReds = [C(202, 36, 46), C(178, 32, 48), C(214, 62, 50), C(164, 36, 62)]
+
+    /// The walker's pose for a frame, the same for every folk.
+    private func pose(_ n: Nisse, _ frame: Int) -> (p: F, standPhase: F, wavePhase: F, walking: Bool, legA: F, bob: F, backArm: F, frontArm: F) {
+        let p: F = n.state == 0 ? F(frame) / F(Self.walkFrames) * 4 * .pi : 0
+        let standPhase: F = n.state == 1 ? F(frame) / F(Self.standFrames) * 2 * .pi : 0
+        let wavePhase: F = n.state == 2 ? F(frame) / F(Self.waveFrames) * 2 * .pi : 0
+        let walking = n.state == 0
+        let legA: F = walking ? sin(p) * 0.55 : 0
+        let bob: F = walking ? -abs(sin(p)) * 1.5 : 0
+        let backArm: F, frontArm: F
+        if n.state == 2 { backArm = -legA * 0.8; frontArm = 2.5 + sin(wavePhase) * 0.45 }
+        else if n.carriesGift { backArm = 1.3; frontArm = 1.3 }
+        else { backArm = -legA * 0.9; frontArm = legA * 0.9 }
+        return (p, standPhase, wavePhase, walking, legA, bob, backArm, frontArm)
+    }
+
+    private func drawGift(_ g: CGContext, _ n: Nisse) {
+        guard n.carriesGift && n.state != 2 else { return }
+        g.fillRect(n.gift, 6, -31, 11, 10)
+        g.line(Self.gold, 1.6, 11.5, -31, 11.5, -21)
+        g.line(Self.gold, 1.6, 6, -26, 17, -26)
+        g.strokeEllipse(Self.gold, 1.6, 9, -34, 3, 3)
+        g.strokeEllipse(Self.gold, 1.6, 12, -34, 3, 3)
+    }
+
+    /// The German Wichtel: a tall felt cap pulled down over the eyes, so only a round nose and a long beard show,
+    /// and a bell-shaped coat that nearly reaches the ground, with two boots under it.
+    private func drawWichtel(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let q = pose(n, frame)
+        let ti = n.tunicIndex % Self.wichtelCoats.count
+        let coat = Self.wichtelCoats[ti], cap = Self.wichtelCaps[ti]
+
+        g.fillEllipse(C(60, 80, 110, 50), -12, -2, 24, 4)
+        func leg(_ hx: F, _ hy: F, _ a: F) {
+            let fx = hx + sin(a) * 6, fy = hy + cos(a) * 6
+            g.line(C(60, 50, 45), 4.5, hx, hy, fx, fy, round: true)
+            g.fillEllipse(C(62, 40, 28), fx - 3, fy - 2, 9, 5)
+        }
+        leg(-2.5, -9 + q.bob, q.legA)
+        leg(2.5, -9 + q.bob, -q.legA)
+
+        g.translateBy(x: 0, y: q.bob)
+        func arm(_ sx: F, _ sy: F, _ a: F) {
+            let hx = sx + sin(a) * 9, hy = sy + cos(a) * 9
+            g.line(coat, 4.4, sx, sy, hx, hy, round: true)
+            g.fillEllipse(C(70, 60, 55), hx - 2.5, hy - 2.5, 5, 5)
+        }
+        arm(-1, -27, q.backArm)
+        let body = CGMutablePath()
+        body.start(-10, -7)
+        body.curve(-11, -20, -8, -31, 0, -32)
+        body.curve(8, -31, 11, -20, 10, -7)
+        body.closeSubpath()
+        g.fill(coat, body)
+        drawGift(g, n)
+
+        g.fillEllipse(Self.skin, -6, -43, 13, 12)
+        let beard = CGMutablePath()
+        beard.start(-6.5, -37)
+        beard.curve(-8, -24, -3, -13, 1, -9)
+        beard.curve(5, -13, 9.5, -24, 8, -37)
+        beard.closeSubpath()
+        g.fill(C(240, 240, 236), beard)
+        arm(1, -27, q.frontArm)
+        g.fillEllipse(C(235, 165, 150), 1.5, -39, 7, 7)
+
+        let sway = sin(q.walking ? q.p * 0.5 : q.standPhase) * 2.5
+        let tipX = -9 + sway * 1.6, tipY: F = -68
+        let hat = CGMutablePath()
+        hat.start(-9.5, -37)
+        hat.to(10, -37)
+        hat.curve(9, -52, 2, -64, tipX, tipY)
+        hat.curve(-7, -60, -9, -50, -9.5, -37)
+        hat.closeSubpath()
+        g.fill(cap, hat)
+        g.line(C(0, 0, 0, 60), 2.4, -9.5, -37.8, 10, -37.8)
+    }
+
+    /// The Dutch kabouter: a stiff, straight cone hat, an open face with a short round beard, a jacket with a
+    /// belt, brown trousers and yellow clogs.
+    private func drawKabouter(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let q = pose(n, frame)
+        let jacket = Self.kabouterJackets[n.tunicIndex % Self.kabouterJackets.count]
+
+        g.fillEllipse(C(60, 80, 110, 50), -11, -2, 22, 4)
+        func leg(_ hx: F, _ hy: F, _ a: F) {
+            let fx = hx + sin(a) * 12, fy = hy + cos(a) * 12
+            g.line(C(105, 75, 50), 5, hx, hy, fx, fy, round: true)
+            g.fillEllipse(C(232, 190, 80), fx - 3.5, fy - 2, 10, 5)
+            g.fillPoly(C(232, 190, 80), [(fx + 3.5, fy - 1.6), (fx + 9.5, fy - 3.6), (fx + 6.5, fy + 2.4)])
+        }
+        leg(-2, -15 + q.bob, q.legA)
+        leg(2, -15 + q.bob, -q.legA)
+
+        g.translateBy(x: 0, y: q.bob)
+        func arm(_ sx: F, _ sy: F, _ a: F) {
+            let hx = sx + sin(a) * 10, hy = sy + cos(a) * 10
+            g.line(jacket, 4.2, sx, sy, hx, hy, round: true)
+            g.fillEllipse(Self.skin, hx - 2.3, hy - 2.3, 4.6, 4.6)
+        }
+        arm(-1, -29, q.backArm)
+        g.fillEllipse(jacket, -10, -34, 20, 22)
+        g.fillRect(C(60, 40, 25), -9.5, -20, 19, 3)
+        g.fillRect(Self.gold, 2, -20.5, 3.5, 4)
+        drawGift(g, n)
+
+        g.fillEllipse(Self.skin, -6, -44, 13, 12)
+        let beard = CGMutablePath()
+        beard.start(-6, -38)
+        beard.curve(-7.5, -31, -3, -27, 1.5, -27)
+        beard.curve(6, -27, 9, -31, 7.5, -38)
+        beard.closeSubpath()
+        g.fill(C(250, 250, 250), beard)
+        g.fillEllipse(C(245, 150, 140, 150), 0.6, -39.6, 3.2, 2.4)
+        g.fillEllipse(C(45, 32, 30), 2.8, -41.3, 1.6, 1.9)
+        arm(1, -29, q.frontArm)
+        g.fillEllipse(C(240, 160, 150), 4.2, -40.2, 4, 4)
+
+        let sway = sin(q.walking ? q.p * 0.5 : q.standPhase) * 1.2
+        g.fillPoly(Self.hatRed, [(-7.5, -42), (8, -42), (0.5 + sway, -67)])
+        g.line(C(150, 15, 25), 1.8, -7.5, -42.4, 8, -42.4)
+    }
+
+    /// The Estonian päkapikk: all in red with white trim, a short floppy cap with a fur band and a pompom, an
+    /// open, beardless face with fair hair showing under the cap.
+    private func drawPaekapikk(_ g: CGContext, _ n: Nisse, _ frame: Int) {
+        let q = pose(n, frame)
+        let red = Self.paekapikkReds[n.tunicIndex % Self.paekapikkReds.count]
+        let white = C(248, 248, 248)
+
+        g.fillEllipse(C(60, 80, 110, 50), -11, -2, 22, 4)
+        func leg(_ hx: F, _ hy: F, _ a: F) {
+            let dx = sin(a), dy = cos(a)
+            let fx = hx + dx * 12, fy = hy + dy * 12
+            g.line(red, 4.8, hx, hy, fx, fy, round: true)
+            g.line(white, 4.8, hx + dx * 8.2, hy + dy * 8.2, hx + dx * 10.2, hy + dy * 10.2)
+            g.fillEllipse(C(40, 36, 40), fx - 3, fy - 2, 9, 5)
+        }
+        leg(-2, -15 + q.bob, q.legA)
+        leg(2, -15 + q.bob, -q.legA)
+
+        g.translateBy(x: 0, y: q.bob)
+        func arm(_ sx: F, _ sy: F, _ a: F) {
+            let hx = sx + sin(a) * 10, hy = sy + cos(a) * 10
+            g.line(red, 4.2, sx, sy, hx, hy, round: true)
+            g.fillEllipse(white, hx - 2.5, hy - 2.5, 5, 5)
+        }
+        arm(-1, -29, q.backArm)
+        g.fillEllipse(red, -9.5, -34, 19, 21)
+        g.line(white, 3, -7.6, -15.2, 7.6, -15.2, round: true)
+        g.fillRect(C(35, 30, 30), -9.2, -22, 18.4, 2.6)
+        g.fillRect(Self.gold, 1.8, -22.5, 3.3, 3.6)
+        g.fillEllipse(white, -5.5, -34.6, 12, 4.2)
+        drawGift(g, n)
+
+        g.fillEllipse(C(232, 192, 96), -7.2, -42.5, 6, 6)
+        g.fillEllipse(Self.skin, -6, -44, 13, 12)
+        g.fillEllipse(C(240, 196, 168), -5.2, -39.6, 2.6, 3.4)
+        g.fillEllipse(C(245, 150, 140, 150), 0.8, -36.6, 3.2, 2.4)
+        g.fillEllipse(C(45, 32, 30), 2.8, -38.8, 1.7, 2)
+        g.bezier(C(150, 70, 60), 0.8, 2.6, -34.6, 3.6, -33.6, 5, -33.7, 5.9, -34.8)
+        arm(1, -29, q.frontArm)
+        g.fillEllipse(C(240, 160, 150), 5, -38.3, 3.4, 3.4)
+
+        let sway = sin(q.walking ? q.p * 0.5 : q.standPhase) * 2.5
+        let tipX = -12 + sway, tipY: F = -55
+        let hat = CGMutablePath()
+        hat.start(-7, -41)
+        hat.to(8, -41)
+        hat.curve(8.5, -52, 0, -58, tipX, tipY)
+        hat.curve(-6, -54, -7, -48, -7, -41)
+        hat.closeSubpath()
+        g.fill(red, hat)
+        g.line(white, 3.6, -7, -41.4, 8, -41.4, round: true)
+        g.fillEllipse(white, tipX - 3, tipY - 3, 6, 6)
     }
 
     // ------------------------------------------------------------------ pindsvin og egern (efterår)
