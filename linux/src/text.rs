@@ -28,6 +28,18 @@ pub const MENU_VOLUME: &str = "Lydstyrke";
 pub const VOLUMES: [&str; 3] = ["Lav", "Middel", "Høj"];
 pub const MENU_ELVES: &str = "Nisser";
 pub const MENU_ELF_COUNT: &str = "Antal nisser pr. skærm";
+// Nisser or elves (see `folk.rs`): the same two items when the walkers are elves, and the choice between the two.
+pub const MENU_ALFER: &str = "Alfer";
+pub const MENU_ALF_COUNT: &str = "Antal alfer pr. skærm";
+pub const MENU_FOLK: &str = "Nisser eller alfer";
+/// Indexed by `Folk::index`.
+pub const FOLK: [&str; 5] =
+    ["Nisser", "Alfer", "Wichtel (tyske nisser)", "Kabouters (hollandske nisser)", "Päkapikud (estiske nisser)"];
+
+/// The automatic choice, with what it came to on this machine.
+pub fn menu_folk_automatic(folk: &str) -> String {
+    format!("Automatisk efter sprog og land ({})", folk.to_lowercase())
+}
 pub const MENU_POWER_SAVE: &str = "Strømspare";
 /// Indexed by the `PowerSave` setting (0 off, 1 on, 2 only on battery).
 pub const POWER_SAVE: [&str; 3] =
@@ -144,8 +156,9 @@ pub fn notice_install_failed(v: &str, e: &str) -> String {
     format!("Kunne ikke installere version {v}: {e}")
 }
 
-pub fn notice_snowman(step: &str) -> String {
-    format!("Nisserne har bygget videre på snemanden. I dag fik den {step}")
+pub fn notice_snowman(step: &str, alfer: bool) -> String {
+    let who = if alfer { "Alferne" } else { "Nisserne" };
+    format!("{who} har bygget videre på snemanden. I dag fik den {step}")
 }
 
 pub fn notice_door(day: u32) -> String {

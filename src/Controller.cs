@@ -72,6 +72,9 @@ namespace JuleHygge
         // for the lights (Layer.cs and LayerAutumn.cs). The calendar and the countdown belong to Christmas and
         // are hidden in autumn.
         public bool Autumn { get { return Cfg.Theme == 1; } }
+        // Nisser or elves in the Christmas theme: the user's choice, or by language and region (see Folk).
+        public int WalkerFolk { get { return Folk.Chosen(Cfg.Folk); } }
+        public bool Elves { get { return WalkerFolk == Folk.Alfer; } }
 
         // Snowfall slowly drifts between ~60% and ~140% of the chosen amount (two slow waves of about
         // 3 and 7 minutes with random phases), so it feels organic but averages out to the chosen level.
@@ -704,7 +707,7 @@ namespace JuleHygge
                     else
                     {
                         title = "Snemanden vokser!";
-                        msg = "Nisserne har bygget videre på snemanden. I dag fik den " + SnowmanSteps[SnowmanStage - 1];
+                        msg = (Elves ? "Alferne" : "Nisserne") + " har bygget videre på snemanden. I dag fik den " + SnowmanSteps[SnowmanStage - 1];
                     }
                     celebrateAt = Time + 2;
                 }
@@ -807,7 +810,7 @@ namespace JuleHygge
                 () => Cfg.SoundLevel, v => Cfg.SoundLevel = v));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern"));
+            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern", "Alfer"));
             var count = new ToolStripMenuItem("Antal nisser pr. skærm");
             foreach (int c in new[] { 1, 2, 3, 5, 8, 12 })
             {
@@ -822,7 +825,12 @@ namespace JuleHygge
                 };
                 count.DropDownItems.Add(it);
             }
-            menu.Items.Add(Themed(count, "Antal dyr pr. skærm"));
+            menu.Items.Add(Themed(count, "Antal dyr pr. skærm", "Antal alfer pr. skærm"));
+            // Nisser or elves: automatic follows the language and region; the other two are for when that is wrong.
+            // The walkers are drawn anew every frame, so they change clothes at once.
+            menu.Items.Add(Themed(Choice("Nisser eller alfer",
+                new[] { "Automatisk efter sprog og land (" + Folk.Name(Folk.Auto).ToLowerInvariant() + ")", Folk.Names[0], Folk.Names[1], Folk.Names[2], Folk.Names[3], Folk.Names[4] },
+                new[] { 0, Folk.Nisser, Folk.Alfer, Folk.Wichtel, Folk.Kabouter, Folk.Paekapikk }, () => Cfg.Folk, v => { Cfg.Folk = v; ApplyTheme(); }), null));
             menu.Items.Add(new ToolStripSeparator());
 
             var power = new ToolStripMenuItem("Strømspare");
@@ -898,13 +906,14 @@ namespace JuleHygge
 
         // Menu items whose text follows the theme: the Christmas text, and the autumn one (null = the element has
         // no autumn form yet, so the item is hidden in autumn). Applied when the menu opens and when the theme changes.
-        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar; }
+        // Alfer is the Christmas text when the walkers are elves and not nisser (null = the same text for both).
+        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar, Alfer; }
         readonly List<ThemedItem> themedItems = new List<ThemedItem>();
         ContextMenuStrip trayMenu;
 
-        T Themed<T>(T item, string efteraar) where T : ToolStripItem
+        T Themed<T>(T item, string efteraar, string alfer = null) where T : ToolStripItem
         {
-            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar });
+            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar, Alfer = alfer });
             return item;
         }
 
@@ -914,7 +923,7 @@ namespace JuleHygge
             foreach (var t in themedItems)
             {
                 t.Item.Available = !Autumn || t.Efteraar != null;
-                t.Item.Text = Autumn ? (t.Efteraar ?? t.Jul) : t.Jul;
+                t.Item.Text = Autumn ? (t.Efteraar ?? t.Jul) : Elves ? (t.Alfer ?? t.Jul) : t.Jul;
             }
             kiteItem.Available = Autumn;
             // hidden items must not leave two separators in a row, or one at the top

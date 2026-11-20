@@ -15,6 +15,7 @@ use x11rb::protocol::Event;
 
 use crate::calendar::{Calendar, CalendarAction};
 use crate::figures::{Figures, ScreenInfo};
+use crate::folk::{self, Folk};
 use crate::layer::{Layer, PixelStore, Present, SceneState, SNOWMAN_MAX_STAGE};
 use crate::rng::Rng;
 use crate::session::SessionWatch;
@@ -312,7 +313,7 @@ impl Controller {
                 notice = Some(if self.cfg.theme == 1 {
                     (text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false)
                 } else {
-                    (text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(text::SNOWMAN_STEPS[at]), false)
+                    (text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(text::SNOWMAN_STEPS[at], folk::chosen(self.cfg.folk) == Folk::Alfer), false)
                 });
                 self.celebrate_at = Some(self.time + 2.0);
             }
@@ -834,6 +835,7 @@ impl Controller {
                 clumps: &self.window_snow.clumps,
                 ledge_u: self.display.dpi_scale,
                 autumn,
+                folk: folk::chosen(self.cfg.folk),
                 kite: self.cfg.kite,
             };
             let busy = Instant::now();

@@ -40,6 +40,9 @@ pub struct Settings {
     pub theme: i32,
     /// Autumn's kite over the primary screen. Key `Kite`.
     pub kite: bool,
+    /// Who the walkers are: 0 = automatic by language and region, else 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters,
+    /// 5 päkapikud (see `folk.rs`). Key `Folk`.
+    pub folk: i32,
     pub auto_update: bool,
     /// The version that ran last time, to announce an update.
     pub last_version: String,
@@ -74,6 +77,7 @@ impl Default for Settings {
             frame_rate: 20,
             theme: 0,
             kite: true,
+            folk: 0,
             auto_update: true,
             last_version: String::new(),
             snowman_seen_stage: 0,
@@ -146,6 +150,7 @@ impl Settings {
             frame_rate,
             theme: i32::from(i("Theme", def.theme) == 1),
             kite: b("Kite", def.kite),
+            folk: i("Folk", def.folk).clamp(0, 5),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),
             elf_count: i("NisseCount", def.elf_count).clamp(1, 12),
             power_save: i("PowerSave", def.power_save).clamp(0, 2),
@@ -189,6 +194,7 @@ impl Settings {
             format!("FrameRate={}", self.frame_rate),
             format!("Theme={}", self.theme),
             format!("Kite={}", b(self.kite)),
+            format!("Folk={}", self.folk),
             format!("AutoUpdate={}", b(self.auto_update)),
             format!("LastVersion={}", self.last_version),
             format!("SnowmanSeenStage={}", self.snowman_seen_stage),
@@ -222,6 +228,7 @@ impl Settings {
         self.frame_rate = m.frame_rate;
         self.theme = m.theme;
         self.kite = m.kite;
+        self.folk = m.folk;
         self.lights = m.lights;
         self.all_screens = m.all_screens;
         self.pause_fullscreen = m.pause_fullscreen;
@@ -267,6 +274,7 @@ mod tests {
             frame_rate: 30,
             theme: 1,
             kite: false,
+            folk: 2,
             sound: true,
             last_version: "1.5.0".into(),
             first_run: NaiveDate::from_ymd_opt(2026, 11, 20),

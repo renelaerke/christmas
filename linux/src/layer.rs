@@ -33,6 +33,7 @@ pub use elves::Elf;
 pub use snowman::MAX_STAGE as SNOWMAN_MAX_STAGE;
 
 use crate::figures::{PlowRun, Santa, Spark};
+use crate::folk::Folk;
 use crate::rng::Rng;
 use crate::window_snow::{Clump, Ledge};
 use crate::x11::{Rect, Res};
@@ -77,6 +78,8 @@ pub struct SceneState<'a> {
     pub ledge_u: f32,
     /// The autumn theme (setting `Theme` = 1): leaves for snow.
     pub autumn: bool,
+    /// Who the walkers are in the Christmas theme (setting `Folk`, see `folk.rs`).
+    pub folk: Folk,
     /// Autumn's kite over the primary screen (setting `Kite`).
     pub kite: bool,
 }
@@ -523,7 +526,7 @@ impl Layer {
         self.draw_ground(dt, st);
         self.draw_santa_and_sparks(st);
         self.draw_kite(dt, st);
-        self.draw_elves(st.autumn);
+        self.draw_elves(st.autumn, st.folk);
         self.draw_plow(st);
         self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
@@ -989,6 +992,7 @@ mod tests {
             clumps: &[],
             ledge_u: 1.0,
             autumn: false,
+            folk: Folk::Nisser,
             kite: false,
         }
     }

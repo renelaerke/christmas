@@ -1643,6 +1643,13 @@ namespace JuleHygge
             g.TranslateTransform(n.X, gy);
             g.ScaleTransform(n.Dir * sc, sc);
             if (c.Autumn) { DrawAnimal(n); g.Restore(st); return; }
+            switch (c.WalkerFolk)
+            {
+                case Folk.Alfer: DrawElf(n); g.Restore(st); return;
+                case Folk.Wichtel: DrawWichtel(n); g.Restore(st); return;
+                case Folk.Kabouter: DrawKabouter(n); g.Restore(st); return;
+                case Folk.Paekapikk: DrawPaekapikk(n); g.Restore(st); return;
+            }
 
             bool walking = n.State == 0;
             float p = n.WalkPhase;
