@@ -141,6 +141,12 @@ jobs:
             test -s "$RUNNER_TEMP/shots-$name/screen0.png"
             cp "$RUNNER_TEMP/shots-$name/screen0.png" "build/screen0-$name.png"
           done
+          # the menu's languages: the files are complete and match the code, and the automatic choice follows
+          # the machine's language, with English for one that has no file
+          python3 "$GITHUB_WORKSPACE/tools/sprog-check.py"
+          JULE_LOCALE=de_DE build/JuleHygge --sprog-test | tee "$RUNNER_TEMP/sprog.txt"
+          grep -q '^Automatic on this machine: de ' "$RUNNER_TEMP/sprog.txt"
+          JULE_LOCALE=fr_FR build/JuleHygge --sprog-test | grep -q '^Automatic on this machine: en '
           # the sounds, written as files: the summary shows that the goose recording was read
           build/JuleHygge --sound-test="$RUNNER_TEMP/lyd"
           cat "$RUNNER_TEMP/lyd/summary.txt"

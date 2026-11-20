@@ -46,6 +46,8 @@ pub struct Settings {
     pub auto_update: bool,
     /// The version that ran last time, to announce an update.
     pub last_version: String,
+    /// The menu's language: empty = automatic, or a code such as "en" (see `lang.rs`). Key `Language`.
+    pub language: String,
     pub snowman_seen_stage: i32,
     pub calendar_year: i32,
     pub first_run: Option<NaiveDate>,
@@ -80,6 +82,7 @@ impl Default for Settings {
             folk: 0,
             auto_update: true,
             last_version: String::new(),
+            language: String::new(),
             snowman_seen_stage: 0,
             calendar_year: 0,
             first_run: None,
@@ -156,6 +159,7 @@ impl Settings {
             power_save: i("PowerSave", def.power_save).clamp(0, 2),
             auto_update: b("AutoUpdate", def.auto_update),
             last_version: d.get("LastVersion").cloned().unwrap_or_default(),
+            language: d.get("Language").cloned().unwrap_or_default(),
             snowman_seen_stage: i("SnowmanSeenStage", 0),
             calendar_year: i("CalendarYear", 0),
             first_run: date("FirstRun"),
@@ -197,6 +201,7 @@ impl Settings {
             format!("Folk={}", self.folk),
             format!("AutoUpdate={}", b(self.auto_update)),
             format!("LastVersion={}", self.last_version),
+            format!("Language={}", self.language),
             format!("SnowmanSeenStage={}", self.snowman_seen_stage),
             format!("CalendarYear={}", self.calendar_year),
             format!("FirstRun={}", ds(&self.first_run)),
@@ -229,6 +234,7 @@ impl Settings {
         self.theme = m.theme;
         self.kite = m.kite;
         self.folk = m.folk;
+        self.language = m.language.clone();
         self.lights = m.lights;
         self.all_screens = m.all_screens;
         self.pause_fullscreen = m.pause_fullscreen;
@@ -277,6 +283,7 @@ mod tests {
             folk: 2,
             sound: true,
             last_version: "1.5.0".into(),
+            language: "de".into(),
             first_run: NaiveDate::from_ymd_opt(2026, 11, 20),
             opened_doors: [1, 2, 24].into_iter().collect(),
             ..Default::default()

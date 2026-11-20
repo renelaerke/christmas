@@ -127,6 +127,7 @@ impl Controller {
     pub fn new(opts: Options) -> Res<Controller> {
         let display = Display::open()?;
         let mut cfg = Settings::load();
+        crate::lang::select(&cfg.language);
         if cfg.first_run.is_none() {
             // the snowman is built over 12 days from the first start
             cfg.first_run = Some(crate::clock::today());
@@ -370,6 +371,11 @@ impl Controller {
             TrayMsg::Settings(m) => {
                 let old = self.cfg.take_menu_fields(&m);
                 self.cfg.save();
+                if old.language != self.cfg.language {
+                    // (the countdown is made here and handed to the menu as a finished text)
+                    crate::lang::select(&self.cfg.language);
+                    self.update_tray();
+                }
                 crate::log::debug("settings changed in the menu");
                 if old.all_screens != self.cfg.all_screens || old.theme != self.cfg.theme {
                     // (a new theme starts from empty screens: nothing of the old one is left falling or lying)

@@ -49,6 +49,9 @@ namespace JuleHygge
             // --lyd-test=DIR: write the synthesized sounds as WAV files (to listen to them) and quit.
             foreach (var a in args)
                 if (a.StartsWith("--lyd-test=")) { Synth.WriteTestFiles(a.Substring(11)); return; }
+            // --sprog-test[=FILE]: write the languages found for the menu, the automatic choice and what each lacks, and quit.
+            foreach (var a in args)
+                if (a.StartsWith("--sprog-test")) { Lang.Test(a.Length > 13 ? a.Substring(13) : null); return; }
             // --folk-test[=FILE]: write whether this machine's language and region give nisser or elves (and the
             // rule for other locales) and quit. JULE_LOCALE=en_US pretends to be that locale.
             foreach (var a in args)

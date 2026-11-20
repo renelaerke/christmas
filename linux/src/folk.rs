@@ -117,6 +117,17 @@ fn system_locale() -> (Option<String>, Option<String>) {
     (language, region)
 }
 
+/// The user's languages in order of preference (`LANGUAGE`'s list, then `LC_ALL`, `LC_MESSAGES`, `LANG`), for the
+/// menu's language (`lang.rs`). `JULE_LOCALE=de_DE` pretends to be that locale.
+pub fn languages() -> Vec<String> {
+    if let Some(fake) = env("JULE_LOCALE") {
+        return split(&fake).0.into_iter().collect();
+    }
+    let mut ids: Vec<String> = env("LANGUAGE").map(|l| l.split(':').map(str::to_string).collect()).unwrap_or_default();
+    ids.extend(["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().filter_map(env));
+    ids.iter().filter_map(|id| split(id).0).collect()
+}
+
 /// The automatic choice on this machine. Read once: a change of language or region takes effect at the next start.
 pub fn system() -> Folk {
     static SYSTEM: OnceLock<Folk> = OnceLock::new();

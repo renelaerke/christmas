@@ -1,13 +1,13 @@
 # AGENTS.md
 
-JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`, en native macOS-udgave (Swift/AppKit) i `macos/` og en native Linux-udgave (Rust, X11) i `linux/`. Al brugervendt tekst er på **dansk**.
+JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`, en native macOS-udgave (Swift/AppKit) i `macos/` og en native Linux-udgave (Rust, X11) i `linux/`. Al brugervendt tekst skrives på **dansk** i koden. Menuens tekster vises på brugerens sprog: den danske tekst er nøglen til oversættelsen i `assets/sprog/` (se "Sprog" under Konventioner).
 
 ## Byg
 - Byg med `powershell -ExecutionPolicy Bypass -File .\build.ps1`. Den bruger den `csc.exe`, der følger med Windows. Der er **intet .NET SDK** på maskinen, og der må ikke bruges NuGet-pakker.
 - Compileren forstår kun **C# 5**: ingen `$"..."`, `?.`, `nameof`, `out var`, expression-bodied members eller initializers på auto-properties.
 - **Luk programmet før du bygger** (`Stop-Process -Name JuleHygge`). Ellers er `JuleHygge.exe` låst, og bygget fejler.
 - `build.ps1` bruger `/codepage:65001`, så kildefiler skal være UTF-8 (æøå i strenge).
-- På en Mac med mono kan Windows-koden kompileres som kontrol (ikke køres: laget er et WinForms-vindue, og der er intet libgdiplus): `mcs -langversion:5 -nologo -codepage:65001 -target:winexe -unsafe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Web.Extensions.dll -out:build-test/win/JuleHygge.exe src/*.cs`. `-langversion:5` fanger nyere C#, som Windows' `csc.exe` ikke forstår.
+- På en Mac med mono kan Windows-koden kompileres som kontrol (ikke køres: laget er et WinForms-vindue, og der er intet libgdiplus): `mcs -langversion:5 -nologo -codepage:65001 -target:winexe -unsafe -r:System.Windows.Forms.dll -r:System.Drawing.dll -r:System.Web.Extensions.dll $(for f in assets/sprog/*.ini; do echo -resource:$f,sprog.${f:t}; done) -out:build-test/win/JuleHygge.exe src/*.cs` (sprogfilerne bygges ind som ressourcer, ligesom `build.ps1` gør). `-langversion:5` fanger nyere C#, som Windows' `csc.exe` ikke forstår.
 
 ## Test
 - `--kalender` åbner julekalenderen ved opstart.
@@ -33,6 +33,11 @@ JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`,
 - Lyd syntetiseres som udgangspunkt i koden. En optagelse (WAV) må bruges, når syntese ikke kan komme til at lyde ægte: den skal være fri at bruge, og dens kilde skal stå i `assets/lyd/KILDER.md`. Den eneste indtil nu er gåsene i efterårstemaet, `assets/lyd/gaes-flok.wav` (syntetiske gåsekald blev prøvet to gange og lød for kunstige).
 - Én modelfil, kun i macOS-udgaven: `assets/model/selfie_multiclass_256x256.mlpackage` skiller tøj fra hud og hår i JuleHygge Kamera (kilde og kontrolsummer i `assets/model/KILDER.md`). Dens licens (Apache 2.0) ligger i `macos/licenses/`, følger med i appen og vises fra menuen (`Licenses.swift`). Windows og Linux har hverken modellen eller licensen.
 - Figurerne skal være originale: dansk nisse med rød hue og gråt tøj, ingen kendte figurer. Det samme gælder de andre folk, der går i nissens sted uden for Norden (`Folk`): alfen (grøn eller rød kjortel, spidse ører, hue med bjælde, stribede strømper), den tyske Wichtel, den hollandske kabouter og den estiske päkapikk. Kabouteren må ikke ligne den kendte bogfigur (blå kittel, rød kegle, støvler): vores har jakke i andre farver og gule træsko.
+- **Sprog (`assets/sprog/*.ini`, `Lang.swift`, `src/Lang.cs`, `linux/src/lang.rs`):** menuen, dens tooltips og nedtællingen vises på maskinens sprog, når der er en fil til det, ellers på engelsk; også en tekst, et sprog mangler, vises på engelsk. Indstillingen `Language` er tom for automatisk eller en sprogkode, og menuen "Sprog / Language" vælger. Filerne er fælles for de tre udgaver: `dansk tekst = oversættelse` pr. linje (formatet og "nyt sprog" står i `assets/sprog/README.md`).
+  - **Den danske tekst i koden er nøglen.** Ændres en menutekst, skal den ændres i `en.ini` og de andre filer også, ellers vises den på dansk. Kør `python3 tools/sprog-check.py` efter enhver ændring af menutekster eller sprogfiler (CI kører den også).
+  - Oversættelsen sker ét sted pr. udgave, ikke ved hvert menupunkt: macOS sætter alle titler i `menuNeedsUpdate` (`titledItems`), Windows i `ApplyTheme` (`danish`, fyldt af `RememberTexts`), Linux i trayens hjælpere (`item`, `toggle`, `choice`). Tekster med et tal eller navn i bruger `{0}`/`{1}` (`L("… {0}", x)`, `Lang.T`, `lang::trf`).
+  - Filerne følger med: macOS i `Resources/sprog` (`build.sh` og Xcode-projektet), Windows som ressourcer `sprog.xx.ini` (`build.ps1`), Linux med `include_str!` (et nyt sprog skal føjes til `BUILT_IN`). En fil i mappen `sprog` ved siden af `settings.ini` læses også og vinder over appens egen.
+  - Test: `--sprog-test` (alle tre) udskriver sprogene, det automatiske valg og mangler; `JULE_LOCALE=de_DE` lader som om. På macOS skriver `JULE_MENU_DUMP=FIL` hele menuen som tekst, som den ville åbne. Ikke oversat endnu: notifikationer, julekalenderen og kameraets vinduer. Oversættelserne er ikke læst af nogen med sproget som modersmål.
 - Indstillinger gemmes i `Settings`. Nye felter skal have en standardværdi, så gamle `settings.ini`-filer stadig virker.
 - Fakta i `CalendarContent` er ikke kildetjekket. Tjek dem, før der tilføjes nye.
 
@@ -102,7 +107,7 @@ JuleHygge er et juleoverlay til Windows (WinForms, .NET Framework 4.x) i `src/`,
 - Se `macos/README.md` for testparametre og `docs/macos-plan.md` for designvalg.
 
 ## Linux (`linux/`)
-- Rust, no GUI toolkit: `x11rb` (X11), Cairo/Pango (drawing), `ksni` (tray), `zbus` (D-Bus), `cpal` (sound). Build with `linux/build.sh` (needs `build-essential pkg-config libcairo2-dev libpango1.0-dev libasound2-dev` and Rust). Code and comments are English; user-facing text is Danish and lives only in `linux/src/text.rs`. See `linux/README.md` for test aids and `docs/linux-plan.md` for the design.
+- Rust, no GUI toolkit: `x11rb` (X11), Cairo/Pango (drawing), `ksni` (tray), `zbus` (D-Bus), `cpal` (sound). Build with `linux/build.sh` (needs `build-essential pkg-config libcairo2-dev libpango1.0-dev libasound2-dev` and Rust). Code and comments are English; user-facing text is Danish and lives only in `linux/src/text.rs` (the menu shows it in the user's language, see "Sprog" under Konventioner). See `linux/README.md` for test aids and `docs/linux-plan.md` for the design.
 - The drawing follows `src/Layer.cs` function by function (`linux/src/layer.rs` and `linux/src/layer/*.rs`, one file per figure). Changes to figures or logic should be made in all three versions.
 - **Close the app before testing a new build:** `pkill -x JuleHygge` (it also stops the supervisor). Test with `JULE_SETTINGS=<file>` (and `JULE_DEBUG=1`, log in `$XDG_RUNTIME_DIR/julehygge-debug.log`), so the real settings and opened doors are not touched. `--snapshot=DIR`, `--calendar-snapshot=FILE`, `--sound-test=DIR` and `--list-windows` check drawing, sound and the window scan without showing anything on screen.
 - X11 only: on Ubuntu's Wayland desktop it runs through XWayland and cannot see native Wayland windows (no snow on them, and their fullscreen state is unknown). Not tested on Wayland yet.

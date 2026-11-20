@@ -52,6 +52,9 @@ if let a = args.first(where: { $0.hasPrefix("--opdatering-test=") }) {
     if parts.count == 2 { Updater.test(zip: parts[0], version: parts[1]) }
     exit(0)
 }
+// --sprog-test: prints the languages found for the menu, the automatic choice, and what each lacks; and quits.
+if args.contains("--sprog-test") { Lang.test(); exit(0) }
+
 // --folk-test: prints whether this Mac's language and region give nisser or elves (and the rule for other
 // locales), and quits. JULE_LOCALE=en_US pretends to be that locale.
 if args.contains("--folk-test") { Folk.test(); exit(0) }

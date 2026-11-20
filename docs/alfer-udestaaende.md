@@ -33,4 +33,8 @@ de menupunkter og den notifikation, der nævner nisser.
   expected"). Mangler: spidse ører til
   alfen (intet måler ørerne), og `--nissehue-test` (simuleringen) er ikke kørt for de nye former.
 - **README.md** (forsiden) nævner kun nisser.
-- **Sproget.** Al tekst er dansk, også for dem, der får alfer. En oversættelse er en opgave for sig.
+- **Sproget.** Menuen er oversat (dansk, engelsk, svensk, tysk, hollandsk; `assets/sprog/`, se README dér), med
+  engelsk som reserve. Set på macOS som tekstudskrift af menuen (`JULE_MENU_DUMP`) på alle fem sprog; Windows
+  kompilerer og læser filerne under mono, men menuen er ikke set; Linux er ikke kompileret lokalt. Mangler:
+  notifikationer, julekalenderen og lågerne, kameraets vinduer. Oversættelserne er ikke læst af nogen med sproget
+  som modersmål.
