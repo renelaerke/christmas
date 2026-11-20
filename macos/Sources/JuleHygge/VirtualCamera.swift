@@ -188,7 +188,9 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // autumn: a sou'wester and a yellow raincoat, and nothing in the beard's place
         let autumn = c.cfg.theme == Theme.efteraar.rawValue
         CameraCostume.autumn = autumn
-        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard && !autumn, wantsSuit = c.cfg.cameraSuit
+        // and each folk has its own hat, beard and suit (elves and päkapikud have no beard)
+        CameraCostume.folk = Folk.chosen(c.cfg.folk)
+        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard && !autumn && CameraCostume.look.beard > 0, wantsSuit = c.cfg.cameraSuit
         let wantsCostume = wantsBeard || wantsSuit   // both need the face landmarks
         let now = CACurrentMediaTime()
         let dt = CGFloat(min(0.2, now - lastFrameTime)); lastFrameTime = now

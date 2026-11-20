@@ -72,6 +72,8 @@ quick crashes; `pkill -x JuleHygge` stops both. Test flags and `JULE_NO_SUPERVIS
 | `JULE_UPDATE_DELAY=N` | the first update check after N seconds instead of 60 |
 | `JULE_NO_SUPERVISOR=1` | runs without the restart supervisor |
 | `--write-icon=FILE` | writes the app icon as a 256 px PNG (for `install.sh`) and exits |
+| `--sprog-test` | prints the menu's languages (`assets/sprog`), the automatic choice and what each language lacks, and exits; `JULE_LOCALE=de_DE` pretends to be that locale (setting `Language`: empty = automatic, or a code) |
+| `--folk-test` | prints whether this machine's language and region give nisser or elves (setting `Folk`: 0 automatic, 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud), and the rule for a list of locales, and exits; `JULE_LOCALE=en_US` pretends to be that locale |
 | `--list-windows` | prints the windows as snow on windows sees them (frame, shown, maximized, which part of the top edge can carry snow) and exits; only reads from the X server |
 | `--calendar-snapshot=FILE` | draws the calendar into a PNG (at `JULE_SCALE`, default 2) and exits, without opening a window |
 | `--santa` (`--julemand`) | sends Santa right away |

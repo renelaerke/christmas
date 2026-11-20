@@ -104,9 +104,13 @@ using System.Reflection;
 [assembly: AssemblyInformationalVersion("$Version")]
 "@ | Set-Content -Path $versionFile -Encoding UTF8
 
+# The menu's languages (assets\sprog\README.md): every file there goes into the exe as a resource "sprog.xx.ini".
+$sprog = Get-ChildItem (Join-Path $PSScriptRoot 'assets\sprog\*.ini') | ForEach-Object { "/resource:$($_.FullName),sprog.$($_.Name)" }
+
 & $csc /nologo /codepage:65001 /target:winexe /optimize+ /unsafe /platform:anycpu /out:$out `
     /win32icon:$ico `
     "/resource:$(Join-Path $PSScriptRoot 'assets\lyd\gaes-flok.wav'),gaes-flok.wav" `
+    $sprog `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll `
     (Join-Path $PSScriptRoot 'src\*.cs') $versionFile
 if ($LASTEXITCODE -ne 0) { Write-Error "Build failed"; exit 1 }

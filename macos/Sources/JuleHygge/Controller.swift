@@ -64,6 +64,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     var snowAmount: F { time < stormUntil ? 2 : cfg.snowLevel == 3 ? F(Weather.amount()) : F(cfg.snowLevel) }
     var snowOn: Bool { cfg.snow || time < stormUntil }
     var theme: Theme { Theme(rawValue: cfg.theme) ?? .jul }
+    /// Nisser or elves in the Christmas theme: the user's choice, or by language and region (see Folk).
+    var folk: Folk { Folk.chosen(cfg.folk) }
 
     /// Snowfall slowly drifts between ~60 % and ~140 % of the chosen amount (two slow waves of about
     /// 3 and 7 minutes with random phases), so it feels organic but averages out to the chosen level.
@@ -633,7 +635,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
                     msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[snowmanStage - 1]
                 } else {
                     title = "Snemanden vokser!"
-                    msg = "Nisserne har bygget videre på snemanden. I dag fik den " + Self.snowmanSteps[snowmanStage - 1]
+                    msg = "\(folk == .alfer ? "Alferne" : "Nisserne") har bygget videre på snemanden. I dag fik den " + Self.snowmanSteps[snowmanStage - 1]
                 }
                 celebrateAt = time + 2
             }
@@ -686,17 +688,24 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     // ------------------------------------------------------------------ menulinje-ikon og menu
     /// Menu items whose text follows the theme: the Christmas title, and the autumn one (nil = the element has no
     /// autumn form yet, so the item is hidden there). Applied each time the menu opens (menuNeedsUpdate).
-    private var themedItems: [(item: NSMenuItem, jul: String, efteraar: String?)] = []
+    /// `folk` holds the Christmas title for a folk that is not called nisser there (none = the same title; an empty
+    /// title = that folk has no such thing, so the item is hidden).
+    private var themedItems: [(item: NSMenuItem, jul: String, efteraar: String?, folk: [Folk: String])] = []
+    private var folkItem: NSMenuItem!
+    /// Every menu item with its Danish title, which is the key to its text in the user's language (see Lang). The
+    /// titles are set each time the menu opens, so a change of language shows at once.
+    private var titledItems: [(item: NSMenuItem, da: String)] = []
+    private var calendarItem: NSMenuItem!, versionItem: NSMenuItem!, languageItem: NSMenuItem!
 
-    private func themed(_ it: NSMenuItem, _ efteraar: String?) -> NSMenuItem {
-        themedItems.append((it, it.title, efteraar))
+    private func themed(_ it: NSMenuItem, _ efteraar: String?, alfer: String? = nil, folk: [Folk: String] = [:]) -> NSMenuItem {
+        themedItems.append((it, it.title, efteraar, alfer.map { [.alfer: $0] } ?? folk))
         return it
     }
 
     /// The same for a submenu's own title and its choices (nil keeps a choice's text).
-    private func themed(_ parent: NSMenuItem, _ efteraar: String, choices: [String?]) -> NSMenuItem {
-        themedItems.append((parent, parent.title, efteraar))
-        for (it, name) in zip(parent.submenu?.items ?? [], choices) { if let name { themedItems.append((it, it.title, name)) } }
+    private func themed(_ parent: NSMenuItem, _ efteraar: String, choices: [String?], folk: [Folk: String] = [:]) -> NSMenuItem {
+        themedItems.append((parent, parent.title, efteraar, folk))
+        for (it, name) in zip(parent.submenu?.items ?? [], choices) { if let name { themedItems.append((it, it.title, name, [:])) } }
         return parent
     }
 
@@ -710,6 +719,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.autoenablesItems = false
         let cal = item("Julekalender…") { [unowned self] _ in showCalendar() }
         cal.attributedTitle = NSAttributedString(string: "Julekalender…", attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
+        calendarItem = cal
         menu.addItem(themed(cal, nil))
         countdownItem = NSMenuItem(title: Self.countdown(), action: nil, keyEquivalent: "")
         countdownItem.isEnabled = false
@@ -742,9 +752,15 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(choice("Lydstyrke", ["Lav", "Middel", "Høj"], [0, 1, 2], { $0.soundLevel }, { $0.soundLevel = $1 }))
         menu.addItem(.separator())
 
-        menu.addItem(themed(toggle("Nisser", { $0.nisser }, { $0.nisser = $1 }), "Pindsvin og egern"))
+        menu.addItem(themed(toggle("Nisser", { $0.nisser }, { $0.nisser = $1 }), "Pindsvin og egern",
+                            folk: [.alfer: "Alfer", .wichtel: "Wichtel", .kabouter: "Kabouters", .paekapikk: "Päkapikud"]))
         menu.addItem(themed(choice("Antal nisser pr. skærm", ["1", "2", "3", "5", "8", "12"], [1, 2, 3, 5, 8, 12], { $0.nisseCount }, { $0.nisseCount = $1 }),
-                            "Antal dyr pr. skærm", choices: []))
+                            "Antal dyr pr. skærm", choices: [],
+                            folk: [.alfer: "Antal alfer pr. skærm", .wichtel: "Antal Wichtel pr. skærm", .kabouter: "Antal kabouters pr. skærm", .paekapikk: "Antal päkapikud pr. skærm"]))
+        // Nisser or elves: automatic follows the Mac's language and region; the other two are for when that is wrong.
+        // The walkers change clothes at once (their pictures are kept per folk), so nothing is rebuilt.
+        folkItem = choice("Nisser eller alfer", ["Automatisk efter sprog og land"] + Folk.names, [0] + Folk.allCases.map(\.rawValue), { $0.folk }, { $0.folk = $1 })
+        menu.addItem(themed(folkItem, nil))
         menu.addItem(.separator())
 
         menu.addItem(themed(choice("Strømspare",
@@ -759,10 +775,14 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         plowCameraItem = item("Send sneploven ind i kameraet") { [unowned self] _ in sendPlowToCamera() }
         menu.addItem(themed(santaCameraItem, "Send gæssene ind i kameraet"))
         menu.addItem(themed(plowCameraItem, "Send løvsugeren ind i kameraet"))
-        menu.addItem(themed(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }), "Sydvest på i kameraet"))
-        menu.addItem(themed(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }), nil))
-        menu.addItem(themed(toggle("Nissedragt i kameraet", { $0.cameraSuit }, { $0.cameraSuit = $1 }), "Regnfrakke i kameraet"))
-        menu.addItem(themed(toggle("Nisser og sne foran mig i kameraet", { $0.cameraFront }, { $0.cameraFront = $1 }), "Dyr og blade foran mig i kameraet"))
+        menu.addItem(themed(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }), "Sydvest på i kameraet",
+                            folk: [.alfer: "Alfehue på i kameraet", .wichtel: "Wichtelhue på i kameraet", .kabouter: "Kabouterhue på i kameraet", .paekapikk: "Päkapikk-hue på i kameraet"]))
+        menu.addItem(themed(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }), nil,
+                            folk: [.alfer: "", .wichtel: "Wichtelskæg i kameraet", .kabouter: "Kabouterskæg i kameraet", .paekapikk: ""]))
+        menu.addItem(themed(toggle("Nissedragt i kameraet", { $0.cameraSuit }, { $0.cameraSuit = $1 }), "Regnfrakke i kameraet",
+                            folk: [.alfer: "Alfedragt i kameraet", .wichtel: "Wichtelfrakke i kameraet", .kabouter: "Kabouterjakke i kameraet", .paekapikk: "Päkapikk-dragt i kameraet"]))
+        menu.addItem(themed(toggle("Nisser og sne foran mig i kameraet", { $0.cameraFront }, { $0.cameraFront = $1 }), "Dyr og blade foran mig i kameraet",
+                            folk: [.alfer: "Alfer og sne foran mig i kameraet", .wichtel: "Wichtel og sne foran mig i kameraet", .kabouter: "Kabouters og sne foran mig i kameraet", .paekapikk: "Päkapikud og sne foran mig i kameraet"]))
         menu.addItem(item("Installér JuleHygge Kamera (baggrund i Teams)…") { [unowned self] _ in cameraInstaller.install() })
         menu.addItem(toggle("Pause skærmene mens JuleHygge Kamera bruges", { $0.cameraPausesScreens }, { $0.cameraPausesScreens = $1 }))
         menu.addItem(item("Fjern JuleHygge Kamera") { [unowned self] _ in cameraInstaller.remove() })
@@ -777,9 +797,12 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
         menu.addItem(autostartItem)
         menu.addItem(.separator())
-        let version = NSMenuItem(title: Updater.isReleaseBuild ? "Version \(Updater.current)" : Updater.notUpdatingReason, action: nil, keyEquivalent: "")
-        version.isEnabled = false
-        menu.addItem(version)
+        languageItem = languageMenu()
+        menu.addItem(languageItem)
+        menu.addItem(.separator())
+        versionItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
         if Updater.isReleaseBuild {
             menu.addItem(toggle("Opdatér automatisk", { $0.autoUpdate }, { $0.autoUpdate = $1 }))
             menu.addItem(item("Søg efter opdatering nu") { [unowned self] _ in checkForUpdate(manual: true) })
@@ -787,6 +810,19 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(.separator())
         menu.addItem(item("Afslut") { [unowned self] _ in exit() })
         statusItem.menu = menu
+        // Test aid: JULE_MENU_DUMP=FILE writes the menu as it would open, one line per item (to check a language).
+        if let path = ProcessInfo.processInfo.environment["JULE_MENU_DUMP"], !path.isEmpty {
+            menuNeedsUpdate(menu)
+            var lines: [String] = []
+            func dump(_ m: NSMenu, _ indent: String) {
+                for it in m.items where !it.isHidden {
+                    lines.append(it.isSeparatorItem ? indent + "---" : indent + (it.state == .on ? "✓ " : "  ") + it.title)
+                    if let sub = it.submenu { dump(sub, indent + "    ") }
+                }
+            }
+            dump(menu, "")
+            try? (lines.joined(separator: "\n") + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -794,25 +830,58 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let inCamera = virtualScene != nil
         santaCameraItem.isEnabled = inCamera
         plowCameraItem.isEnabled = inCamera
-        santaCameraItem.toolTip = inCamera ? nil : "Virker når JuleHygge Kamera er i brug i Teams eller en anden app"
+        santaCameraItem.toolTip = inCamera ? nil : L("Virker når JuleHygge Kamera er i brug i Teams eller en anden app")
         plowCameraItem.toolTip = santaCameraItem.toolTip
         let autumn = theme == .efteraar
+        // every text in the user's language: first each item's own title, then the ones that follow the theme
+        // and the folk, then the ones with a number or a name in them
+        for t in titledItems { t.item.title = L(t.da) }
         for t in themedItems {
-            t.item.isHidden = autumn && t.efteraar == nil
-            if !t.item.isSeparatorItem { t.item.title = autumn ? (t.efteraar ?? t.jul) : t.jul }
+            let own = t.folk[folk]
+            t.item.isHidden = autumn ? t.efteraar == nil : own == ""
+            if !t.item.isSeparatorItem { t.item.title = L(autumn ? (t.efteraar ?? t.jul) : (own ?? t.jul)) }
         }
+        calendarItem.attributedTitle = NSAttributedString(string: L("Julekalender…"), attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
+        folkItem.submenu?.items.first?.title = L("Automatisk efter sprog og land ({0})", L(Folk.system.name))
+        versionItem.title = Updater.isReleaseBuild ? L("Version {0}", Updater.current) : L(Updater.notUpdatingReason)
+        // (the menu "Sprog" also says "Language", so it can be found by someone who cannot read the language chosen)
+        languageItem.title = L("Sprog") == "Language" ? "Language" : L("Sprog") + " / Language"
+        let chosen = Lang.all[cfg.language] != nil ? cfg.language : ""
+        for it in languageItem.submenu?.items ?? [] { it.state = (it.representedObject as? String) == chosen ? .on : .off }
+        languageItem.submenu?.items.first?.title = L("Automatisk ({0})", Lang.all[Lang.automatic]?.name ?? Lang.automatic)
         kiteItem.isHidden = !autumn
         countdownItem.title = Self.countdown()
-        snowmanItem.title = "\(autumn ? "Høstak med fugleskræmsel" : "Snemand") (trin\(snowmanStage) af \(Self.snowmanMaxStage))"
+        snowmanItem.title = L(autumn ? "Høstak med fugleskræmsel (trin {0} af {1})" : "Snemand (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage)
         autostartItem.state = Self.autostart ? .on : .off
     }
 
-    private func item(_ title: String, _ action: @escaping (NSMenuItem) -> Void) -> NSMenuItem {
+    /// `title` is Danish and is shown in the user's language (false: it is a name or a number, shown as it is).
+    private func item(_ title: String, translated: Bool = true, _ action: @escaping (NSMenuItem) -> Void) -> NSMenuItem {
         let a = MenuAction(action)
         menuActions.append(a)
         let it = NSMenuItem(title: title, action: #selector(MenuAction.run(_:)), keyEquivalent: "")
         it.target = a
+        if translated { titledItems.append((it, title)) }
         return it
+    }
+
+    /// The menu "Sprog": automatic (the Mac's own language, or English when there is no file for it), and every
+    /// language there is a file for, each under its own name.
+    private func languageMenu() -> NSMenuItem {
+        let parent = NSMenuItem(title: "Sprog", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        for (name, code) in [("", "")] + Lang.listed.map({ ($0.name, $0.code) }) {
+            let it = item(name, translated: false) { [unowned self] _ in
+                cfg.language = code
+                Lang.setting = code
+                cfg.save()
+            }
+            it.representedObject = code
+            sub.addItem(it)
+        }
+        parent.submenu = sub
+        return parent
     }
 
     private func toggle(_ title: String, _ get: @escaping (Settings) -> Bool, _ set: @escaping (Settings, Bool) -> Void) -> NSMenuItem {
@@ -828,6 +897,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private func choice(_ title: String, _ names: [String], _ values: [Int], _ get: @escaping (Settings) -> Int,
                         _ set: @escaping (Settings, Int) -> Void) -> NSMenuItem {
         let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        titledItems.append((parent, title))
         let sub = NSMenu()
         sub.autoenablesItems = false
         for (name, v) in zip(names, values) {
@@ -927,9 +997,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         var eve = JuleClock.make(y, 12, 24)
         if today > eve { eve = JuleClock.make(y + 1, 12, 24) }
         let d = JuleClock.days(from: today, to: eve)
-        if d == 0 { return "★ Glædelig jul! ★" }
-        if d == 1 { return "★ 1 dag til juleaften ★" }
-        return "★ \(d) dage til juleaften ★"
+        if d == 0 { return L("★ Glædelig jul! ★") }
+        if d == 1 { return L("★ 1 dag til juleaften ★") }
+        return L("★ {0} dage til juleaften ★", d)
     }
 
     /// Start at login is a plain login item. (Restart after a crash is handled by the supervisor in main.swift:

@@ -311,7 +311,7 @@ extension NisseHat {
             var out = costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
             if costume.parts.lastMs > 0, !costume.shapes.isEmpty { partsMs.append(costume.parts.lastMs) }
             // (autumn's costume has no beard; HUE_EFTERAAR=1 replays the sou'wester and the raincoat)
-            if !CameraCostume.autumn, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
+            if !CameraCostume.autumn, CameraCostume.look.beard > 0, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
             out = hat.apply(to: out, person: mask)
             for s in costume.shapes {
                 for (i, p) in s.marks.enumerated() where p.x.isFinite && p.y.isFinite {
