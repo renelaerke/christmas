@@ -2,7 +2,7 @@
 
 [Dansk](README.md) · [English](README.en.md) · [Svenska](README.sv.md) · [Deutsch](README.de.md) · [Nederlands](README.nl.md)
 
-Et lille juleoverlay til Windows, macOS og Linux: snevejr, sne der lægger sig på proceslinjen, julemanden i kane med rensdyr (og Rudolf), nisser der går rundt på proceslinjen, julelys langs toppen af skærmen, en snemand der bliver bygget lidt mere hver dag, og en julekalender med 24 låger.
+Et lille juleoverlay til Windows, macOS og Linux: snevejr, sne der lægger sig på proceslinjen, julemanden i kane med rensdyr (og Rudolf), nisser der går rundt på proceslinjen, julelys langs toppen af skærmen, børn der bygger en snemand (som sneploven kører ned), og en julekalender med 24 låger.
 
 ![Santa flies across the screen in a snowstorm, and the snow plow clears the taskbar](docs/media/julehygge.gif)
 
@@ -16,7 +16,7 @@ Et lille juleoverlay til Windows, macOS og Linux: snevejr, sne der lægger sig p
 - Det virker på **alle skærme**. Julemanden flyver hen over de skærme, der står ved siden af hinanden.
 - Højreklik på snefnug-ikonet ved uret for **indstillinger** og **julekalenderen**. Dobbeltklik på ikonet kalder julemanden frem.
 - **Julekalender:** Fra 1. december kan du åbne en ny låge hver dag. Bag lågerne er der vittigheder, hyggetips og julefakta, og nogle låger sætter gang i en effekt: julemanden, snestorm, nissefest eller stjerneregn. Du får en besked ved uret, når dagens låge er klar.
-- **Snemand:** Står på proceslinjen og bliver bygget færdig over 12 dage, regnet fra første gang programmet startede. Først kommer sneboldene, så ansigtet, armene, halstørklædet og hatten, og til sidst kosten.
+- **Snemand:** Tre børn bygger en snemand på proceslinjen. De ruller sneboldene, løfter dem op på hinanden og giver den øjne, gulerodsnæse, knapper, arme, smil, halstørklæde og hue. Det tager omkring et kvarter. Når den er færdig, jubler de og holder sneboldkamp, og et par minutter senere kommer sneploven og kører den ned. Så går børnene et andet sted hen og begynder forfra. (Sådan er det på Windows. På macOS og Linux bliver snemanden stadig bygget færdig over 12 dage.)
 - Animationen pauser automatisk, når et program kører i fuldskærm (spil, film).
 - **Sprog:** Menuen vises på computerens sprog, når der er en oversættelse til det (dansk, engelsk, svensk, tysk, hollandsk), og ellers på engelsk. Du kan vælge et andet under *Sprog / Language* i menuen. Julekalenderen og beskederne er indtil videre kun på dansk. Et nyt sprog er en ny fil: se [assets/sprog/README.md](assets/sprog/README.md).
 - **Nisser eller alfer:** Hvem der går på skærmen, følger sprog og land: nisser i Norden, Wichtel i Tyskland, Østrig og Schweiz, kabouters i Holland, päkapikud i Estland og julealfer i resten af verden. Du kan vælge andre under *Nisser eller alfer* i menuen.
@@ -51,7 +51,7 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 Kræver ikke nogen installation. Den bruger den C#-compiler, der følger med Windows (.NET Framework 4.x).
 Al grafik tegnes i koden, så der ikke er billedfiler.
 
-**Test med en anden dato:** Sæt `$env:JULE_DATE = '2026-12-10'`, før du starter programmet. Så opfører kalenderen og snemanden sig, som om det er den dag. Bemærk at åbnede låger og snemandens trin bliver gemt i indstillingerne.
+**Test med en anden dato:** Sæt `$env:JULE_DATE = '2026-12-10'`, før du starter programmet. Så opfører kalenderen sig, som om det er den dag. Bemærk at åbnede låger bliver gemt i indstillingerne. `JULE_SNOWMAN_SPEED=30` lader børnene bygge snemanden 30 gange hurtigere.
 
 **Test aids** (same names as on macOS):
 
@@ -86,6 +86,8 @@ Al grafik tegnes i koden, så der ikke er billedfiler.
 | `src/PowerWatcher.cs` | Detects when the display turns off or on |
 | `src/WindowSnow.cs` | Snow on other apps' window edges: window scan, piles, drapes, falling clumps |
 | `src/Updater.cs` | Self-update from GitHub releases: check, download, verify, swap the exe |
+| `src/SnowmanBuild.cs` | The snowman the children build: balls, lifts, dressing, snowball fight, waiting for the plow, a new place |
+| `src/LayerSnowman.cs` | Draws the snowman, the children and their snowballs, and lets the plow run the snowman down |
 
 ## Ideer til næste version
 - Sne der lægger sig på toppen af åbne vinduer

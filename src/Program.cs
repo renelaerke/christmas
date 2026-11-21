@@ -237,6 +237,10 @@ namespace JuleHygge
         // Meeting another nisse to hand over or swap a gift.
         public float MeetTimer, MeetCooldown;
         public Nisse MeetWith;
+        // Magic past the children's snowman: gone for Magic seconds, then back at MagicTo.
+        // ZoneBumps counts the turns at the play zone since the last time.
+        public float Magic, MagicTo;
+        public int ZoneBumps;
         public System.Drawing.Color Tunic, Mitten, Gift;
     }
 }

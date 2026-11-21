@@ -2,7 +2,7 @@
 
 [Dansk](README.md) · [English](README.en.md) · [Svenska](README.sv.md) · [Deutsch](README.de.md) · [Nederlands](README.nl.md)
 
-Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bureaublad die blijft liggen op de taakbalk en op je vensters, de Kerstman vliegt voorbij in zijn slee met rendieren (en Rudolf), kleine figuurtjes lopen onder aan het scherm en ruilen cadeautjes, bovenaan hangt kerstverlichting, een sneeuwpop wordt elke dag een stukje verder gebouwd, en er is een adventskalender met 24 deurtjes.
+Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bureaublad die blijft liggen op de taakbalk en op je vensters, de Kerstman vliegt voorbij in zijn slee met rendieren (en Rudolf), kleine figuurtjes lopen onder aan het scherm en ruilen cadeautjes, bovenaan hangt kerstverlichting, kinderen bouwen een sneeuwpop (die de sneeuwschuiver omverrijdt), en er is een adventskalender met 24 deurtjes.
 
 ![De Kerstman vliegt in een sneeuwstorm over het scherm, en de sneeuwschuiver ruimt de taakbalk](docs/media/julehygge.gif)
 
@@ -16,7 +16,7 @@ Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bur
 - Het werkt op **alle schermen**. De Kerstman vliegt over schermen die naast elkaar staan.
 - **Het menu:** klik met de rechtermuisknop op het sneeuwvlokje bij de klok in Windows en Linux, of klik erop in de menubalk op macOS, voor de instellingen en de adventskalender. Daar kun je alles aan- en uitzetten.
 - **Adventskalender:** vanaf 1 december kun je elke dag een nieuw deurtje openen. Achter de deurtjes zitten grapjes, gezellige tips en kerstweetjes, en sommige deurtjes starten een effect: de Kerstman, een sneeuwstorm, een feestje of een sterrenregen.
-- **Sneeuwpop:** wordt in 12 dagen gebouwd, geteld vanaf de eerste keer dat de app is gestart.
+- **Sneeuwpop:** drie kinderen bouwen in ongeveer een kwartier een sneeuwpop op de taakbalk: ze rollen de ballen, tillen ze op elkaar en geven hem ogen, een wortelneus, knopen, armen, een glimlach, een sjaal en een muts. Als hij klaar is, juichen ze en houden ze een sneeuwballengevecht, en een paar minuten later komt de sneeuwschuiver en rijdt hem omver. Dan gaan de kinderen ergens anders heen en beginnen opnieuw. (Zo is het op Windows. Op macOS en Linux wordt de sneeuwpop nog in 12 dagen gebouwd.)
 - **Sneeuwschuiver:** rijdt uit en ruimt de sneeuw als de hoop hoog wordt.
 - **Geluid** staat uit tot je het in het menu aanzet: belletjes en een deuntje voor de Kerstman, motor en claxon voor de sneeuwschuiver.
 - **Herfstthema:** het menu "Thema" verruilt de sneeuw voor vallende bladeren, de Kerstman voor trekganzen en de sneeuwpop voor een vogelverschrikker.
