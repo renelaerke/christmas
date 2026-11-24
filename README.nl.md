@@ -25,7 +25,7 @@ Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bur
 
 ## Jouw taal, jouw figuurtjes
 
-- **Taal:** het menu verschijnt in de taal van je computer als daar een vertaling voor is (Deens, Engels, Zweeds, Duits, Nederlands, Italiaans, Spaans), en anders in het Engels. Onder *Taal* in het menu kun je een andere kiezen.
+- **Taal:** het menu verschijnt in de taal van je computer als daar een vertaling voor is (Deens, Engels, Zweeds, Duits, Nederlands, Italiaans, Spaans (ook Mexicaans), Frans, Portugees (ook Braziliaans)), en anders in het Engels. Onder *Taal* in het menu kun je een andere kiezen.
 - **Wie er over je scherm loopt** hangt af van je taal en land: nisser in de Noordse landen, Wichtel in Duitsland, Oostenrijk en Zwitserland, kabouters in Nederland, päkapikud in Estland en kerstelfen in de rest van de wereld. Onder *Kabouters of elfen* in het menu kun je andere kiezen.
 - Voorlopig alleen in het Deens: de adventskalender met zijn deurtjes en de meldingen.
 

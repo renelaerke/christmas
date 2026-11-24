@@ -25,7 +25,7 @@ Ett litet julöverlägg för Windows, macOS och Linux: snön faller över skrivb
 
 ## Ditt språk, dina figurer
 
-- **Språk:** menyn visas på datorns språk när det finns en översättning (danska, engelska, svenska, tyska, nederländska, italienska, spanska), annars på engelska. Du kan välja ett annat under *Språk* i menyn.
+- **Språk:** menyn visas på datorns språk när det finns en översättning (danska, engelska, svenska, tyska, nederländska, italienska, spanska (även mexikansk), franska, portugisiska (även brasiliansk)), annars på engelska. Du kan välja ett annat under *Språk* i menyn.
 - **Vilka som går på din skärm** följer språk och land: tomtar (nisser) i Norden, Wichtel i Tyskland, Österrike och Schweiz, kabouters i Nederländerna, päkapikud i Estland och julälvor i resten av världen. Du kan välja andra under *Tomtar eller älvor* i menyn.
 - Finns än så länge bara på danska: julkalendern och dess luckor, samt aviseringarna.
 

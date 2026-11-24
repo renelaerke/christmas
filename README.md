@@ -18,7 +18,7 @@ Et lille juleoverlay til Windows, macOS og Linux: snevejr, sne der lægger sig p
 - **Julekalender:** Fra 1. december kan du åbne en ny låge hver dag. Bag lågerne er der vittigheder, hyggetips og julefakta, og nogle låger sætter gang i en effekt: julemanden, snestorm, nissefest eller stjerneregn. Du får en besked ved uret, når dagens låge er klar.
 - **Snemand:** Står på proceslinjen og bliver bygget færdig over 12 dage, regnet fra første gang programmet startede. Først kommer sneboldene, så ansigtet, armene, halstørklædet og hatten, og til sidst kosten.
 - Animationen pauser automatisk, når et program kører i fuldskærm (spil, film).
-- **Sprog:** Menuen vises på computerens sprog, når der er en oversættelse til det (dansk, engelsk, svensk, tysk, hollandsk, italiensk, spansk), og ellers på engelsk. Du kan vælge et andet under *Sprog / Language* i menuen. Julekalenderen og beskederne er indtil videre kun på dansk. Et nyt sprog er en ny fil: se [assets/sprog/README.md](assets/sprog/README.md).
+- **Sprog:** Menuen vises på computerens sprog, når der er en oversættelse til det (dansk, engelsk, svensk, tysk, hollandsk, italiensk, spansk (også mexicansk), fransk, portugisisk (også brasiliansk)), og ellers på engelsk. Du kan vælge et andet under *Sprog / Language* i menuen. Julekalenderen og beskederne er indtil videre kun på dansk. Et nyt sprog er en ny fil: se [assets/sprog/README.md](assets/sprog/README.md).
 - **Nisser eller alfer:** Hvem der går på skærmen, følger sprog og land: nisser i Norden, Wichtel i Tyskland, Østrig og Schweiz, kabouters i Holland, päkapikud i Estland og julealfer i resten af verden. Du kan vælge andre under *Nisser eller alfer* i menuen.
 - Indstillingerne gemmes i `%APPDATA%\JuleHygge\settings.ini`.
 

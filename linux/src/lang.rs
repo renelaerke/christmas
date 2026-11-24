@@ -1,9 +1,13 @@
 //! The menu's texts in the user's language. The texts in the code are Danish (`text.rs`), and the Danish text is
 //! the key: a language is a file `assets/sprog/xx.ini` with lines "Danish text = text in that language" (see the
-//! README there). A text a language lacks is shown in English, and one English lacks in Danish.
+//! README there). A file can also be a regional variant, `xx-YY.ini` (es-MX.ini: Spanish as in Mexico), holding
+//! only the texts that differ from its language's.
+//!
+//! Every text falls back down a chain, as is usual for translations: the variant (es-mx), its language (es),
+//! English, and last the Danish key itself.
 //!
 //! The setting `Language` is empty for automatic (the default: the first of the user's languages that has a file,
-//! else English) or a language's code when the user has chosen in the menu "Sprog".
+//! its regional variant before the language itself (es-MX, then es), else English) or a language's code when the user has chosen in the menu "Sprog".
 //! The same on macOS (`Lang.swift`) and Windows (`src/Lang.cs`), from the same files.
 
 use std::collections::HashMap;
@@ -17,13 +21,17 @@ pub struct Language {
 
 /// The app's own files, compiled in. A new file in `assets/sprog` must be added here (`tools/sprog-check.py`
 /// says so when one is missing).
-const BUILT_IN: [(&str, &str); 7] = [
+const BUILT_IN: [(&str, &str); 11] = [
     ("da", include_str!("../../assets/sprog/da.ini")),
     ("en", include_str!("../../assets/sprog/en.ini")),
     ("de", include_str!("../../assets/sprog/de.ini")),
     ("es", include_str!("../../assets/sprog/es.ini")),
+    ("es-mx", include_str!("../../assets/sprog/es-MX.ini")),
+    ("fr", include_str!("../../assets/sprog/fr.ini")),
     ("it", include_str!("../../assets/sprog/it.ini")),
     ("nl", include_str!("../../assets/sprog/nl.ini")),
+    ("pt", include_str!("../../assets/sprog/pt.ini")),
+    ("pt-br", include_str!("../../assets/sprog/pt-BR.ini")),
     ("sv", include_str!("../../assets/sprog/sv.ini")),
 ];
 
@@ -42,7 +50,7 @@ fn all() -> &'static HashMap<String, Language> {
                 if path.extension().and_then(|e| e.to_str()) != Some("ini") {
                     continue;
                 }
-                let Some(code) = path.file_stem().and_then(|s| s.to_str()).map(str::to_lowercase) else { continue };
+                let Some(code) = path.file_stem().and_then(|s| s.to_str()).map(normal) else { continue };
                 if let Ok(text) = std::fs::read_to_string(&path) {
                     let language = parse(&code, &text);
                     found.insert(code, language);
@@ -51,6 +59,36 @@ fn all() -> &'static HashMap<String, Language> {
         }
         found
     })
+}
+
+/// A language's code as the files and the setting use it: lower case, a variant with "-" (es_MX, es-MX → es-mx).
+pub fn normal(code: &str) -> String {
+    code.to_lowercase().replace('_', "-")
+}
+
+/// The language a variant belongs to (es-mx → es); a language is its own.
+pub fn base(code: &str) -> &str {
+    code.split('-').next().unwrap_or(code)
+}
+
+/// Where a text is looked up, in order: the code, its language (for a variant), English. Danish ends every chain:
+/// its texts are the keys themselves.
+pub fn chain(code: &str) -> Vec<String> {
+    let mut c = vec![code.to_string()];
+    if base(code) != code {
+        c.push(base(code).to_string());
+    }
+    if !c.iter().any(|x| x == "en") {
+        c.push("en".to_string());
+    }
+    c
+}
+
+/// The codes a language could have a file under, the most particular first: (es, MX) → es-mx, es.
+fn candidates(language: &str, region: Option<&str>) -> Vec<String> {
+    let mut c: Vec<String> = region.map(|r| normal(&format!("{language}-{r}"))).into_iter().collect();
+    c.push(normal(language));
+    c
 }
 
 /// "Danish text = translation" per line; "#" starts a comment; "@name" is the language's own name.
@@ -88,14 +126,15 @@ pub fn name_of(code: &str) -> String {
     all().get(code).map_or_else(|| code.to_string(), |l| l.name.clone())
 }
 
-/// The first of the user's languages that there is a file for; English when none of them has one.
+/// The first of the user's languages that there is a file for, its regional variant first (es-MX, then es);
+/// English when none of them has one.
 pub fn automatic() -> &'static str {
     static AUTOMATIC: OnceLock<String> = OnceLock::new();
     AUTOMATIC.get_or_init(|| {
         crate::folk::languages()
-            .into_iter()
-            .map(|l| l.to_lowercase())
-            .find(|l| all().contains_key(l))
+            .iter()
+            .flat_map(|(language, region)| candidates(language, region.as_deref()))
+            .find(|c| all().contains_key(c))
             .unwrap_or_else(|| "en".to_string())
     })
 }
@@ -124,12 +163,15 @@ pub fn code() -> String {
 
 /// A menu text in the user's language. A text that is not a key (a name, a number) comes back as it is.
 pub fn tr(da: &str) -> String {
-    let code = code();
-    if code == "da" {
-        return da.to_string();
+    for c in chain(&code()) {
+        if base(&c) == "da" {
+            break;
+        }
+        if let Some(t) = all().get(&c).and_then(|l| l.texts.get(da)) {
+            return t.clone();
+        }
     }
-    let find = |c: &str| all().get(c).and_then(|l| l.texts.get(da));
-    find(&code).or_else(|| find("en")).cloned().unwrap_or_else(|| da.to_string())
+    da.to_string()
 }
 
 /// As `tr`, with {0}, {1} … replaced by the arguments.
@@ -143,12 +185,18 @@ pub fn trf(da: &str, args: &[&str]) -> String {
 
 /// Test aid (`--sprog-test`): the languages found, the automatic choice, and what each lacks against English.
 pub fn test_report() -> String {
-    let mut out = format!("Automatic on this machine: {} ({})\n", automatic(), name_of(automatic()));
+    let mut out = format!(
+        "Automatic on this machine: {} ({}), looked up in: {} → da\n",
+        automatic(),
+        name_of(automatic()),
+        chain(automatic()).join(" → ")
+    );
     let english = all().get("en");
     for (code, name) in listed() {
         let Some(l) = all().get(&code) else { continue };
+        // (a variant holds only what differs from its language: what it lacks comes from there)
         let mut missing: Vec<&String> = match english {
-            Some(en) if code != "da" => en.texts.keys().filter(|k| !l.texts.contains_key(*k)).collect(),
+            Some(en) if code != "da" && base(&code) == code => en.texts.keys().filter(|k| !l.texts.contains_key(*k)).collect(),
             _ => Vec::new(),
         };
         missing.sort();
@@ -169,6 +217,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_variant_falls_back_to_its_language_then_english() {
+        assert_eq!(chain("es-mx"), ["es-mx", "es", "en"]);
+        assert_eq!(chain("de"), ["de", "en"]);
+        assert_eq!(chain("en-gb"), ["en-gb", "en"]);
+        assert_eq!(candidates("es", Some("MX")), ["es-mx", "es"]);
+        assert_eq!(candidates("es", None), ["es"]);
+        // the Mexican file holds only what differs: the rest is Spanish
+        let mx = parse("es-mx", BUILT_IN.iter().find(|b| b.0 == "es-mx").unwrap().1);
+        let en = parse("en", BUILT_IN[1].1);
+        assert!(mx.texts.len() < en.texts.len());
+        for key in mx.texts.keys() {
+            assert!(en.texts.contains_key(key), "es-MX.ini has a text en.ini does not: {key}");
+        }
+    }
+
+    #[test]
     fn parse_reads_name_and_texts() {
         let l = parse("xx", "# comment\n@name = Xish\nSnevejr = Snow = fall\n\nno separator here\nTom = \n");
         assert_eq!(l.name, "Xish");
@@ -181,7 +245,7 @@ mod tests {
         let en = parse("en", BUILT_IN[1].1);
         assert!(en.texts.len() > 100);
         for (code, text) in BUILT_IN {
-            if code == "da" || code == "en" {
+            if code == "da" || code == "en" || base(code) != code {
                 continue;
             }
             let l = parse(code, text);

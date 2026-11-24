@@ -25,7 +25,7 @@ A small Christmas overlay for Windows, macOS and Linux: snow falls over your des
 
 ## Your language, your figures
 
-- **Language:** the menu is shown in your computer's language when there is a translation for it (Danish, English, Swedish, German, Dutch, Italian, Spanish), and in English otherwise. You can choose another under *Language* in the menu.
+- **Language:** the menu is shown in your computer's language when there is a translation for it (Danish, English, Swedish, German, Dutch, Italian, Spanish (also Mexican), French, Portuguese (also Brazilian)), and in English otherwise. You can choose another under *Language* in the menu.
 - **Who walks on your screen** follows your language and country: nisser in the Nordic countries, Wichtel in Germany, Austria and Switzerland, kabouters in the Netherlands, päkapikud in Estonia and Christmas elves everywhere else. You can choose another under *Gnomes or elves* in the menu.
 - Still in Danish only: the advent calendar and its doors, and the notifications.
 

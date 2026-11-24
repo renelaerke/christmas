@@ -25,7 +25,7 @@ Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt übe
 
 ## Deine Sprache, deine Figuren
 
-- **Sprache:** Das Menü erscheint in der Sprache deines Computers, wenn es dafür eine Übersetzung gibt (Dänisch, Englisch, Schwedisch, Deutsch, Niederländisch, Italienisch, Spanisch), sonst auf Englisch. Unter *Sprache* im Menü kannst du eine andere wählen.
+- **Sprache:** Das Menü erscheint in der Sprache deines Computers, wenn es dafür eine Übersetzung gibt (Dänisch, Englisch, Schwedisch, Deutsch, Niederländisch, Italienisch, Spanisch (auch mexikanisch), Französisch, Portugiesisch (auch brasilianisch)), sonst auf Englisch. Unter *Sprache* im Menü kannst du eine andere wählen.
 - **Wer über deinen Bildschirm läuft**, richtet sich nach Sprache und Land: Nisser in den nordischen Ländern, Wichtel in Deutschland, Österreich und der Schweiz, Kabouter in den Niederlanden, Päkapikud in Estland und Weihnachtselfen überall sonst. Unter *Wichtel oder Elfen* im Menü kannst du andere wählen.
 - Bisher nur auf Dänisch: der Adventskalender mit seinen Türchen und die Mitteilungen.
 
