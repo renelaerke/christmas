@@ -397,16 +397,17 @@ impl Layer {
     }
 
     /// `folk`: who the walkers are in the Christmas theme (setting `Folk`).
-    pub(super) fn draw_elves(&mut self, autumn: bool, muertos: bool, folk: Folk) {
+    pub(super) fn draw_elves(&mut self, st: &SceneState, folk: Folk) {
         for i in 0..self.elves.len() {
             // (one that is gone by magic for a moment is not drawn)
             if self.elves[i].magic <= 0.0 {
-                self.draw_elf(i, autumn, muertos, folk);
+                self.draw_elf(i, st, folk);
             }
         }
     }
 
-    fn draw_elf(&mut self, i: usize, autumn: bool, muertos: bool, folk: Folk) {
+    fn draw_elf(&mut self, i: usize, st: &SceneState, folk: Folk) {
+        let (autumn, muertos, halloween) = (st.autumn, st.muertos, st.halloween);
         let e = &self.elves[i];
         let sc = self.s * e.size;
         let gy = self.ground_y - heap_at(&self.heap, e.x) + 2.0 * self.s;
@@ -432,6 +433,25 @@ impl Layer {
                 super::muertos::CalacaPose {
                     tunic: tunic_index(e),
                     gift: GIFTS.iter().position(|g| *g == e.gift).unwrap_or(0),
+                    walking,
+                    waving,
+                    carries_gift: e.carries_gift,
+                    walk: if walking { e.walk_phase as f64 } else { 0.0 },
+                    stand: if e.state == ElfState::Stand { e.t as f64 * 1.5 } else { 0.0 },
+                    wave: if waving { e.t as f64 * 11.0 } else { 0.0 },
+                },
+            );
+            cr.set_matrix(saved);
+            return;
+        }
+        if halloween {
+            // Halloween: a ghost or a child dressed up (`halloween.rs`), in the same pose as the elf it stands in for
+            let walking = e.state == ElfState::Walk;
+            let waving = e.state == ElfState::Wave;
+            super::halloween::spook(
+                cr,
+                super::halloween::SpookPose {
+                    tunic: tunic_index(e),
                     walking,
                     waving,
                     carries_gift: e.carries_gift,

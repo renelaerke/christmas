@@ -134,6 +134,18 @@ jobs:
           [ "$code" = 124 ] || exit 1
           test -s "$RUNNER_TEMP/shots-muertos/screen0.png"
           cp "$RUNNER_TEMP/shots-muertos/screen0.png" build/screen0-muertos.png
+          # and on Halloween, once with each form of the plow: the finished jack-o'-lanterns, the string of pumpkins
+          # and bats, ghosts and children dressed up, the witch flying, and the witch sweeping or the ghosts blowing
+          printf 'Theme=3\nOfrendaSeconds=39600\nSnowLevel=1\nNisseCount=8\n' > "$RUNNER_TEMP/halloween.ini"
+          for form in heks spoegelser; do
+            set +e
+            JULE_SETTINGS="$RUNNER_TEMP/halloween.ini" JULE_DEEPSNOW=1 JULE_HALLOWEEN_PLOV=$form xvfb-run -a -s "-screen 0 1920x1080x24" timeout 17 build/JuleHygge --santa --plow=1 --snapshot="$RUNNER_TEMP/shots-halloween-$form,10"
+            code=$?
+            set -e
+            [ "$code" = 124 ] || exit 1
+            test -s "$RUNNER_TEMP/shots-halloween-$form/screen0.png"
+            cp "$RUNNER_TEMP/shots-halloween-$form/screen0.png" "build/screen0-halloween-$form.png"
+          done
           # the children's snowman at three points of its story, to look at: being dressed, the snowball fight,
           # and the plow just after it has run the snowman down (the blade reaches x=900 about 6.5 s in)
           printf 'FirstRun=2020-01-01\nSnowLevel=1\nSanta=0\nNisseCount=8\n' > "$RUNNER_TEMP/snemand.ini"
@@ -179,6 +191,8 @@ jobs:
           # (De dødes dag: the butterflies' tune is 16 bars, and the donkey cart's loop 8 steps of the donkey)
           grep -q '^sommerfugle-son: 18\.' "$RUNNER_TEMP/lyd/summary.txt"
           grep -q '^aeselkaerre-rul: 4\.' "$RUNNER_TEMP/lyd/summary.txt"
+          grep -q '^heks-melodi: 10\.' "$RUNNER_TEMP/lyd/summary.txt"
+          grep -q '^spoegelser-sus: 4\.0' "$RUNNER_TEMP/lyd/summary.txt"
 
       - name: Keep as workflow artifact
         uses: actions/upload-artifact@v7
@@ -189,6 +203,8 @@ jobs:
             linux/build/screen0.png
             linux/build/screen0-efteraar.png
             linux/build/screen0-muertos.png
+            linux/build/screen0-halloween-heks.png
+            linux/build/screen0-halloween-spoegelser.png
             linux/build/screen0-alfer.png
             linux/build/screen0-wichtel.png
             linux/build/screen0-kabouter.png

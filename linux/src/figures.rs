@@ -97,6 +97,14 @@ pub struct Figures {
     /// De dødes dag (set by the controller): monarch butterflies fly in Santa's place, also at varying distance
     /// and with no sparks, and the plow is a donkey cart at a donkey's pace.
     pub muertos: bool,
+    /// Halloween (set by the controller): a witch on her broom flies in Santa's place, and the plow is one of two
+    /// each run (`ghosts_blow`).
+    pub halloween: bool,
+    /// Halloween's plow this run: three ghosts that blow the leaves away (true), or a witch who sweeps them up
+    /// (false). Random, but drawn two at a time (one of each, in random order: `plow_forms`), so over time each
+    /// comes exactly half the times. `JULE_HALLOWEEN_PLOV=heks` or `=spoegelser` fixes it for tests.
+    pub ghosts_blow: bool,
+    plow_forms: Vec<bool>,
     /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
     pub flyer_depth: f32,
 }
@@ -136,6 +144,9 @@ impl Figures {
             new_trip: false,
             autumn: false,
             muertos: false,
+            halloween: false,
+            ghosts_blow: false,
+            plow_forms: Vec::new(),
             flyer_depth: 1.0,
         }
     }
@@ -176,7 +187,7 @@ impl Figures {
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
         let b = target.rect;
         // the geese pass at very different distances (as `flyerDepth` on Windows)
-        self.flyer_depth = if self.autumn || self.muertos { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
+        self.flyer_depth = if self.autumn || self.muertos || self.halloween { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
         let scale = target.s * self.flyer_depth;
         let y0 = b.y as f32 + b.h as f32 * (0.12 + self.rng.f() * 0.25);
         // fly over every screen at the same height
@@ -212,7 +223,7 @@ impl Figures {
         };
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
-        if !self.autumn && !self.muertos {
+        if !self.autumn && !self.muertos && !self.halloween {
             self.spark_acc += dt * 45.0;
         }
         let r = &mut self.rng;
@@ -264,9 +275,26 @@ impl Figures {
         self.plow_at = Some(now + seconds.max(0.0) as f64);
     }
 
+    fn pick_halloween_plow(&mut self) {
+        if self.plow_forms.is_empty() {
+            let first = self.rng.f() < 0.5;
+            self.plow_forms = vec![first, !first];
+        }
+        self.ghosts_blow = self.plow_forms.pop().unwrap_or(false);
+        match std::env::var("JULE_HALLOWEEN_PLOV").as_deref() {
+            Ok("heks") => self.ghosts_blow = false,
+            Ok("spoegelser") => self.ghosts_blow = true,
+            _ => {}
+        }
+        crate::log::debug(if self.ghosts_blow { "halloween plow: ghosts blow" } else { "halloween plow: witch sweeps" });
+    }
+
     fn start_plow(&mut self, screens: &[ScreenInfo], start: usize) {
         if self.plow.active {
             return;
+        }
+        if self.halloween {
+            self.pick_halloween_plow();
         }
         // all screens joined edge to edge with the starting screen, left and right
         let rects: Vec<Rect> = screens.iter().map(|s| s.rect).collect();
@@ -307,7 +335,14 @@ impl Figures {
             }
             return;
         }
-        let pace = if self.muertos { CART_PACE } else { 1.0 };
+        // (so does Halloween's witch; the ghosts float a little faster)
+        let pace = if self.muertos || (self.halloween && !self.ghosts_blow) {
+            CART_PACE
+        } else if self.halloween {
+            0.6
+        } else {
+            1.0
+        };
         let p = &mut self.plow;
         // speed and size follow the screen the truck is on
         let here = p

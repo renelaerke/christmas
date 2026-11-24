@@ -24,6 +24,7 @@ mod autumn;
 mod build;
 mod elves;
 mod ground;
+mod halloween;
 mod ledges;
 mod lights;
 mod muertos;
@@ -88,6 +89,11 @@ pub struct SceneState<'a> {
     /// De dødes dag (setting `Theme` = 2): marigold petals for snow, and every figure in its form for the dead
     /// (`layer/muertos.rs`).
     pub muertos: bool,
+    /// Halloween (setting `Theme` = 3): autumn's leaves, and every figure in its Halloween form
+    /// (`layer/halloween.rs`).
+    pub halloween: bool,
+    /// Halloween's plow this run: ghosts that blow the leaves away (true) or a witch who sweeps them up (false).
+    pub ghosts_blow: bool,
     /// Who the walkers are in the Christmas theme (setting `Folk`, see `folk.rs`).
     pub folk: Folk,
     /// Autumn's kite over the primary screen (setting `Kite`).
@@ -97,13 +103,15 @@ pub struct SceneState<'a> {
 impl SceneState<'_> {
     /// Leaves or petals instead of snow (autumn and De dødes dag): fewer and bigger pictures, turning as they fall.
     pub fn leaves(&self) -> bool {
-        self.autumn || self.muertos
+        self.autumn || self.muertos || self.halloween
     }
 
     /// The dark between the leaves (or petals) of a pile; None when the pile is snow.
     pub fn pile_fill(&self) -> Option<draw::Argb> {
         if self.muertos {
             Some((245, 168, 72, 8))
+        } else if self.halloween {
+            Some((245, 96, 46, 20))
         } else if self.autumn {
             Some((245, 122, 62, 24))
         } else {
@@ -581,9 +589,10 @@ impl Layer {
         self.draw_ground(dt, st);
         self.draw_build(st);
         self.draw_ledge_candles(st);
+        self.draw_ledge_spooks(st);
         self.draw_santa_and_sparks(st);
         self.draw_kite(dt, st);
-        self.draw_elves(st.autumn, st.muertos, st.folk);
+        self.draw_elves(st, st.folk);
         self.draw_plow(st);
         self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
@@ -1051,6 +1060,8 @@ mod tests {
             ledge_u: 1.0,
             autumn: false,
             muertos: false,
+            halloween: false,
+            ghosts_blow: false,
             folk: Folk::Nisser,
             kite: false,
         }
@@ -1385,6 +1396,67 @@ mod tests {
         let x0 = (1280.0 * 0.78) as usize;
         let above = (640..690).any(|y| (x0 - 30..x0 + 30).any(|x| background[y * w as usize + x] >> 24 > 200));
         assert!(above, "no ofrenda in the ground image");
+    }
+
+    #[test]
+    fn halloween_leaves_no_trails_with_either_plow() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its Halloween form: the string of pumpkins and bats, ghosts and
+        // children dressed up, the finished jack-o'-lanterns, the witch flying, a window with a cat and a spider,
+        // and the plow in each of its two forms
+        for ghosts in [false, true] {
+            let rect = Rect::new(0, 0, 1280, 720);
+            let mut l = Layer::new(rect, true, 1.0, 17).unwrap();
+            l.heap.fill(18.0 * l.s);
+            let mut f = Figures::new(8);
+            f.halloween = true;
+            let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+            f.launch_santa(&info(&l));
+            f.send_plow(&info(&l));
+            f.ghosts_blow = ghosts;
+            let mut ws = WindowSnow::new(1.0, 5);
+            let win = WinInfo { id: 1, rect: FRect { x: 100.0, y: 400.0, w: 900.0, h: 300.0 }, visible: vec![(106.0, 994.0)] };
+            ws.update_ledges(vec![win]);
+            let mut t = 5.0;
+            for _ in 0..1200 {
+                t += 0.05;
+                f.update(0.05, t, &info(&l), true, true);
+                let st = SceneState {
+                    time: t,
+                    halloween: true,
+                    ghosts_blow: f.ghosts_blow,
+                    lights: true,
+                    elves: true,
+                    snow_amount: 2.0,
+                    snowman_stage: 12,
+                    santa: f.santa.as_ref(),
+                    sparks: &f.sparks,
+                    plow: Some(&f.plow),
+                    ledges: &ws.ledges,
+                    clumps: &ws.clumps,
+                    ..state()
+                };
+                l.frame(0.05, &st);
+                f.plow.pushed += l.take_pushed();
+                for (li, x, r) in l.take_ledge_hits() {
+                    ws.ledges[li].deposit(x, r);
+                }
+                ws.update(0.05, false, false, 0.0, 720.0);
+            }
+            assert!(!l.petals, "Halloween's leaves are autumn's, not petals");
+            let background = l.background();
+            let w = l.width();
+            for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+                let (x, y) = (i as i32 % w, i as i32 / w);
+                let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+                assert!(*p == *b || drawn, "stale pixel at {x},{y} (ghosts blow: {ghosts})");
+            }
+            // the jack-o'-lanterns stand in the cached ground: something of them shows above the pile
+            let x0 = (1280.0 * 0.78) as usize;
+            let above = (660..700).any(|y| (x0 - 20..x0 + 20).any(|x| background[y * w as usize + x] >> 24 > 200));
+            assert!(above, "no jack-o'-lanterns in the ground image");
+        }
     }
 
     #[test]

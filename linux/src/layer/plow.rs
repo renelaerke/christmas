@@ -91,7 +91,43 @@ impl Layer {
         if let Some(h) = here.filter(|h| self.plow_on_screen(h)) {
             let gy = self.ground_y - heap_at(&self.heap, h.x) + s;
             let ph = self.plow_pile_height(h.pushed);
-            if st.muertos {
+            if st.halloween {
+                if ph > 5.0 {
+                    self.plow_chunk_acc += dt * if st.ghosts_blow { 16.0 } else { 10.0 };
+                    while self.plow_chunk_acc >= 1.0 {
+                        self.plow_chunk_acc -= 1.0;
+                        let r = &mut self.rng;
+                        let bit = if st.ghosts_blow {
+                            // blown up and on ahead of the ghosts, to whirl away
+                            PlowBit {
+                                x: h.x + h.dir * (62.0 + r.f() * 40.0) * sc,
+                                y: gy - (2.0 + r.f() * 16.0) * sc,
+                                vx: h.dir * (150.0 + r.f() * 170.0) * s,
+                                vy: -(130.0 + r.f() * 170.0) * s,
+                                life: 2.2,
+                                max: 2.2,
+                                size: (3.5 + r.f() * 2.5) * s,
+                                smoke: false,
+                                kind: r.range(0, 1000) as usize,
+                            }
+                        } else {
+                            // swept up by the witch's broom, flying back over the cat into the cauldron
+                            PlowBit {
+                                x: h.x + h.dir * (92.0 + r.f() * 14.0) * sc,
+                                y: gy - (2.0 + r.f() * 6.0) * sc,
+                                vx: -h.dir * (80.0 + r.f() * 70.0) * s,
+                                vy: -(150.0 + r.f() * 70.0) * s,
+                                life: 1.6,
+                                max: 1.6,
+                                size: (3.5 + r.f() * 2.5) * s,
+                                smoke: false,
+                                kind: r.range(0, 1000) as usize,
+                            }
+                        };
+                        self.plow_bits.push(bit);
+                    }
+                }
+            } else if st.muertos {
                 // the broom: petals are swept up and fly back over the donkey into the cart
                 if ph > 5.0 {
                     self.plow_chunk_acc += dt * 10.0;
@@ -150,8 +186,8 @@ impl Layer {
                 }
             }
             self.plow_smoke_timer -= dt;
-            // (a donkey makes no smoke)
-            if self.plow_smoke_timer <= 0.0 && !st.muertos {
+            // (a donkey makes no smoke, nor do a witch or ghosts)
+            if self.plow_smoke_timer <= 0.0 && !st.muertos && !st.halloween {
                 self.plow_smoke_timer = 0.2;
                 self.plow_bits.push(PlowBit {
                     x: h.x - h.dir * 2.0 * sc,
@@ -237,6 +273,15 @@ impl Layer {
         cr.scale((h.dir * sc) as f64, sc as f64);
         if st.muertos {
             super::muertos::petal_cart(cr, ph, h.wheel as f64);
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.halloween {
+            if st.ghosts_blow {
+                super::halloween::ghost_blowers(cr, ph, h.wheel as f64);
+            } else {
+                super::halloween::witch_sweeper(cr, ph, h.wheel as f64);
+            }
             cr.set_matrix(saved);
             return;
         }

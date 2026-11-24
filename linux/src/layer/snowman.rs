@@ -8,6 +8,15 @@ use super::draw::*;
 
 pub const MAX_STAGE: i32 = 12;
 
+/// What is built in the snowman's place where it grows by stages: autumn's haystack and scarecrow, the ofrenda of
+/// De dødes dag (`muertos.rs`), or Halloween's jack-o'-lanterns (`halloween.rs`).
+#[derive(Clone, Copy)]
+pub(super) enum Built {
+    Scarecrow,
+    Ofrenda,
+    Pumpkins,
+}
+
 /// The box the snowman fills when it stands at (x, y) on a screen of scale `s`.
 pub(super) fn bounds(x: f32, y: f32, s: f32) -> (f32, f32, f32, f32) {
     (x - 62.0 * s, y - 135.0 * s, 124.0 * s, 142.0 * s)
@@ -15,15 +24,15 @@ pub(super) fn bounds(x: f32, y: f32, s: f32) -> (f32, f32, f32, f32) {
 
 /// Draws the haystack and scarecrow at `stage` standing at (x, y). It is drawn into the cached ground image
 /// (`ground.rs`), so the pile, drawn after it, covers its foot as on Windows.
-/// On De dødes dag (`muertos`) it is the ofrenda instead (`muertos.rs`), in the same place and box.
-pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32, muertos: bool) {
+/// What stands there follows the theme (`Built`), each in the same place and box.
+pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32, what: Built) {
     let saved = cr.matrix();
     cr.translate(x, y);
     cr.scale(s, s);
-    if muertos {
-        super::muertos::ofrenda(cr, stage);
-    } else {
-        scarecrow(cr, stage);
+    match what {
+        Built::Scarecrow => scarecrow(cr, stage),
+        Built::Ofrenda => super::muertos::ofrenda(cr, stage),
+        Built::Pumpkins => super::halloween::pumpkins(cr, stage),
     }
     cr.set_matrix(saved);
 }

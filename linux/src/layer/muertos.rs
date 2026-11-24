@@ -24,25 +24,25 @@ const BONE: Argb = rgb(246, 242, 230);
 const PI: f64 = std::f64::consts::PI;
 
 /// (red, green, blue, alpha), as the colours are written in the other two versions.
-const fn c(r: u8, g: u8, b: u8, a: u8) -> Argb {
+pub(super) const fn c(r: u8, g: u8, b: u8, a: u8) -> Argb {
     (a, r, g, b)
 }
 
-fn shade(col: Argb, f: f64) -> Argb {
+pub(super) fn shade(col: Argb, f: f64) -> Argb {
     let k = |v: u8| (v as f64 * f).min(255.0) as u8;
     (col.0, k(col.1), k(col.2), k(col.3))
 }
 
-fn round(cr: &Context, col: Argb, width: f64, x1: f64, y1: f64, x2: f64, y2: f64) {
+pub(super) fn round(cr: &Context, col: Argb, width: f64, x1: f64, y1: f64, x2: f64, y2: f64) {
     line(cr, col, width, LineCap::Round, x1, y1, x2, y2);
 }
 
-fn flat(cr: &Context, col: Argb, width: f64, x1: f64, y1: f64, x2: f64, y2: f64) {
+pub(super) fn flat(cr: &Context, col: Argb, width: f64, x1: f64, y1: f64, x2: f64, y2: f64) {
     line(cr, col, width, LineCap::Butt, x1, y1, x2, y2);
 }
 
 /// A curve with one control point (a quadratic one, as Cairo's cubic) from `from` to `to`.
-fn quad_to(cr: &Context, from: (f64, f64), ctrl: (f64, f64), to: (f64, f64)) {
+pub(super) fn quad_to(cr: &Context, from: (f64, f64), ctrl: (f64, f64), to: (f64, f64)) {
     cr.curve_to(
         from.0 + (ctrl.0 - from.0) * 2.0 / 3.0,
         from.1 + (ctrl.1 - from.1) * 2.0 / 3.0,
@@ -53,13 +53,13 @@ fn quad_to(cr: &Context, from: (f64, f64), ctrl: (f64, f64), to: (f64, f64)) {
     );
 }
 
-fn fill_with(cr: &Context, col: Argb) {
+pub(super) fn fill_with(cr: &Context, col: Argb) {
     set(cr, col);
     let _ = cr.fill();
 }
 
 /// A stroked curve: the start, two control points and the end.
-fn bezier(cr: &Context, col: Argb, width: f64, p: [f64; 8]) {
+pub(super) fn bezier(cr: &Context, col: Argb, width: f64, p: [f64; 8]) {
     cr.new_path();
     cr.move_to(p[0], p[1]);
     cr.curve_to(p[2], p[3], p[4], p[5], p[6], p[7]);
@@ -67,7 +67,7 @@ fn bezier(cr: &Context, col: Argb, width: f64, p: [f64; 8]) {
 }
 
 /// A soft round light: `inner` in the middle, fading to nothing at the rim.
-fn glow(cr: &Context, inner: Argb, cx: f64, cy: f64, r: f64) {
+pub(super) fn glow(cr: &Context, inner: Argb, cx: f64, cy: f64, r: f64) {
     let grad = cairo::RadialGradient::new(cx, cy, 0.0, cx, cy, r);
     let (red, green, blue) = (inner.1 as f64 / 255.0, inner.2 as f64 / 255.0, inner.3 as f64 / 255.0);
     grad.add_color_stop_rgba(0.0, red, green, blue, inner.0 as f64 / 255.0);

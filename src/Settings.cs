@@ -16,7 +16,7 @@ namespace JuleHygge
         public int PowerSave = 2;          // 0 = off, 1 = always on, 2 = only on battery
         public int SoundLevel = 1;         // 0 = low, 1 = medium, 2 = high
         public int FrameRate = 20;         // frames/s while the scene is calm: 12, 20, 30 or 60 (same default as macOS)
-        public int Theme = 0;              // 0 = jul, 1 = efterår, 2 = de dødes dag (as macOS; see Controller.Autumn and Controller.Muertos)
+        public int Theme = 0;              // 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween (as macOS; see Controller.Autumn, Muertos and Halloween)
         public double OfrendaSeconds = 0;  // how long the ofrenda (De dødes dag) has been built on: a step for every hour the app runs
         public bool Kite = true;           // autumn's kite over the primary screen
         public int Folk = 0;               // 0 = automatic by language and region, else 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud (class Folk)
@@ -80,9 +80,9 @@ namespace JuleHygge
             s.SoundLevel = Math.Max(0, Math.Min(2, I(d, "SoundLevel", s.SoundLevel)));
             s.FrameRate = I(d, "FrameRate", s.FrameRate);
             if (Array.IndexOf(new[] { 12, 20, 30, 60 }, s.FrameRate) < 0) s.FrameRate = 20;
-            // (a theme this version does not have yet, such as Halloween on macOS, shows as Christmas)
+            // (a theme this version does not have shows as Christmas)
             s.Theme = I(d, "Theme", 0);
-            if (s.Theme < 0 || s.Theme > 2) s.Theme = 0;
+            if (s.Theme < 0 || s.Theme > 3) s.Theme = 0;
             s.OfrendaSeconds = Math.Max(0, I(d, "OfrendaSeconds", 0));
             s.Kite = B(d, "Kite", s.Kite);
             s.Folk = Math.Max(0, Math.Min(5, I(d, "Folk", s.Folk)));

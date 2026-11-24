@@ -127,6 +127,7 @@ namespace JuleHygge
             if (pileBmp != null) { pileBmp.Dispose(); pileBmp = null; }
             DisposeAutumn();
             DisposeMuertos();
+            DisposeHalloween();
             foreach (var p in flakePens) p.Dispose();
             base.OnFormClosed(e);
         }
@@ -507,7 +508,7 @@ namespace JuleHygge
         }
 
         // The dark between the leaves (or petals) of a pile.
-        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : PileFill; } }
+        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : c.Halloween ? Color.FromArgb(245, 96, 46, 20) : PileFill; } }
 
         static int[][] MakeLeafSprites()
         {
@@ -887,6 +888,7 @@ namespace JuleHygge
             }
             if (autumn) DrawLedgeLeaves();
             if (c.Muertos) DrawLedgeCandles();
+            if (c.Halloween) DrawLedgeSpooks();
         }
 
         // One stretch: the pile's top from left to right, then back along the drape hanging below the edge.
@@ -973,6 +975,7 @@ namespace JuleHygge
             float t = c.SantaPhase;
             if (c.Autumn) { DrawGeese(t); g.Restore(st); return; }
             if (c.Muertos) { DrawMonarchs(t); g.Restore(st); return; }
+            if (c.Halloween) { DrawWitch(t); g.Restore(st); return; }
             g.RotateTransform((float)Math.Cos(c.SantaPhase * 0.9) * -4f * c.SantaDir);
 
             float[] rx = { 80, 140, 200, 260 };
@@ -1111,7 +1114,7 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(x, y);
             g.ScaleTransform(S, S);
-            if (c.Muertos) DrawOfrenda(stage); else DrawScarecrow(stage);
+            if (c.Muertos) DrawOfrenda(stage); else if (c.Halloween) DrawPumpkins(stage); else DrawScarecrow(stage);
             g.Restore(st);
         }
 
@@ -1170,7 +1173,40 @@ namespace JuleHygge
             {
                 float gy = groundY - HeapAt(plowX) + S;
                 float ph = PlowPileHeight;
-                if (c.Muertos)
+                if (c.Halloween)
+                {
+                    if (ph > 5)
+                    {
+                        plowChunkAcc += dt * (c.GhostsBlow ? 16 : 10);
+                        while (plowChunkAcc >= 1)
+                        {
+                            plowChunkAcc -= 1;
+                            var b = new PlowBit();
+                            if (c.GhostsBlow)
+                            {
+                                // blown up and on ahead of the ghosts, to whirl away
+                                b.X = plowX + plowDir * (62 + Rnd() * 40) * sc;
+                                b.Y = gy - (2 + Rnd() * 16) * sc;
+                                b.VX = plowDir * (150 + Rnd() * 170) * S;
+                                b.VY = -(130 + Rnd() * 170) * S;
+                                b.Max = b.Life = 2.2f;
+                            }
+                            else
+                            {
+                                // swept up by the witch's broom, flying back over the cat into the cauldron
+                                b.X = plowX + plowDir * (92 + Rnd() * 14) * sc;
+                                b.Y = gy - (2 + Rnd() * 6) * sc;
+                                b.VX = -plowDir * (80 + Rnd() * 70) * S;
+                                b.VY = -(150 + Rnd() * 70) * S;
+                                b.Max = b.Life = 1.6f;
+                            }
+                            b.Size = (3.5f + Rnd() * 2.5f) * S;
+                            b.Kind = rnd.Next(1000);
+                            plowBits.Add(b);
+                        }
+                    }
+                }
+                else if (c.Muertos)
                 {
                     // the broom: petals are swept up and fly back over the donkey into the cart
                     if (ph > 5)
@@ -1229,7 +1265,7 @@ namespace JuleHygge
                     }
                 }
                 plowSmokeTimer -= dt;
-                if (plowSmokeTimer <= 0 && !c.Muertos)   // (a donkey makes no smoke)
+                if (plowSmokeTimer <= 0 && !c.Muertos && !c.Halloween)   // (a donkey makes no smoke, nor do a witch or ghosts)
                 {
                     plowSmokeTimer = 0.2f;
                     var b = new PlowBit();
@@ -1300,6 +1336,7 @@ namespace JuleHygge
             g.TranslateTransform(plowX, gy);
             g.ScaleTransform(plowDir * sc, sc);
             if (c.Muertos) { DrawPetalCart(ph); g.Restore(st); return; }
+            if (c.Halloween) { if (c.GhostsBlow) DrawGhostBlowers(ph); else DrawWitchSweeper(ph); g.Restore(st); return; }
             if (autumn) { DrawLeafCollector(ph); g.Restore(st); return; }
 
             Color orange = Color.FromArgb(235, 130, 20), orangeDark = Color.FromArgb(185, 95, 10);
@@ -1668,6 +1705,7 @@ namespace JuleHygge
             g.ScaleTransform(n.Dir * sc, sc);
             if (c.Autumn) { DrawAnimal(n); g.Restore(st); return; }
             if (c.Muertos) { DrawCalaca(n); g.Restore(st); return; }
+            if (c.Halloween) { DrawSpook(n); g.Restore(st); return; }
             switch (c.WalkerFolk)
             {
                 case Folk.Alfer: DrawElf(n); g.Restore(st); return;
@@ -1807,6 +1845,7 @@ namespace JuleHygge
         {
             if (c.Autumn) { RenderGarland(lg); return; }
             if (c.Muertos) { RenderPapelPicado(lg); return; }
+            if (c.Halloween) { RenderSpookGarland(lg); return; }
             float span = 230 * S, sag = 22 * S, top = 1;
             int perSpan = 4, idx = 0;
             using (var wire = new Pen(Color.FromArgb(220, 25, 60, 35), 2f * S))

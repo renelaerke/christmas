@@ -36,7 +36,7 @@ pub struct Settings {
     pub sound_level: i32,
     /// Frames per second while the scene is calm: 12, 20, 30 or 60.
     pub frame_rate: i32,
-    /// 0 = jul, 1 = efterår, 2 = de dødes dag (as in the macOS and Windows versions). Key `Theme`.
+    /// 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween (as in the macOS and Windows versions). Key `Theme`.
     pub theme: i32,
     /// Autumn's kite over the primary screen. Key `Kite`.
     pub kite: bool,
@@ -155,8 +155,8 @@ impl Settings {
             plow_sound: b("PlowSound", def.plow_sound),
             sound_level: i("SoundLevel", def.sound_level).clamp(0, 2),
             frame_rate,
-            // (a theme this version does not have yet, such as Halloween on macOS, shows as Christmas)
-            theme: Some(i("Theme", def.theme)).filter(|t| (0..=2).contains(t)).unwrap_or(0),
+            // (a theme this version does not have shows as Christmas)
+            theme: Some(i("Theme", def.theme)).filter(|t| (0..=3).contains(t)).unwrap_or(0),
             kite: b("Kite", def.kite),
             folk: i("Folk", def.folk).clamp(0, 5),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),

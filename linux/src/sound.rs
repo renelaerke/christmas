@@ -823,6 +823,114 @@ pub fn donkey_bray() -> Vec<f32> {
     })
 }
 
+// ---------------------------------------------------------------------- halloween
+/// The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
+/// wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
+/// fifth. Written for JuleHygge, so it is free of rights. Same as `Synth.WitchTune` in `src/Sound.cs`.
+pub fn witch_tune() -> Vec<f32> {
+    const BEAT: f64 = 0.42;
+    const E4: i32 = 64;
+    const GS4: i32 = 68;
+    const A4: i32 = 69;
+    const B4: i32 = 71;
+    const C5: i32 = 72;
+    const D5: i32 = 74;
+    const E5: i32 = 76;
+    #[rustfmt::skip]
+    let melody: [(i32, f64); 14] = [
+        (E5, 2.0), (C5, 1.0),   (D5, 2.0), (B4, 1.0),    (C5, 1.0), (B4, 1.0), (A4, 1.0),   (E4, 3.0),
+        (A4, 2.0), (C5, 1.0),   (B4, 2.0), (GS4, 1.0),   (A4, 3.0),                         (0, 3.0),
+    ];
+    let roots: [i32; 8] = [45, 40, 45, 40, 41, 40, 45, 45];
+    fn freq(midi: i32) -> f64 {
+        440.0 * 2f64.powf((midi - 69) as f64 / 12.0)
+    }
+    let beats: f64 = melody.iter().map(|m| m.1).sum();
+    let total = beats * BEAT;
+    make_buffer(total, |out| {
+        let n = out.len();
+        let pi = std::f64::consts::PI;
+        // the voice: the pitch glides toward each note, with a slow vibrato that deepens as the note is held
+        let (mut phase, mut pitch, mut level) = (0.0f64, freq(melody[0].0), 0.0f64);
+        let (mut note_start, mut note_end, mut idx) = (0.0f64, melody[0].1 * BEAT, 0usize);
+        for (i, o) in out.iter_mut().enumerate() {
+            let t = i as f64 / RATE;
+            while t >= note_end && idx < melody.len() - 1 {
+                idx += 1;
+                note_start = note_end;
+                note_end += melody[idx].1 * BEAT;
+            }
+            let note = melody[idx].0;
+            let (held, left) = (t - note_start, note_end - t);
+            if note > 0 {
+                pitch += (freq(note) - pitch) * 0.0009;
+            }
+            let want = if note > 0 { (held / 0.06).min(1.0) * (left / 0.09).min(1.0) } else { 0.0 };
+            level += (want - level) * 0.002;
+            let vibrato = 1.0 + 0.008 * (held / 0.35).min(1.0) * (TAU * 5.6 * t).sin();
+            phase += pitch * vibrato / RATE;
+            if phase >= 1.0 {
+                phase -= 1.0;
+            }
+            let voice = (TAU * phase).sin() + 0.16 * (2.0 * TAU * phase).sin() + 0.05 * (6.0 * pi * phase).sin();
+            *o += (voice * level * 0.34) as f32;
+        }
+        // the organ: root and fifth per bar, soft, swelling in and out so the loop has no click
+        let stops: [(f64, f64); 5] = [(1.0, 1.0), (1.5, 0.55), (2.0, 0.4), (3.0, 0.18), (4.0, 0.1)];
+        for (b, root) in roots.iter().enumerate() {
+            let (start, count) = (((b * 3) as f64 * BEAT * RATE) as usize, (3.0 * BEAT * RATE) as usize);
+            let f = freq(*root);
+            for k in 0..count {
+                if start + k >= n {
+                    break;
+                }
+                let (t, u) = (k as f64 / RATE, k as f64 / count as f64);
+                let env = (u / 0.12).min(1.0) * ((1.0 - u) / 0.12).min(1.0);
+                let v: f64 = stops.iter().map(|(mult, amp)| amp * (TAU * f * mult * t).sin()).sum();
+                out[start + k] += (v * env * 0.1) as f32;
+            }
+        }
+    })
+}
+
+/// The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under it
+/// two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of cycles in
+/// it, and the air is made a little longer and faded into its own start, so there is no seam.
+pub fn ghost_wind() -> Vec<f32> {
+    const LEN: f64 = 4.0;
+    make_buffer(LEN, |out| {
+        let mut rng = NetRandom::new(3110);
+        let n = out.len();
+        let pi = std::f64::consts::PI;
+        let over = (0.3 * RATE) as usize;
+        let mut air = vec![0.0f64; n + over];
+        let (mut low, mut band) = (0.0f64, 0.0f64);
+        for (i, a) in air.iter_mut().enumerate() {
+            let t = i as f64 / RATE;
+            // a resonance that slides up and down between about 350 and 900 Hz
+            let fc = 620.0 + 280.0 * (TAU * 0.5 * t).sin();
+            let f = 2.0 * (pi * fc / RATE).sin();
+            let high = noise(&mut rng) - low - 0.35 * band;
+            band += f * high;
+            low += f * band;
+            *a = band * (0.6 + 0.4 * (TAU * 0.25 * t).sin());
+        }
+        for i in 0..over {
+            let k = i as f64 / over as f64;
+            air[i] = air[i] * k + air[n + i] * (1.0 - k);
+        }
+        for (i, o) in out.iter_mut().enumerate() {
+            let t = i as f64 / RATE;
+            let swell = 0.5 + 0.5 * (TAU * 0.25 * t - 1.0).sin();
+            let vib = 1.0 + 0.012 * (TAU * 5.0 * t).sin();
+            let voices = (TAU * 330.0 * vib * t).sin()
+                + 0.8 * (TAU * 392.0 * vib * t + 1.0).sin()
+                + 0.25 * (TAU * 660.0 * vib * t).sin();
+            *o = (air[i] * 0.22 + voices * swell * 0.035) as f32;
+        }
+    })
+}
+
 // ---------------------------------------------------------------------- de dødes dag
 /// The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the style
 /// of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar that plays
@@ -1082,6 +1190,8 @@ pub fn write_test_files(dir: &std::path::Path) -> std::io::Result<()> {
     sounds.push(("aeselkaerre-rul".into(), donkey_cart(cycle)));
     sounds.push(("aeselkaerre-kost".into(), broom_sweep(cycle)));
     sounds.push(("aeselkaerre-broel".into(), donkey_bray()));
+    sounds.push(("heks-melodi".into(), witch_tune()));
+    sounds.push(("spoegelser-sus".into(), ghost_wind()));
     for (mood, name) in GOOSE_MOODS.iter().enumerate() {
         sounds.push((format!("gaes-{name}"), geese(mood)));
     }
@@ -1144,6 +1254,19 @@ mod tests {
         // 16 bars of 3/4 at 0.38 s a beat
         assert_eq!(son.len(), (48.0 * 0.38 * RATE) as usize);
         for (name, s) in [("cart", cart), ("broom", broom), ("bray", donkey_bray()), ("son", son)] {
+            let peak = s.iter().fold(0.0f32, |p, x| p.max(x.abs()));
+            assert!(peak > 0.1 && peak <= 0.9001 && s.iter().all(|x| x.is_finite()), "{name} peak {peak}");
+        }
+    }
+
+    #[test]
+    fn halloweens_sounds_are_sane() {
+        let tune = witch_tune();
+        // 8 bars of 3/4 at 0.42 s a beat
+        assert!((tune.len() as i64 - (24.0 * 0.42 * RATE) as i64).abs() <= 1, "{} samples", tune.len());
+        let wind = ghost_wind();
+        assert_eq!(wind.len(), (4.0 * RATE) as usize);
+        for (name, s) in [("tune", tune), ("wind", wind)] {
             let peak = s.iter().fold(0.0f32, |p, x| p.max(x.abs()));
             assert!(peak > 0.1 && peak <= 0.9001 && s.iter().all(|x| x.is_finite()), "{name} peak {peak}");
         }

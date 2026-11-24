@@ -52,5 +52,9 @@ stillbillede af hver (`build-test/vis/`). Ikke set i bevægelse, og lydene (kost
 
 ## Mangler
 
-- **Windows og Linux** har ikke temaet.
+- **Windows og Linux har temaet (uden kameraet), skrevet 2026-11-24 på REL's ord, men er ikke set:**
+  - Windows (`src/LayerHalloween.cs`): kompilerer med mono, og de to lyde er skrevet ud under mono (heksens melodi
+    10,1 s, spøgelsernes sus 4,0 s). Tegningen er aldrig set.
+  - Linux (`linux/src/layer/halloween.rs`): aldrig kompileret her; bygges, testes og fotograferes i CI, når det
+    bliver pushet.
 - Oversættelserne af de 12 nye menutekster er mine og ikke læst af nogen med sproget som modersmål.

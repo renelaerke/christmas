@@ -148,7 +148,14 @@ impl Layer {
         cr.clip();
         cr.translate(0.0, -gi.y0 as f64);
         if let Some((stage, x, y)) = snowman {
-            snowman::draw(cr, x as f64, y as f64, s as f64, stage, st.muertos);
+            let what = if st.muertos {
+                snowman::Built::Ofrenda
+            } else if st.halloween {
+                snowman::Built::Pumpkins
+            } else {
+                snowman::Built::Scarecrow
+            };
+            snowman::draw(cr, x as f64, y as f64, s as f64, stage, what);
         }
         if max >= 0.5 {
             draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.pile_fill());

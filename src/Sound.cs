@@ -521,6 +521,96 @@ namespace JuleHygge
             });
         }
 
+        // ------------------------------------------------------------------ halloween
+        // The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
+        // wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
+        // fifth. Written for JuleHygge, so it is free of rights. Same as macOS Sound.swift (Synth.witchTune).
+        public static float[] WitchTune()
+        {
+            const double beat = 0.42;
+            const int E4 = 64, Gs4 = 68, A4 = 69, B4 = 71, C5 = 72, D5 = 74, E5 = 76;
+            double[,] melody = {
+                { E5, 2 }, { C5, 1 },   { D5, 2 }, { B4, 1 },   { C5, 1 }, { B4, 1 }, { A4, 1 },   { E4, 3 },
+                { A4, 2 }, { C5, 1 },   { B4, 2 }, { Gs4, 1 },  { A4, 3 },                         { 0, 3 } };
+            int[] roots = { 45, 40, 45, 40, 41, 40, 45, 45 };
+            Func<double, double> freq = midi => 440 * Math.Pow(2, (midi - 69) / 12.0);
+            double total = 0;
+            int notes = melody.GetLength(0);
+            for (int i = 0; i < notes; i++) total += melody[i, 1] * beat;
+            return MakeBuffer(total, (output, n) =>
+            {
+                // the voice: the pitch glides toward each note, with a slow vibrato that deepens as the note is held
+                double phase = 0, pitch = freq(melody[0, 0]), level = 0;
+                double noteStart = 0, noteEnd = melody[0, 1] * beat;
+                int idx = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    double t = i / Rate;
+                    while (t >= noteEnd && idx < notes - 1) { idx++; noteStart = noteEnd; noteEnd += melody[idx, 1] * beat; }
+                    double note = melody[idx, 0];
+                    double held = t - noteStart, left = noteEnd - t;
+                    if (note > 0) pitch += (freq(note) - pitch) * 0.0009;
+                    double want = note > 0 ? Math.Min(1, held / 0.06) * Math.Min(1, left / 0.09) : 0;
+                    level += (want - level) * 0.002;
+                    double vibrato = 1 + 0.008 * Math.Min(1, held / 0.35) * Math.Sin(2 * Math.PI * 5.6 * t);
+                    phase += pitch * vibrato / Rate;
+                    if (phase >= 1) phase -= 1;
+                    double voice = Math.Sin(2 * Math.PI * phase) + 0.16 * Math.Sin(4 * Math.PI * phase) + 0.05 * Math.Sin(6 * Math.PI * phase);
+                    output[i] += (float)(voice * level * 0.34);
+                }
+                // the organ: root and fifth per bar, soft, swelling in and out so the loop has no click
+                double[,] stops = { { 1.0, 1.0 }, { 1.5, 0.55 }, { 2.0, 0.4 }, { 3.0, 0.18 }, { 4.0, 0.1 } };
+                for (int b = 0; b < roots.Length; b++)
+                {
+                    int start = (int)(b * 3 * beat * Rate), count = (int)(3 * beat * Rate);
+                    double f = freq(roots[b]);
+                    for (int k = 0; k < count && start + k < n; k++)
+                    {
+                        double t = k / Rate, u = (double)k / count;
+                        double env = Math.Min(1, u / 0.12) * Math.Min(1, (1 - u) / 0.12);
+                        double v = 0;
+                        for (int h = 0; h < stops.GetLength(0); h++) v += stops[h, 1] * Math.Sin(2 * Math.PI * f * stops[h, 0] * t);
+                        output[start + k] += (float)(v * env * 0.1);
+                    }
+                }
+            });
+        }
+
+        // The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under
+        // it two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of
+        // cycles in it, and the air is made a little longer and faded into its own start, so there is no seam.
+        public static float[] GhostWind()
+        {
+            const double len = 4.0;
+            return MakeBuffer(len, (output, n) =>
+            {
+                var rng = new Random(3110);
+                int over = (int)(0.3 * Rate);
+                var air = new double[n + over];
+                double low = 0, band = 0;
+                for (int i = 0; i < n + over; i++)
+                {
+                    double t = i / Rate;
+                    // a resonance that slides up and down between about 350 and 900 Hz
+                    double fc = 620 + 280 * Math.Sin(2 * Math.PI * 0.5 * t);
+                    double f = 2 * Math.Sin(Math.PI * fc / Rate);
+                    double high = Noise(rng) - low - 0.35 * band;
+                    band += f * high;
+                    low += f * band;
+                    air[i] = band * (0.6 + 0.4 * Math.Sin(2 * Math.PI * 0.25 * t));
+                }
+                for (int i = 0; i < over; i++) { double k = (double)i / over; air[i] = air[i] * k + air[n + i] * (1 - k); }
+                for (int i = 0; i < n; i++)
+                {
+                    double t = i / Rate;
+                    double swell = 0.5 + 0.5 * Math.Sin(2 * Math.PI * 0.25 * t - 1);
+                    double vib = 1 + 0.012 * Math.Sin(2 * Math.PI * 5 * t);
+                    double voices = Math.Sin(2 * Math.PI * 330 * vib * t) + 0.8 * Math.Sin(2 * Math.PI * 392 * vib * t + 1) + 0.25 * Math.Sin(2 * Math.PI * 660 * vib * t);
+                    output[i] = (float)(air[i] * 0.22 + voices * swell * 0.035);
+                }
+            });
+        }
+
         // ------------------------------------------------------------------ de dødes dag
         // The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the
         // style of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar
@@ -933,6 +1023,8 @@ namespace JuleHygge
             sounds.Add("aeselkaerre-rul", () => DonkeyCart(Controller.DonkeyStepCycle));
             sounds.Add("aeselkaerre-kost", () => BroomSweep(Controller.DonkeyStepCycle));
             sounds.Add("aeselkaerre-broel", DonkeyBray);
+            sounds.Add("heks-melodi", WitchTune);
+            sounds.Add("spoegelser-sus", GhostWind);
             for (int m = 0; m < GooseMoods.Length; m++) { int mood = m; sounds.Add("gaes-" + GooseMoods[m], () => Geese(mood)); }
             foreach (var kv in sounds)
             {

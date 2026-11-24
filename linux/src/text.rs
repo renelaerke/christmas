@@ -76,7 +76,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
 // Windows versions).
 pub const MENU_THEME: &str = "Tema";
-pub const THEMES: [&str; 3] = ["Jul", "Efterår", "De dødes dag"];
+pub const THEMES: [&str; 4] = ["Jul", "Efterår", "De dødes dag", "Halloween"];
 pub const MENU_LEAVES: &str = "Løvfald";
 pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
@@ -128,6 +128,31 @@ pub fn menu_ofrenda(stage: i32, max: i32) -> String {
 pub fn notice_ofrenda() -> String {
     "Calacas har pyntet alteret. Til sidst kom der et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!"
         .to_string()
+}
+
+// ---------------------------------------------------------------------- Halloween (menu "Tema")
+// The same menu on Halloween (as in the macOS and Windows versions). The leaves are autumn's and keep autumn's
+// names; the rest: jack-o'-lanterns for the snowman, a witch for Santa, ghosts and children dressed up for the
+// nisser, a string of pumpkins and bats for the lights, and a witch or ghosts for the plow.
+pub const MENU_WINDOW_SPOOKS: &str = "Blade, katte og edderkopper på vinduerne";
+pub const MENU_WITCH: &str = "Heks på kost";
+pub const MENU_SEND_WITCH: &str = "Send heksen afsted nu!";
+pub const MENU_WITCH_SOUND: &str = "Lyd: uhyggelig melodi når heksen flyver";
+pub const MENU_SWEEPERS: &str = "Heks eller spøgelser rydder bladene";
+pub const MENU_SEND_SWEEPERS: &str = "Send dem ud nu!";
+pub const MENU_SWEEPER_SOUND: &str = "Lyd: kost eller spøgelsessus når bladene ryddes";
+pub const MENU_SPOOKS: &str = "Spøgelser og udklædte børn";
+pub const MENU_SPOOK_COUNT: &str = "Antal spøgelser pr. skærm";
+pub const MENU_SPOOK_GARLAND: &str = "Lyskæde med græskar og flagermus";
+pub const NOTICE_PUMPKINS_TITLE: &str = "Græskarlygterne er færdige!";
+
+pub fn menu_pumpkins(stage: i32, max: i32) -> String {
+    crate::lang::trf("Græskarlygter (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the last of the jack-o'-lanterns' steps is in place (a step for every hour the app runs).
+pub fn notice_pumpkins() -> String {
+    "Spøgelserne har skåret dem ud. Til sidst kom der en sort kat - græskarlygterne er færdige!".to_string()
 }
 
 pub fn menu_scarecrow(stage: i32, max: i32) -> String {
