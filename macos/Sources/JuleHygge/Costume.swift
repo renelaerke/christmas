@@ -218,6 +218,38 @@ final class NisseCostume {
     /// `mask` is the person mask in the same coordinates.
     /// `heads`: each head's measured outline (NisseHat.headOutlines). Where there is a face there is a head, and
     /// everything inside its outline (hair, ears) is head: never coloured, whatever its colour.
+    /// Halloween's witch: the person's clothes turned black and all bare skin tinted green, each with its own light
+    /// and shade kept. Both come from the parts model (clothes, and the face's and the body's skin), so hair, beard
+    /// and glasses stay as they are. Without the model (before macOS 15, or while it loads) nothing is changed:
+    /// the colour rule that stands in for it elsewhere cannot tell skin from clothes well enough to paint skin green.
+    func applyWitch(to cam: CIImage, mask: CIImage) -> CIImage {
+        let extent = cam.extent
+        guard let cloth = parts.clothes(cam: cam), let skin = parts.skinOfLastRun(extent: extent) else { return cam }
+        let person = mask.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 6, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
+            .applyingFilter("CIColorClamp")
+        // black cloth: the clothes' own light and shade, far down (folds and seams still show)
+        let gray = cam.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.2, kCIInputBrightnessKey: 0])
+        let black = gray.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.13, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0.13, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0.15, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            "inputBiasVector": CIVector(x: 0.008, y: 0.008, z: 0.012, w: 0)])
+        let onClothes = person.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: cloth])
+        var out = black.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: cam, kCIInputMaskImageKey: onClothes]).cropped(to: extent)
+        // green skin: red taken down and carried over into green, blue halved; not all the way, so the face is still a face
+        let green = cam.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.56, y: 0.06, z: 0, w: 0), "inputGVector": CIVector(x: 0.22, y: 0.86, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0.04, z: 0.50, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            "inputBiasVector": CIVector(x: 0, y: 0.02, z: 0, w: 0)])
+        let onSkin = person.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: skin])
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: 0.88, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 0.88, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 0.88, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
+        out = green.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: out, kCIInputMaskImageKey: onSkin]).cropped(to: extent)
+        return out
+    }
+
     func applySuit(to cam: CIImage, mask: CIImage, heads: [[CGPoint]] = []) -> CIImage {
         guard !shapes.isEmpty else { return cam }
         let extent = cam.extent

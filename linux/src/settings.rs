@@ -155,7 +155,8 @@ impl Settings {
             plow_sound: b("PlowSound", def.plow_sound),
             sound_level: i("SoundLevel", def.sound_level).clamp(0, 2),
             frame_rate,
-            theme: i("Theme", def.theme).clamp(0, 2),
+            // (a theme this version does not have yet, such as Halloween on macOS, shows as Christmas)
+            theme: Some(i("Theme", def.theme)).filter(|t| (0..=2).contains(t)).unwrap_or(0),
             kite: b("Kite", def.kite),
             folk: i("Folk", def.folk).clamp(0, 5),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),

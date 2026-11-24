@@ -75,6 +75,9 @@ final class NisseHat {
         var brow: CGPoint     // between the eyebrows
         var chin: CGPoint
         var roll: Double, yaw: Double, pitch: Double
+        /// The nose as Vision found it (nil when it did not): the top and the tip of its crest, and its breadth.
+        /// `noseUnder` is the point just under the nose, on the face (where the nose's base meets the upper lip).
+        var noseTop: CGPoint? = nil, noseTip: CGPoint? = nil, noseUnder: CGPoint? = nil, noseWide: Double? = nil
     }
 
     /// The person mask, read in output coordinates.
@@ -229,6 +232,13 @@ final class NisseHat {
         var chinV = 0.0
         /// the chin's sideways position from the head frame's origin
         var chinX = 0.0
+        /// The nose's crest (top and tip) in the head's frame, and the nose's breadth, steadied; nil until Vision
+        /// has found the nose on this head. For what stands on the nose (Halloween's witch nose).
+        var noseTop: CGPoint?, noseTip: CGPoint?, noseUnder: CGPoint?, noseWide: Double?
+        /// How far this person's nose tip stands out from the face, as a share of the nose's length: learned while
+        /// the head is turned or nodded enough to show it (a running average, each reading weighed by how well
+        /// the picture shows it; see `witchNose`).
+        var noseOutSum = 0.0, noseOutWeight = 0.0
         var fChin = OneEuro(minCutoff: 0.5, beta: 0.03), fChinX = OneEuro(minCutoff: 0.5, beta: 0.03)
         /// the outline's left and right edge at `samples` heights from `below·U` under the eyes to the crown
         var l: [Double], r: [Double]
@@ -293,12 +303,51 @@ final class NisseHat {
         let (l, r) = a.x < b.x ? (a, b) : (b, a)
         let roll = o.roll.map { Double(rollSign) * $0.doubleValue } ?? Double(atan2(r.y - l.y, r.x - l.x))
         guard roll.isFinite else { return nil }
-        return Face(eye: eye, brow: brow, chin: chin, roll: roll, yaw: yaw, pitch: pitch)
+        var found = Face(eye: eye, brow: brow, chin: chin, roll: roll, yaw: yaw, pitch: pitch)
+        // the nose: its crest runs from between the eyes to the tip (taken by how far down the face each point
+        // is, whatever order Vision gives them in), and its breadth is the nose's outline across the face
+        let span = hypot(chin.x - eye.x, chin.y - eye.y)
+        if span > 1 {
+            let down = CGPoint(x: (chin.x - eye.x) / span, y: (chin.y - eye.y) / span)
+            func along(_ p: CGPoint) -> CGFloat { (p.x - eye.x) * down.x + (p.y - eye.y) * down.y }
+            func across(_ p: CGPoint) -> CGFloat { -(p.x - eye.x) * down.y + (p.y - eye.y) * down.x }
+            if let crest = lm.noseCrest, crest.pointCount >= 2 {
+                let c = pts(crest).filter { $0.x.isFinite && $0.y.isFinite }
+                if let top = c.min(by: { along($0) < along($1) }), let tip = c.max(by: { along($0) < along($1) }), along(tip) - along(top) > 2 {
+                    found.noseTop = top; found.noseTip = tip
+                }
+            }
+            if let nose = lm.nose, nose.pointCount >= 3 {
+                let outline = pts(nose).filter { $0.x.isFinite && $0.y.isFinite }
+                let n = outline.map(across)
+                if let lo = n.min(), let hi = n.max(), hi - lo > 2 { found.noseWide = Double(hi - lo) }
+                // under the nose: sideways the middle point of the outline (it runs from one nostril's wing along
+                // the nose's base to the other), in height the lowest points, which are steady (as Costume does)
+                if outline.count >= 3 {
+                    let lowest = outline.map(along).sorted(by: >).prefix(3)
+                    let deep = lowest.reduce(0, +) / CGFloat(lowest.count)
+                    let base = outline[outline.count / 2], move = deep - along(base)
+                    found.noseUnder = CGPoint(x: base.x + down.x * move, y: base.y + down.y * move)
+                }
+            }
+        }
+        return found
     }
 
     /// Feeds this frame's landmark results. `extent` is the camera image, `transform` the same aspect-fill transform
     /// the camera picture gets.
+    /// The camera's horizontal field of view in degrees. macOS does not tell an app its camera's (the capture
+    /// format's `videoFieldOfView` is iOS only), so this is an ordinary webcam's: an assumption about the camera,
+    /// not a measure. A camera that sees wider than this draws near things a little too small. With the
+    /// picture's width it gives the camera's distance in picture pixels
+    /// (`focal`), which is what decides how much larger a thing nearer the camera is drawn.
+    nonisolated(unsafe) static var fieldOfView = 70.0
+    private var pictureCentre = CGPoint.zero, focal = 0.0
+
     func update(_ observations: [VNFaceObservation], mask: CVPixelBuffer? = nil, extent: CGRect, transform: CGAffineTransform, dt: CGFloat) {
+        pictureCentre = CGPoint(x: extent.midX, y: extent.midY).applying(transform)
+        let scale = Double((transform.a * transform.a + transform.b * transform.b).squareRoot())
+        focal = Double(extent.width) / 2 / tan(Self.fieldOfView / 2 * .pi / 180) * scale
         let faces = observations.prefix(3).compactMap { Self.face($0, extent: extent, transform: transform) }
         guard let mask else { feed(faces, mask: nil, dt: Double(dt)); return }
         CVPixelBufferLockBaseAddress(mask, .readOnly)
@@ -313,6 +362,23 @@ final class NisseHat {
     func feed(_ faces: [Face], mask: MaskReader?, dt: Double) {
         for t in tracks { t.fresh = false }
         if let mask { for f in faces { measure(f, mask, dt) } }
+        // the nose, into the frame of the head it belongs to (the head measured nearest this face's eyes)
+        for f in faces {
+            guard let top = f.noseTop, let tip = f.noseTip,
+                  let t = tracks.filter({ $0.fresh }).min(by: { hypot($0.seen.x - f.eye.x, $0.seen.y - f.eye.y) < hypot($1.seen.x - f.eye.x, $1.seen.y - f.eye.y) }),
+                  hypot(t.seen.x - f.eye.x, t.seen.y - f.eye.y) < CGFloat(2 * t.U) else { continue }
+            let cr = CGFloat(cos(t.roll)), sr = CGFloat(sin(t.roll))
+            func inHead(_ p: CGPoint) -> CGPoint {
+                let dx = p.x - t.origin.x, dy = p.y - t.origin.y
+                return CGPoint(x: cr * dx + sr * dy, y: -sr * dx + cr * dy)
+            }
+            // (steadied a little: the landmarks tremble from picture to picture)
+            let k = CGFloat(min(1, dt * 10))
+            func toward(_ old: CGPoint?, _ new: CGPoint) -> CGPoint { old.map { CGPoint(x: $0.x + (new.x - $0.x) * k, y: $0.y + (new.y - $0.y) * k) } ?? new }
+            t.noseTop = toward(t.noseTop, inHead(top)); t.noseTip = toward(t.noseTip, inHead(tip))
+            if let u = f.noseUnder { t.noseUnder = toward(t.noseUnder, inHead(u)) }
+            if let w = f.noseWide { t.noseWide = t.noseWide.map { $0 + (w - $0) * Double(k) } ?? w }
+        }
         // A value that is not a number would stay in the steadying for ever and make the head unrecognisable in
         // every later frame (live 2026-11-17: the hat then started over about once a second). Such a head is
         // dropped, and the log says which value it was.
@@ -620,6 +686,13 @@ final class NisseHat {
         let halfway = simd_normalize(lightH + V(0, 0, 1))
         var back: [(Double, Item)] = [], front: [(Double, Item)] = []
         if CameraCostume.muertos { return flowerCrown(t, g, lightH) }
+        if CameraCostume.halloween {
+            // (the pumpkin head is drawn first, so the witch's hat sits on it)
+            if CameraCostume.pumpkinHead { front += pumpkinHead(t, g, top: top, lightH: lightH) }
+            if !CameraCostume.witchHat { return (back, front, g.centre) }
+            // (the witch's hat comes with her nose)
+            front += witchNose(t, g, lightH: lightH)
+        }
 
         // ---- the cloth: the smallest shape without a waist around the brim, the measured outline above it, and the tip
         let mg = Self.cloth * U
@@ -634,7 +707,7 @@ final class NisseHat {
         // (a sou'wester's crown is low and round: two more points beside the top one keep it from ending in a peak)
         if CameraCostume.autumn { pts.append(P2(t.crownX - 0.38 * U, top + mg * 0.8)); pts.append(P2(t.crownX + 0.38 * U, top + mg * 0.8)) }
         // (the folk's look: the tip's length and bend, the cloth, what is round the brow and at the tip)
-        let look = CameraLook.of(CameraCostume.folk)
+        let look = CameraCostume.look
         let free = Self.free * look.free, bendBy = Self.bend * look.bend
         let L = free * U
         // Autumn's hat is a sou'wester: the same cloth on the measured head, but closed in a dome over the crown
@@ -759,6 +832,39 @@ final class NisseHat {
             }
             return (back, front, centres.last ?? g.centre)
         }
+        if CameraCostume.halloween {
+            // ---- the witch hat's brim: a wide flat ring round the head just under the band, turned up a little
+            // over the forehead (so it never comes down over the eyes). Black like the cloth; where its underside
+            // shows it is in shade.
+            let n = 48
+            func edge(_ i: Int) -> (inner: V, outer: V, out: V) {
+                let ph = Double(i) / Double(n) * 2 * .pi, sp = sin(ph), cp = cos(ph)
+                let out: V = simd_normalize((k * sp) * X + cp * g.B)
+                let inner: V = g.centre + (g.a * sp) * X + (g.a * k * cp) * g.B + out * (rf * 0.9) - g.N * (rf * 1.2)
+                let w = U * 0.52
+                let rise = cp > 0 ? 0.3 * cp : 0.08 * cp
+                return (inner, inner + out * w + g.N * (w * rise), out)
+            }
+            for i in 0..<n {
+                let a = edge(i), b = edge(i + 1)
+                let q = [a.inner, b.inner, b.outer, a.outer]
+                let m = (q[0] + q[1] + q[2] + q[3]) / 4
+                var nrm = simd_cross(q[1] - q[0], q[3] - q[0])
+                let len = simd_length(nrm)
+                if len < 1e-9 { continue }
+                nrm /= len
+                if simd_dot(nrm, g.N) < 0 { nrm = -nrm }
+                let under = nrm.z < 0
+                if under { nrm = -nrm }
+                let shade = (under ? 0.35 : 0.55) + 0.45 * max(0, simd_dot(nrm, lightH))
+                let col = CGColor(srgbRed: min(1, look.cloth.r * shade + 0.02), green: min(1, look.cloth.g * shade + 0.02),
+                                  blue: min(1, look.cloth.b * shade + 0.03), alpha: 1)
+                let facing = (a.out + b.out).z
+                // (in front of the band's lowest edge, so the brim is not cut by it)
+                if facing >= 0 { front.append((2e6 + m.z, .quad(q, col))) }
+                else if m.y >= vLow { back.append((m.z, .quad(q, col))) }
+            }
+        }
         // at the tip: the nisse's pompom, the elf's bell, or nothing
         let tip = Qb + bent(1)
         switch look.tip {
@@ -832,6 +938,205 @@ final class NisseHat {
             }
         }
         return (back, front, tip)
+    }
+
+    /// The witch's nose that goes with her hat: big, green and hooked, with a wart, built on the person's own nose.
+    ///
+    /// **The real nose first, in three dimensions.** Vision gives three points in the picture: the nose's root
+    /// between the eyes, the point under the nose, and the tip. The first two lie on the face; the tip does not:
+    /// it stands out from the face along the head's forward axis, so in the picture it is pushed sideways when the
+    /// head is turned and up or down when it nods. Taking the tip for a point on the face put the whole nose off
+    /// to that side (REL, 2026-11-24). So the nose is rebuilt from the head's own axes as the camera sees them
+    /// (X, Y up the head, Z forward, each foreshortened by the head's turn and nod):
+    ///   under − root = −h·Y          gives the nose's length down the face, h;
+    ///   tip − under  = a·Y + d·Z     gives how far the tip stands out, d (and how far above the nose's base, a).
+    /// Seen straight on, Z has no length in the picture and d cannot be read off it; it is then taken as an
+    /// ordinary share of the nose's own length (it hardly shows from that side anyway), and the measured value
+    /// takes over as the head turns.
+    ///
+    /// **The witch's nose on it.** Where it meets the face it is the real nose's footprint: from a little under
+    /// the root to the point under the nose, narrow at the bridge and broad at the nostrils, lying in the face's
+    /// own plane (so the head's nod shortens it as it does the face). From there it draws together to a tip
+    /// beyond the real one, out along Z and hooking down. What lies nearer the camera is drawn larger and further
+    /// from the picture's middle, as the camera sees it (`focal`). All sizes are the head's and the nose's own.
+    private func witchNose(_ t: Track, _ g: Ring, lightH: V) -> [(Double, Item)] {
+        let U = t.U, X = g.X, Y = g.Y, Z = g.Z
+        let zf = g.a * t.depth * 0.86   // the face's surface at the nose, from the head's axis
+        // until a nose has been seen: an ordinary one on the head's middle line
+        var root = V(g.centre.x, 0, zf) - Y * (0.06 * U)
+        var h = 0.62 * U, d = 0.30 * U, a = 0.08 * U
+        var under = root - Y * h
+        var acrossHalf = 0.20 * U
+        if let r2 = t.noseTop, let u2 = t.noseUnder, let p2 = t.noseTip {
+            let yy = Y.x * Y.x + Y.y * Y.y
+            let ux = Double(u2.x - r2.x), uy = Double(u2.y - r2.y)
+            let measured = -(ux * Y.x + uy * Y.y) / max(0.05, yy)
+            if measured > 0.2 * U && measured < 1.4 * U {
+                h = measured
+                root = V(Double(r2.x), Double(r2.y), zf)
+                under = V(Double(u2.x), Double(u2.y), zf - Y.z * h)
+                // the tip against the point under the nose, split along Y and Z as they lie in the picture
+                let px = Double(p2.x - u2.x), py = Double(p2.y - u2.y)
+                let det = Y.x * Z.y - Y.y * Z.x
+                // One picture's reading is shaky unless the head is well turned (the tip's sideways shift is then
+                // only a few pixels, and the landmarks tremble by as much), and a nose does not change: so the
+                // share is learned over time, each reading weighed by how clearly the picture shows it, starting
+                // from an ordinary nose's.
+                if abs(det) > 0.12 {
+                    let reading = min(1.1, max(0.15, (Y.x * py - Y.y * px) / det / h)), weight = det * det
+                    t.noseOutSum = t.noseOutSum * 0.995 + reading * weight
+                    t.noseOutWeight = t.noseOutWeight * 0.995 + weight
+                }
+                let ordinary = 0.5, trust = 0.08
+                d = h * (ordinary * trust + t.noseOutSum) / (trust + t.noseOutWeight)
+                a = min(0.5 * h, max(-0.1 * h, ((px - d * Z.x) * Y.x + (py - d * Z.y) * Y.y) / max(0.05, yy)))
+            }
+            if let wide = t.noseWide { acrossHalf = min(0.34 * U, max(0.15 * U, wide / 2 * 1.15)) }
+        }
+        let realTip = under + Y * a + Z * d
+        // the footprint on the face, and the witch's tip beyond the real one
+        let down = simd_normalize(under - root)
+        let foot = root + (under - root) * 0.56, alongHalf = 0.5 * h
+        let tipR = 0.07 * U
+        let point = realTip + Z * (0.55 * U) + down * (0.24 * U)
+        // the camera's view: the picture's middle in the head's frame, and the distance in the picture's own pixels
+        let cr = cos(t.roll), sr = sin(t.roll)
+        let dx = Double(pictureCentre.x - t.origin.x), dy = Double(pictureCentre.y - t.origin.y)
+        let mid = (x: cr * dx + sr * dy, y: -sr * dx + cr * dy)
+        func grown(_ z: Double) -> Double { focal > 100 ? min(1.8, max(0.7, focal / max(1, focal - (z - zf)))) : 1 }
+        func seen(_ p: V) -> V {
+            let k = grown(p.z)
+            return V(mid.x + (p.x - mid.x) * k, mid.y + (p.y - mid.y) * k, p.z)
+        }
+        let steps = 14, round = 24
+        func centre(_ s: Double) -> V { foot + (point - foot) * s }
+        func radii(_ s: Double) -> (across: Double, along: Double) {
+            (tipR + (acrossHalf - tipR) * pow(1 - s, 0.85), tipR + (alongHalf - tipR) * pow(1 - s, 0.95))
+        }
+        func ring(_ j: Int) -> [V] {
+            let s = Double(j) / Double(steps), (ra, rb) = radii(s), c = centre(s)
+            return (0..<round).map { i in
+                let ang = Double(i) / Double(round) * 2 * .pi, upper = max(0, sin(ang))
+                // narrow toward the bridge where it lies on the face, and a hump on the ridge on the way out
+                let across = ra * cos(ang) * (1 - 0.55 * (1 - s) * upper)
+                let up = rb * sin(ang) + 0.08 * U * sin(.pi * s) * upper
+                return seen(c + X * across - down * up)
+            }
+        }
+        var out: [(Double, Item)] = []
+        var near = ring(0)
+        for j in 0..<steps {
+            let far = ring(j + 1), inside = (seen(centre(Double(j) / Double(steps))) + seen(centre(Double(j + 1) / Double(steps)))) / 2
+            for i in 0..<round {
+                let i1 = (i + 1) % round
+                let q = [near[i], near[i1], far[i1], far[i]]
+                let m = (q[0] + q[1] + q[2] + q[3]) / 4
+                var nrm = simd_cross(q[1] - q[0], q[3] - q[0])
+                let len = simd_length(nrm)
+                if len < 1e-9 { continue }
+                nrm /= len
+                if simd_dot(nrm, m - inside) < 0 { nrm = -nrm }
+                if nrm.z < -0.05 { continue }
+                let shade = 0.42 + 0.58 * max(0, simd_dot(nrm, lightH))
+                out.append((1.5e6 + m.z, .quad(q, CGColor(srgbRed: 0.46 * shade, green: 0.66 * shade, blue: 0.32 * shade, alpha: 1))))
+            }
+            near = far
+        }
+        // the rounded tip, the two nostrils under it, and a wart on the ridge
+        let end = seen(point)
+        out.append((1.5e6 + end.z + U, .disc(end, tipR * 1.15 * grown(end.z), CGColor(srgbRed: 0.42, green: 0.62, blue: 0.29, alpha: 1))))
+        if Y.z < 0.25 {   // (only where the underside is turned toward the camera at all)
+            let (ra, rb) = radii(0.55)
+            for side in [-1.0, 1.0] {
+                let nostril = seen(centre(0.55) + X * (side * ra * 0.55) + down * (rb * 0.93))
+                out.append((1.5e6 + nostril.z + U, .disc(nostril, U * 0.035 * grown(nostril.z), CGColor(srgbRed: 0.20, green: 0.32, blue: 0.14, alpha: 1))))
+            }
+        }
+        let (wa, wb) = radii(0.5)
+        let wart = seen(centre(0.5) - down * ((wb + 0.08 * U) * 0.92) + X * (wa * 0.3))
+        out.append((1.5e6 + wart.z + U, .disc(wart, U * 0.05 * grown(wart.z), CGColor(srgbRed: 0.30, green: 0.46, blue: 0.20, alpha: 1))))
+        // (for looking at the measurement in the replay: root, under and where the tip was worked out to be)
+        if ProcessInfo.processInfo.environment["HUE_NAESE_MAAL"] != nil {
+            for (p, col) in [(root, CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1)), (under, CGColor(srgbRed: 0, green: 0.4, blue: 1, alpha: 1)),
+                             (realTip, CGColor(srgbRed: 1, green: 1, blue: 0, alpha: 1))] {
+                out.append((3e6, .disc(V(p.x, p.y, p.z), 3, col)))
+            }
+            print(String(format: "næse: drej %.2f nik %.2f | længde %.2f U, ud %.2f U (%.2f af længden, vægt %.2f), spids %.2f over bunden | Y %.2f,%.2f Z %.2f,%.2f",
+                         t.yaw, t.pitch, h / U, d / U, d / h, t.noseOutWeight, a / h, Y.x, Y.y, Z.x, Z.y))
+        }
+        return out
+    }
+
+    /// Halloween's pumpkin head: the person's whole head as a carved jack-o'-lantern with a candle burning inside.
+    /// It is a ribbed ball round the measured head (from under the chin to over the crown, a little wider than the
+    /// head's greatest breadth), turned and nodded with the head's own axes, so the face it has cut in it (two
+    /// triangular eyes, a nose and a grin with teeth) looks the way the person looks. Everything is in units of
+    /// the head's own measures. Returned as parts in front of the head, to be drawn before the hat.
+    private func pumpkinHead(_ t: Track, _ g: Ring, top: Double, lightH: V) -> [(Double, Item)] {
+        let U = t.U, X = g.X, Y = g.Y, Z = g.Z
+        // the chin as measured, or where an ordinary chin is until it has been
+        let chin = t.chinV < -0.5 * U ? t.chinV : -1.3 * U
+        // (a pumpkin is broader than it is tall)
+        let ry = (top - chin) / 2 * 1.08, rx = max(max(g.widest, U) * 1.3, ry * 1.12), rz = rx * 0.95
+        let centre = V(g.centre.x, (top + chin) / 2, 0)
+        let lobes = 5.0
+        func point(_ ph: Double, _ th: Double, _ lift: Double) -> V {
+            // the ribs: the ball swells between the grooves that run from the stalk down
+            let swell = (0.93 + 0.07 * abs(cos(lobes * ph))) * lift
+            let side: V = (rx * swell * sin(ph) * cos(th)) * X, up: V = (ry * sin(th)) * Y, fore: V = (rz * swell * cos(ph) * cos(th)) * Z
+            return centre + side + up + fore
+        }
+        var out: [(Double, Item)] = []
+        let around = 72, up = 30
+        for j in 0..<up {
+            let t0 = -Double.pi / 2 + Double.pi * Double(j) / Double(up), t1 = -Double.pi / 2 + Double.pi * Double(j + 1) / Double(up)
+            for i in 0..<around {
+                let p0 = -Double.pi + 2 * Double.pi * Double(i) / Double(around), p1 = -Double.pi + 2 * Double.pi * Double(i + 1) / Double(around)
+                let q = [point(p0, t0, 1), point(p1, t0, 1), point(p1, t1, 1), point(p0, t1, 1)]
+                let m = (q[0] + q[1] + q[2] + q[3]) / 4
+                var nrm = simd_cross(q[1] - q[0], q[3] - q[0])
+                let len = simd_length(nrm)
+                if len < 1e-9 { continue }
+                nrm /= len
+                if simd_dot(nrm, m - centre) < 0 { nrm = -nrm }
+                if nrm.z < -0.02 { continue }   // the far side
+                let groove = 0.80 + 0.20 * abs(cos(lobes * (p0 + p1) / 2))
+                let shade = (0.40 + 0.60 * max(0, simd_dot(nrm, lightH))) * groove
+                // (keyed far back, so the hat's cloth, band and brim are drawn over it)
+                out.append((-1e6 + m.z, .quad(q, CGColor(srgbRed: min(1, 1.0 * shade), green: min(1, 0.50 * shade), blue: min(1, 0.10 * shade), alpha: 1))))
+            }
+        }
+        // ---- the face cut through it, lit by the candle inside: each hole is one shape lying on the ball
+        // (`ph` from straight ahead, `th` up from the middle, both in radians)
+        func hole(_ outline: [(Double, Double)]) {
+            let pts = outline.map { point($0.0, $0.1, 1.012) }
+            let m = pts.reduce(V(0, 0, 0), +) / Double(pts.count)
+            // (only while it faces the camera: turned far to the side it is on the ball's rim or behind it)
+            guard simd_normalize(m - centre).z > 0.12 else { return }
+            let glow = 0.80 + 0.20 * simd_normalize(m - centre).z
+            out.append((-0.5e6 + m.z, .quad(pts, CGColor(srgbRed: 1.0 * glow, green: 0.86 * glow, blue: 0.42 * glow, alpha: 1))))
+        }
+        for side in [-1.0, 1.0] {
+            // the eyes: triangles, points up and a little out
+            hole([(side * 0.20, 0.12), (side * 0.66, 0.16), (side * 0.48, 0.52)])
+        }
+        hole([(-0.11, -0.14), (0.11, -0.14), (0, 0.07)])
+        // the grin: a crescent, with two teeth left standing above and one below
+        func upper(_ a: Double) -> Double { -0.28 + 0.20 * (a / 0.86) * (a / 0.86) }
+        func lower(_ a: Double) -> Double { -0.66 + 0.56 * (a / 0.86) * (a / 0.86) }
+        var grin: [(Double, Double)] = []
+        for a in stride(from: -0.86, through: 0.861, by: 0.0717) {
+            let tooth = abs(a) > 0.15 && abs(a) < 0.34
+            grin.append((a, upper(a) - (tooth ? 0.11 : 0)))
+        }
+        for a in stride(from: 0.86, through: -0.861, by: -0.0717) {
+            grin.append((a, lower(a) + (abs(a) < 0.11 ? 0.11 : 0)))
+        }
+        hole(grin)
+        // the stalk on top
+        let stalk = centre + Y * (ry * 1.03)
+        out.append((-0.5e6 + stalk.z + rz, .disc(stalk, U * 0.16, CGColor(srgbRed: 0.28, green: 0.47, blue: 0.19, alpha: 1))))
+        return out
     }
 
     /// The Day of the Dead's crown in the hat's place: big marigolds round the head with smaller purple and pink

@@ -80,7 +80,9 @@ namespace JuleHygge
             s.SoundLevel = Math.Max(0, Math.Min(2, I(d, "SoundLevel", s.SoundLevel)));
             s.FrameRate = I(d, "FrameRate", s.FrameRate);
             if (Array.IndexOf(new[] { 12, 20, 30, 60 }, s.FrameRate) < 0) s.FrameRate = 20;
-            s.Theme = Math.Max(0, Math.Min(2, I(d, "Theme", 0)));
+            // (a theme this version does not have yet, such as Halloween on macOS, shows as Christmas)
+            s.Theme = I(d, "Theme", 0);
+            if (s.Theme < 0 || s.Theme > 2) s.Theme = 0;
             s.OfrendaSeconds = Math.Max(0, I(d, "OfrendaSeconds", 0));
             s.Kite = B(d, "Kite", s.Kite);
             s.Folk = Math.Max(0, Math.Min(5, I(d, "Folk", s.Folk)));

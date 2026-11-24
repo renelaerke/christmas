@@ -292,6 +292,8 @@ final class ScreenOverlay {
     private var leafPileDrawn: F = -1, leafPileAt = -10.0
     private var ledgeLeafPool: DotPool!
     private var ledgeCandlePool: DotPool!
+    /// Halloween's cats and spiders on the window edges (OverlayHalloween.swift), drawn once.
+    var spookImages: [CGImage] = []
     private var ledgeCandlesShown = false
     private var ledgeLeavesAt = -10.0
     private var bulbLayers: [(layer: CALayer, omega: Double, phase: Double)] = []
@@ -373,7 +375,8 @@ final class ScreenOverlay {
             let sky = CAGradientLayer()
             sky.frame = root.bounds
             // bottom → top (layer y is up); the Day of the Dead has a purple dusk
-            sky.colors = controller.theme == .muertos ? [C(122, 31, 92), C(42, 15, 61)] : [C(52, 78, 120), C(14, 24, 48)]
+            sky.colors = controller.theme == .muertos ? [C(122, 31, 92), C(42, 15, 61)]
+                : controller.theme == .halloween ? [C(59, 29, 79), C(18, 10, 34)] : [C(52, 78, 120), C(14, 24, 48)]
             sky.startPoint = CGPoint(x: 0.5, y: 0)
             sky.endPoint = CGPoint(x: 0.5, y: 1)
             root.addSublayer(sky)
@@ -802,8 +805,8 @@ final class ScreenOverlay {
     /// A candle only stands where the edge is not hidden by a window in front. The flames flicker: the flame
     /// and glow images change size and strength every other frame (only these few layers move).
     private func renderLedgeCandles() {
-        guard c.theme == .muertos || ledgeCandlesShown, frameNo % 2 == 0 else { return }
-        ledgeCandlesShown = c.theme == .muertos
+        guard c.theme == .muertos || c.theme == .halloween || ledgeCandlesShown, frameNo % 2 == 0 else { return }
+        ledgeCandlesShown = c.theme == .muertos || c.theme == .halloween
         let ox = screenBounds.minX, oy = screenBounds.minY
         ledgeCandlePool.begin()
         if cfg.windowSnow && c.theme == .muertos {
@@ -825,6 +828,8 @@ final class ScreenOverlay {
                 }
             }
         }
+        // Halloween: black cats on the edges and spiders hanging under them, in the same pool
+        if cfg.windowSnow && c.theme == .halloween { addLedgeSpooks(to: ledgeCandlePool) }
         ledgeCandlePool.end()
     }
 
@@ -1080,6 +1085,7 @@ final class ScreenOverlay {
             }
             return
         }
+        if c.theme == .halloween { drawWitch(g, t); return }
         g.rotate(by: cos(c.santaPhase * 0.9) * -4 * c.santaDir * .pi / 180)
 
         let rx: [F] = [80, 140, 200, 260]
@@ -1465,7 +1471,7 @@ final class ScreenOverlay {
         let x = W * 0.78, y = groundY - heapAt(x) + 3 * S
         g.translateBy(x: x, y: y)
         g.scaleBy(x: S, y: S)
-        if c.theme == .muertos { drawOfrenda(g, stage) } else { drawScarecrow(g, stage) }
+        if c.theme == .muertos { drawOfrenda(g, stage) } else if c.theme == .halloween { drawPumpkins(g, stage) } else { drawScarecrow(g, stage) }
     }
 
     // ------------------------------------------------------------------ sneplov
@@ -1480,7 +1486,7 @@ final class ScreenOverlay {
     var plowActive: Bool { c.plow.active && c.plow.members.contains(ObjectIdentifier(self)) }
     var plowX: F { c.plow.gx - screenBounds.minX }
     var plowDir: F { c.plow.dir }
-    private var plowWheel: F { c.plow.wheel }
+    var plowWheel: F { c.plow.wheel }
     private var plowOnScreen: Bool { plowActive && plowX > -140 * S * plowScale && plowX < W + 140 * S * plowScale }
     private var plowPileHeight: F { min(34, 4 + sqrt(c.plow.pushed / S) * 0.3) }
 
@@ -1508,7 +1514,33 @@ final class ScreenOverlay {
         if plowOnScreen {
             let gy = groundY - heapAt(plowX) + S
             let ph = plowPileHeight
-            if c.theme == .muertos {
+            if c.theme == .halloween {
+                if ph > 5 {
+                    plowChunkAcc += dt * (c.ghostsBlow ? 16 : 10)
+                    while plowChunkAcc >= 1 {
+                        plowChunkAcc -= 1
+                        let b = PlowBit()
+                        if c.ghostsBlow {
+                            // blown up and on ahead of the ghosts, to whirl away
+                            b.x = plowX + plowDir * (62 + R() * 40) * sc
+                            b.y = gy - (2 + R() * 16) * sc
+                            b.vx = plowDir * (150 + R() * 170) * S
+                            b.vy = -(130 + R() * 170) * S
+                            b.max = 2.2; b.life = 2.2
+                        } else {
+                            // swept up by the witch's broom, flying back over the cat into the cauldron
+                            b.x = plowX + plowDir * (92 + R() * 14) * sc
+                            b.y = gy - (2 + R() * 6) * sc
+                            b.vx = -plowDir * (80 + R() * 70) * S
+                            b.vy = -(150 + R() * 70) * S
+                            b.max = 1.6; b.life = 1.6
+                        }
+                        b.size = (3.5 + R() * 2.5) * S
+                        b.kind = Int(R() * 1000)
+                        plowBits.append(b)
+                    }
+                }
+            } else if c.theme == .muertos {
                 // the broom: petals are swept up and fly back over the donkey into the cart
                 if ph > 5 {
                     plowChunkAcc += dt * 10
@@ -1557,7 +1589,7 @@ final class ScreenOverlay {
                 }
             }
             plowSmokeTimer -= dt
-            if plowSmokeTimer <= 0 && c.theme != .muertos {
+            if plowSmokeTimer <= 0 && c.theme != .muertos && c.theme != .halloween {
                 plowSmokeTimer = 0.2
                 let b = PlowBit()
                 b.smoke = true
@@ -1610,6 +1642,7 @@ final class ScreenOverlay {
         g.translateBy(x: plowX, y: gy)
         g.scaleBy(x: plowDir * sc, y: sc)
         if c.theme == .muertos { drawPetalCart(g, ph); return }
+        if c.theme == .halloween { if c.ghostsBlow { drawGhostBlowers(g, ph) } else { drawWitchSweeper(g, ph) }; return }
 
         // Autumn's form is a leaf collector: the same truck in green, with a suction nozzle and hose in place
         // of the blade, and an open body heaped with leaves in place of the salt spreader.
@@ -1993,7 +2026,7 @@ final class ScreenOverlay {
     }
 
     // Frames per cycle: walking (legs + hat sway, period 4π of the walk phase), standing (hat sway), waving (arm).
-    private static let walkFrames = 16, standFrames = 8, waveFrames = 8
+    static let walkFrames = 16, standFrames = 8, waveFrames = 8
 
     private func renderNisser() {
         // Nisser that have walked off the screen continue on the neighbouring screen in that direction, if there
@@ -2031,7 +2064,7 @@ final class ScreenOverlay {
         let img = renderImage(width: 64 * maxSc, height: 80 * maxSc, scale: backingScale) { g in
             g.scaleBy(x: maxSc, y: maxSc)
             g.translateBy(x: 32, y: 72)
-            if c.theme.animals { drawAnimal(g, n, frame) } else if c.theme.skeletons { drawCalaca(g, n, frame) } else {
+            if c.theme.animals { drawAnimal(g, n, frame) } else if c.theme.skeletons { drawCalaca(g, n, frame) } else if c.theme.spooks { drawSpook(g, n, frame) } else {
                 switch c.folk {
                 case .nisser: drawNisse(g, n, frame)
                 case .alfer: drawElf(g, n, frame)
@@ -2665,8 +2698,11 @@ final class ScreenOverlay {
         let w = 7 * S, h = 11 * S, bw = 26 * S, bh = 28 * S
         let autumn = c.theme == .efteraar
         let S = self.S
+        let halloween = c.theme == .halloween
         let bright = (autumn ? Self.lanternColors : Self.bulbColors).map { col in
             renderImage(width: bw, height: bh, scale: scale) { g in
+                // Halloween: the small pumpkin lantern, lit
+                if halloween { self.drawGarlandPumpkin(g, bw / 2, 0, lit: true); return }
                 g.fillEllipse(withAlpha(col, 70), 0, 1 * S, 26 * S, 26 * S)
                 if autumn {
                     // the lit pane of a small lantern, with its flame
@@ -2694,7 +2730,7 @@ final class ScreenOverlay {
         // Autumn's form is a garland: a brown vine with leaves hanging from it, and small lanterns where the
         // bulbs are (their lit panes are the twinkling layers, see buildBulbs).
         let autumn = c.theme == .efteraar
-        let wire = autumn ? C(104, 68, 34, 235) : c.theme == .muertos ? C(40, 30, 36, 200) : C(25, 60, 35, 220), socket = C(30, 70, 40)
+        let wire = autumn ? C(104, 68, 34, 235) : c.theme == .muertos || c.theme == .halloween ? C(40, 30, 36, 200) : C(25, 60, 35, 220), socket = C(30, 70, 40)
         var x0 = -span * 0.3
         while x0 < W {
             g.setStrokeColor(wire); g.setLineWidth(2 * S); g.setLineCap(.round)
@@ -2765,6 +2801,13 @@ final class ScreenOverlay {
                 }
                 x0 += span
             }
+            return
+        }
+        if c.theme == .halloween {
+            // sleeping bats along the string, and small pumpkin lanterns where the bulbs are (lit by buildBulbs)
+            var bulbs: [(F, F)] = []
+            forEachBulb { _, bx, by in bulbs.append((bx, by)) }
+            drawSpookGarland(g, span: span, sag: sag, top: top, bulbs: bulbs)
             return
         }
         if autumn {

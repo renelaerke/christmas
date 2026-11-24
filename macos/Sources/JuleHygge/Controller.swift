@@ -28,7 +28,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// How far what stands in the snowman's place has come. Autumn's haystack grows a stage a day (`dailyStage`);
     /// the ofrenda of De dødes dag grows a stage for every hour the app runs with that theme (`ofrendaStage`),
     /// since the theme is only on for a couple of days.
-    var snowmanStage: Int { theme == .muertos ? ofrendaStage : dailyStage }
+    var snowmanStage: Int { theme.growsByHour ? ofrendaStage : dailyStage }
     private var dailyStage = 1
     /// One step of the ofrenda takes this long (seconds the app runs with the theme on).
     static let ofrendaStepTime: Double = 3600
@@ -66,7 +66,29 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         "et nederste trin med lilla dug", "et midterste trin med pink dug", "et øverste trin med turkis dug", "lys på nederste trin",
         "tagetes langs trinene", "et sukkerkranie", "lys på midterste trin", "pan de muerto (de dødes brød)", "et billede af en, vi savner",
         "en bue af tagetes", "papel picado foran alteret", "et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!"]
-    private var kiteItem: NSMenuItem!
+    /// Halloween: the jack-o'-lanterns, a step for every hour the app runs, as the ofrenda.
+    static let pumpkinSteps = [
+        "et lille græskar", "et græskar til", "et stort græskar i midten", "stilke og en snoet ranke", "øjne i det store græskar",
+        "en mund med tænder", "et lys inde i det store græskar", "et ansigt i det venstre græskar", "et ansigt i det højre græskar",
+        "lys i de to små græskar", "en heksehat", "en sort kat - græskarlygterne er færdige!"]
+    /// What the menu items are called on Halloween, by their Christmas title (one not here keeps its title).
+    static let halloweenTitles: [String: String] = [
+        "Snevejr": "Løvfald", "Snemængde": "Mængde af blade", "Let sne": "Få blade", "Snestorm": "Efterårsstorm",
+        "Sne i bunden af skærmen": "Blade i bunden af skærmen", "Sne på vinduerne": "Blade, katte og edderkopper på vinduerne",
+        "Snemand": "Græskarlygter", "Julemanden": "Heks på kost", "Send julemanden afsted nu!": "Send heksen afsted nu!",
+        "Lyd: bjælder og jingle når julemanden flyver": "Lyd: uhyggelig melodi når heksen flyver",
+        "Nisser": "Spøgelser og udklædte børn", "Antal nisser pr. skærm": "Antal spøgelser pr. skærm",
+        "Fra - fuld sne på hele skærmen": "Fra - blade på hele skærmen", "Til - sne kun nederst, stille blæser": "Til - blade kun nederst, stille blæser",
+        "30 billeder/s - glattere sne": "30 billeder/s - glattere løvfald", "Send julemanden ind i kameraet": "Send heksen ind i kameraet",
+        "Nisser og sne foran mig i kameraet": "Spøgelser og blade foran mig i kameraet", "Julelys": "Lyskæde med græskar og flagermus",
+        "Sneplov rydder sneen": "Heks eller spøgelser rydder bladene", "Send sneploven ud nu!": "Send dem ud nu!",
+        "Lyd: motor, skraben og horn fra sneploven": "Lyd: kost eller spøgelsessus når bladene ryddes",
+        "Send sneploven ind i kameraet": "Send dem ind i kameraet"]
+    /// What Halloween has its own item for: in the camera one choice of costume
+    /// (`halloweenCameraItem`: a witch's hat or a pumpkin head) in place of hat, beard and suit.
+    static let halloweenHidden: Set<String> = [
+        "Nissehue på i kameraet", "Nisseskæg i kameraet", "Nissedragt i kameraet"]
+    private var kiteItem: NSMenuItem!, halloweenCameraItem: NSMenuItem!
     private var countdownItem: NSMenuItem!,snowmanItem: NSMenuItem!, autostartItem: NSMenuItem!
     private(set) var powerSave = false
 
@@ -408,6 +430,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             gooseVoices[jingleIndex].rate = Float(pace)
         }
         if theme == .muertos { butterflyTune.rate = Float(pace) }
+        if theme == .halloween { witchTune.rate = Float(pace) }
         santaSpeed = 230 * pace * baseScale * (santaMaxX - santaMinX > b.width * 1.5 ? 1.6 : 1)
         santaPhase = 0
         santaActive = true
@@ -454,6 +477,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private lazy var gooseVoices = (0..<Synth.gooseMoods.count).map { m in audio.voice({ Synth.geese(mood: m) }, loops: true, varispeed: true) }
     /// The Day of the Dead's butterflies have their own tune (guitar and marimba).
     private lazy var butterflyTune = audio.voice(Synth.muertosSon, loops: true, varispeed: true)
+    /// Halloween's witch has hers too (a thin wavering voice over a low organ).
+    private lazy var witchTune = audio.voice(Synth.witchTune, loops: true, varispeed: true)
     private var jingleIndex = 0
     /// This trip's size (1 = the ordinary size); for the geese also how loud they are.
     private var flyerDepth: F = 1
@@ -465,6 +490,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private lazy var cartRoll = audio.voice({ Synth.donkeyCart(cycle: Controller.donkeyStepCycle) }, loops: true)
     private lazy var broomSweep = audio.voice({ Synth.broomSweep(cycle: Controller.donkeyStepCycle) }, loops: true)
     private lazy var donkeyBray = audio.voice(Synth.donkeyBray, loops: false)
+    /// Halloween: the wind the ghosts blow the leaves away with.
+    private lazy var ghostWind = audio.voice(Synth.ghostWind, loops: true)
     private var hornedThisRun = false
 
     private var volume: Float { [0.15, 0.35, 0.6][max(0, min(2, cfg.soundLevel))] }
@@ -487,23 +514,32 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if (cfg.sound && muertos) || butterflyTune.playing {
             butterflyTune.update(level: on && muertos ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
+        let halloween = theme == .halloween
+        if (cfg.sound && halloween) || witchTune.playing {
+            witchTune.update(level: on && halloween ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
+        }
         for (i, v) in gooseVoices.enumerated() where (cfg.sound && autumn && i == jingleIndex) || v.playing {
             v.update(level: on && autumn && i == jingleIndex ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
-        if cfg.plowSound || plowEngine.playing || plowScrape.playing || leafSuction.playing || cartRoll.playing || broomSweep.playing {
+        if cfg.plowSound || plowEngine.playing || plowScrape.playing || leafSuction.playing || cartRoll.playing || broomSweep.playing || ghostWind.playing {
             let span = max(1, plow.maxX - plow.minX)
             let margin: F = 300
             let presence = max(0, min(1, min(plow.gx - (plow.minX - margin), (plow.maxX + margin) - plow.gx) / margin))
             let pan = Float((plow.gx - plow.minX) / span * 2 - 1)
             let on = plow.active && cfg.plowSound && !soundMuted
-            plowEngine.update(level: on && !muertos ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
+            plowEngine.update(level: on && !muertos && !halloween ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
             // scraping gets louder with the amount of snow in front of the blade
             let load = Float(min(1, sqrt(plow.pushed / 2000)))
             plowScrape.update(level: on && christmas ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
             // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
-            if muertos || cartRoll.playing || broomSweep.playing {
+            // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
+            let sweeps = muertos || (halloween && !ghostsBlow)
+            if sweeps || cartRoll.playing || broomSweep.playing {
                 cartRoll.update(level: on && muertos ? Float(presence) * volume * 0.9 : 0, pan: pan, dt: d)
-                broomSweep.update(level: on && muertos ? Float(presence) * volume * (0.25 + 0.75 * load) * 0.7 : 0, pan: pan, dt: d)
+                broomSweep.update(level: on && sweeps ? Float(presence) * volume * (0.25 + 0.75 * load) * 0.7 : 0, pan: pan, dt: d)
+            }
+            if (halloween && ghostsBlow) || ghostWind.playing {
+                ghostWind.update(level: on && halloween && ghostsBlow ? Float(presence) * volume * (0.5 + 0.5 * load) : 0, pan: pan, dt: d)
             }
             // the leaf collector sucks instead of scraping: the fan runs all the time, a little harder with a full nozzle
             if autumn || leafSuction.playing {
@@ -511,7 +547,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             }
             if on && !hornedThisRun && presence > 0.6 {
                 hornedThisRun = true
-                (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan)
+                // (Halloween's witch and ghosts have nothing in the horn's place: a truck's honk does not belong there)
+                if !halloween { (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan) }
             }
         }
         if !plow.active { hornedThisRun = false }
@@ -585,8 +622,25 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if let o = overlays.first(where: { $0.isPrimary && !$0.isVirtual }) ?? overlays.first(where: { !$0.isVirtual }) { startPlow(from: o) }
     }
 
+    /// Halloween's plow is one of two each run: three ghosts that blow the leaves away (true), or a witch who
+    /// sweeps them up (false). Which one is random, but drawn two at a time (one of each, in random order), so
+    /// over time each comes exactly half the times. `JULE_HALLOWEEN_PLOV=heks` or `=spoegelser` fixes it for tests.
+    private(set) var ghostsBlow = false
+    private var plowForms: [Bool] = []
+    private func pickHalloweenPlow() {
+        if plowForms.isEmpty { plowForms = [true, false].shuffled() }
+        ghostsBlow = plowForms.removeLast()
+        switch ProcessInfo.processInfo.environment["JULE_HALLOWEEN_PLOV"] {
+        case "heks": ghostsBlow = false
+        case "spoegelser": ghostsBlow = true
+        default: break
+        }
+        ErrorLog.debug("halloween plow: \(ghostsBlow ? "ghosts blow" : "witch sweeps")")
+    }
+
     private func startPlow(from start: ScreenOverlay) {
         if plow.active { return }
+        if theme == .halloween { pickHalloweenPlow() }
         // all screens joined edge to edge with the starting screen, left and right
         var row = [start]
         var grew = true
@@ -623,7 +677,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             ?? overlays.first { plow.members.contains(ObjectIdentifier($0)) }
         let s = here?.S ?? 1
         // the donkey cart walks at a donkey's pace
-        let pace: F = theme == .muertos ? Controller.cartPace : 1
+        // (so does Halloween's witch; the ghosts float a little faster)
+        let pace: F = theme == .muertos ? Controller.cartPace : theme == .halloween ? (ghostsBlow ? 0.6 : Controller.cartPace) : 1
         plow.gx += plow.dir * plowSpeed * pace * s * dt
         plow.wheel += plowSpeed * pace * s * dt / (10 * s * plowScale)
         if (plow.dir > 0 && plow.gx > plow.maxX + 260 * s * plowScale) || (plow.dir < 0 && plow.gx < plow.minX - 260 * s * plowScale) {
@@ -725,7 +780,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// while the screens sleep or are locked, so that time does not count). Each new step gets sparkles; the last
     /// one also a notice. Finished, it stands as it is until another theme is chosen (`themeChanged`).
     private func updateOfrenda(_ dt: F) {
-        guard theme == .muertos, cfg.snowman, ofrendaStage < Self.snowmanMaxStage else { return }
+        guard theme.growsByHour, cfg.snowman, ofrendaStage < Self.snowmanMaxStage else { return }
         let before = ofrendaStage
         cfg.ofrendaSeconds += Double(dt) * ofrendaSpeed
         ofrendaSaveTimer += dt
@@ -734,7 +789,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             ErrorLog.debug("ofrenda: step \(stage) of \(Self.snowmanMaxStage)")
             celebrateAt = time + 0.5
             if stage == Self.snowmanMaxStage {
-                notify("Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + Self.ofrendaSteps[stage - 1], opensCalendar: false)
+                if theme == .halloween {
+                    notify("Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + Self.pumpkinSteps[stage - 1], opensCalendar: false)
+                } else {
+                    notify("Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + Self.ofrendaSteps[stage - 1], opensCalendar: false)
+                }
             }
         }
         // (kept across a restart: saved at each step and once a minute)
@@ -824,7 +883,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(countdownItem, nil, nil))
         menu.addItem(themed(.separator(), nil, nil))
 
-        menu.addItem(choice("Tema", Theme.names, [0, 1, 2], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
+        menu.addItem(choice("Tema", Theme.names, [0, 1, 2, 3], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
         menu.addItem(themed(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }), "Løvfald", "Kronblade fra tagetes"))
         menu.addItem(themed(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }),
                             "Mængde af blade", "Mængde af kronblade", choices: ["Få blade", nil, "Efterårsstorm", nil], muertosChoices: ["Få kronblade", nil, "Kronbladsstorm", nil]))
@@ -874,6 +933,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         plowCameraItem = item("Send sneploven ind i kameraet") { [unowned self] _ in sendPlowToCamera() }
         menu.addItem(themed(santaCameraItem, "Send gæssene ind i kameraet", "Send sommerfuglene ind i kameraet"))
         menu.addItem(themed(plowCameraItem, "Send løvsugeren ind i kameraet", "Send æselkærren ind i kameraet"))
+        // Halloween has one choice in the place of hat, beard and suit: the two costumes are alternatives
+        halloweenCameraItem = choice("Udklædning i kameraet", ["Ingen", "Heksehat og heksenæse", "Græskarhoved"], [0, 1, 2], { $0.cameraHalloween }, { $0.cameraHalloween = $1 })
+        menu.addItem(halloweenCameraItem)
         menu.addItem(themed(toggle("Nissehue på i kameraet", { $0.cameraHat }, { $0.cameraHat = $1 }), "Sydvest på i kameraet", "Blomsterkrans i håret i kameraet",
                             folk: [.alfer: "Alfehue på i kameraet", .wichtel: "Wichtelhue på i kameraet", .kabouter: "Kabouterhue på i kameraet", .paekapikk: "Päkapikk-hue på i kameraet"]))
         menu.addItem(themed(toggle("Nisseskæg i kameraet", { $0.cameraBeard }, { $0.cameraBeard = $1 }), nil, "Calavera-sminke på ansigtet i kameraet",
@@ -937,7 +999,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for t in titledItems { t.item.title = L(t.da) }
         for t in themedItems {
             let own = t.folk[folk]
-            if muertos {
+            if theme == .halloween {
+                // (hidden where the Day of the Dead hides it too: the calendar, the countdown, the choice of folk)
+                t.item.isHidden = t.muertos == nil || Self.halloweenHidden.contains(t.jul)
+                if !t.item.isSeparatorItem { t.item.title = L(Self.halloweenTitles[t.jul] ?? t.jul) }
+            } else if muertos {
                 t.item.isHidden = t.muertos == nil
                 if !t.item.isSeparatorItem { t.item.title = L(t.muertos ?? t.jul) }
             } else {
@@ -954,9 +1020,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for it in languageItem.submenu?.items ?? [] { it.state = (it.representedObject as? String) == chosen ? .on : .off }
         languageItem.submenu?.items.first?.title = L("Automatisk ({0})", Lang.all[Lang.automatic]?.name ?? Lang.automatic)
         kiteItem.isHidden = !autumn
+        halloweenCameraItem.isHidden = theme != .halloween
         countdownItem.title = Self.countdown()
         // (the Christmas snowman has no stage: the children build it while you watch)
-        if muertos { snowmanItem.title = L("Ofrenda (alter) (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
+        if theme == .halloween { snowmanItem.title = L("Græskarlygter (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
+        else if muertos { snowmanItem.title = L("Ofrenda (alter) (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if autumn { snowmanItem.title = L("Høstak med fugleskræmsel (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         autostartItem.state = Self.autostart ? .on : .off
     }

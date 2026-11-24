@@ -192,9 +192,15 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         CameraCostume.muertos = muertos
         // and each folk has its own hat, beard and suit (elves and päkapikud have no beard)
         CameraCostume.folk = Folk.chosen(c.cfg.folk)
-        let wantsHat = c.cfg.cameraHat
-        let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && CameraCostume.look.beard > 0
-        let wantsSuit = c.cfg.cameraSuit && !muertos
+        // Halloween: a witch's hat, and nothing in the beard's or the suit's place
+        let halloween = c.cfg.theme == Theme.halloween.rawValue
+        CameraCostume.halloween = halloween
+        // (the two are alternatives, chosen in the menu; the pumpkin head is part of the hat's drawing)
+        CameraCostume.witchHat = !halloween || c.cfg.cameraHalloween == 1
+        CameraCostume.pumpkinHead = halloween && c.cfg.cameraHalloween == 2
+        let wantsHat = halloween ? c.cfg.cameraHalloween != 0 : c.cfg.cameraHat
+        let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && !halloween && CameraCostume.look.beard > 0
+        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween
         let wantsMakeup = c.cfg.cameraBeard && muertos
         let wantsCostume = wantsBeard || wantsSuit || wantsMakeup   // all need the face landmarks
         let now = CACurrentMediaTime()
@@ -233,6 +239,8 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             costume.update(landmarks, extent: camImage.extent, transform: fill, dt: dt)
         }
         if wantsSuit { cam = costume.applySuit(to: cam, mask: mask, heads: hat.headOutlines) }
+        // Halloween's witch: black clothes and green skin with the hat and the nose
+        if halloween && c.cfg.cameraHalloween == 1 { cam = costume.applyWitch(to: cam, mask: mask) }
         // the make-up is on the skin, so it too goes in before the cutout
         if wantsMakeup { cam = costume.applyMakeup(to: cam) }
         let bg = aspectFill(background, W, H)

@@ -21,6 +21,7 @@ A small Christmas overlay for Windows, macOS and Linux: snow falls over your des
 - **Sound** is off until you switch it on in the menu: sleigh bells and a tune for Santa, engine and horn for the snow plow.
 - **Autumn theme:** the menu "Theme" swaps the snow for falling leaves, Santa for migrating geese and the snowman for a scarecrow.
 - **Day of the Dead theme:** the same menu has "De dødes dag" (Día de los Muertos): marigold petals fall, skeletons in sombreros walk at the bottom, monarch butterflies fly over, paper flags hang along the top, and an altar is built one step for every hour the app runs.
+- **Halloween theme (macOS so far):** the same menu has "Halloween": leaves fall, ghosts and children dressed up for trick or treat walk at the bottom, a witch flies over on her broom with bats after her, a string of small pumpkin lanterns hangs along the top, black cats sit on the windows, and three jack-o'-lanterns are carved one step for every hour the app runs.
 - The animation pauses by itself while an app runs in full screen (games, films), and stops completely while the screen is locked or asleep.
 - A released version keeps itself up to date.
 

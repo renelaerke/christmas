@@ -311,7 +311,10 @@ extension NisseHat {
             // (HUE_MUERTOS=1 replays the Day of the Dead: make-up in the beard's place, no suit)
             let muertos = CameraCostume.muertos
             let tm = CFAbsoluteTimeGetCurrent()
-            var out = muertos ? costume.applyMakeup(to: src) : costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
+            // (HUE_HALLOWEEN=1 replays the witch's hat: nothing in the beard's or the suit's place)
+            var out = muertos ? costume.applyMakeup(to: src)
+                : CameraCostume.halloween ? (CameraCostume.pumpkinHead ? src : costume.applyWitch(to: src, mask: mask))
+                : costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
             if muertos, let cg = GPU.ciContext.createCGImage(out, from: src.extent) {
                 // (rendered here only to time it: what the camera pays for the make-up, model included)
                 _ = cg

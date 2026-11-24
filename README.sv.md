@@ -21,6 +21,7 @@ Ett litet julöverlägg för Windows, macOS och Linux: snön faller över skrivb
 - **Ljudet** är avstängt tills du slår på det i menyn: bjällror och en melodi för jultomten, motor och tuta för snöplogen.
 - **Hösttema:** menyn "Tema" byter snön mot fallande löv, jultomten mot flyttgäss och snögubben mot en fågelskrämma.
 - **Tema för De dödas dag:** i samma meny finns "De dødes dag" (Día de los Muertos): kronblad från tagetes faller, skelett i sombrero går längst ner, monarkfjärilar flyger förbi, pappersflaggor hänger längst upp och ett altare byggs ett steg för varje timme programmet kör.
+- **Halloweentema (än så länge bara macOS):** i samma meny finns "Halloween": löv faller, spöken och utklädda barn går längst ner, en häxa flyger förbi på sin kvast med fladdermöss efter sig, en slinga med små pumpalyktor hänger längst upp, svarta katter sitter på fönstren och tre pumpalyktor skärs ut, ett steg för varje timme programmet kör.
 - Animationen pausar av sig själv när en app körs i helskärm (spel, film), och stannar helt när skärmen är låst eller i vila.
 - En utgiven version håller sig själv uppdaterad.
 

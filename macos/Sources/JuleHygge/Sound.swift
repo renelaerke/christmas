@@ -642,6 +642,84 @@ enum Synth {
         return buf
     }
 
+    // ------------------------------------------------------------------ halloween
+    /// The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
+    /// wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
+    /// fifth. Written for JuleHygge, so it is free of rights.
+    static func witchTune() -> AVAudioPCMBuffer? {
+        let beat = 0.42
+        let E4 = 64, Gs4 = 68, A4 = 69, B4 = 71, C5 = 72, D5 = 74, E5 = 76
+        let melody: [(Int, Double)] = [
+            (E5, 2), (C5, 1),   (D5, 2), (B4, 1),   (C5, 1), (B4, 1), (A4, 1),   (E4, 3),
+            (A4, 2), (C5, 1),   (B4, 2), (Gs4, 1),  (A4, 3),                     (0, 3),
+        ]
+        let roots = [45, 40, 45, 40, 41, 40, 45, 45]
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        let total = melody.reduce(0) { $0 + $1.1 } * beat
+        return makeBuffer(seconds: total) { out, n in
+            // the voice: the pitch glides toward each note, with a slow vibrato that deepens as the note is held
+            var phase = 0.0, pitch = freq(melody[0].0), level = 0.0
+            var noteStart = 0.0, idx = 0, noteEnd = melody[0].1 * beat
+            for i in 0..<n {
+                let t = Double(i) / sampleRate
+                while t >= noteEnd && idx < melody.count - 1 { idx += 1; noteStart = noteEnd; noteEnd += melody[idx].1 * beat }
+                let note = melody[idx].0
+                let held = t - noteStart, left = noteEnd - t
+                if note > 0 { pitch += (freq(note) - pitch) * 0.0009 }
+                let want = note > 0 ? min(1, held / 0.06) * min(1, left / 0.09) : 0
+                level += (want - level) * 0.002
+                let vibrato = 1 + 0.008 * min(1, held / 0.35) * sin(2 * .pi * 5.6 * t)
+                phase += pitch * vibrato / sampleRate
+                if phase >= 1 { phase -= 1 }
+                let voice = sin(2 * .pi * phase) + 0.16 * sin(4 * .pi * phase) + 0.05 * sin(6 * .pi * phase)
+                out[i] += Float(voice * level * 0.34)
+            }
+            // the organ: root and fifth per bar, soft, swelling in and out so the loop has no click
+            for (b, root) in roots.enumerated() {
+                let start = Int(Double(b * 3) * beat * sampleRate), count = Int(3 * beat * sampleRate)
+                let f = freq(root)
+                for k in 0..<count where start + k < n {
+                    let t = Double(k) / sampleRate, u = Double(k) / Double(count)
+                    let env = min(1, u / 0.12) * min(1, (1 - u) / 0.12)
+                    var v = 0.0
+                    for (mult, amp) in [(1.0, 1.0), (1.5, 0.55), (2.0, 0.4), (3.0, 0.18), (4.0, 0.1)] { v += amp * sin(2 * .pi * f * mult * t) }
+                    out[start + k] += Float(v * env * 0.1)
+                }
+            }
+        }
+    }
+
+    /// The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under
+    /// it two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of
+    /// cycles in it, and the air is made a little longer and faded into its own start, so there is no seam.
+    static func ghostWind() -> AVAudioPCMBuffer? {
+        let len = 4.0
+        return makeBuffer(seconds: len) { out, n in
+            var rng = SeededRandom(seed: 3110)
+            let over = Int(0.3 * sampleRate)
+            var air = [Double](repeating: 0, count: n + over)
+            var low = 0.0, band = 0.0
+            for i in 0..<(n + over) {
+                let t = Double(i) / sampleRate
+                // a resonance that slides up and down between about 350 and 900 Hz
+                let fc = 620 + 280 * sin(2 * .pi * 0.5 * t)
+                let f = 2 * sin(.pi * fc / sampleRate)
+                let high = (Double(rng.next()) * 2 - 1) - low - 0.35 * band
+                band += f * high
+                low += f * band
+                air[i] = band * (0.6 + 0.4 * sin(2 * .pi * 0.25 * t))
+            }
+            for i in 0..<over { let k = Double(i) / Double(over); air[i] = air[i] * k + air[n + i] * (1 - k) }
+            for i in 0..<n {
+                let t = Double(i) / sampleRate
+                let swell = 0.5 + 0.5 * sin(2 * .pi * 0.25 * t - 1)
+                let vib = 1 + 0.012 * sin(2 * .pi * 5 * t)
+                let voices = sin(2 * .pi * 330 * vib * t) + 0.8 * sin(2 * .pi * 392 * vib * t + 1) + 0.25 * sin(2 * .pi * 660 * vib * t)
+                out[i] = Float(air[i] * 0.22 + voices * swell * 0.035)
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ de dødes dag
     /// The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the
     /// style of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar
