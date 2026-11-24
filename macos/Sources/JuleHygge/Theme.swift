@@ -7,13 +7,16 @@ import AppKit
 /// out there (never shown in its Christmas form).
 /// Día de los Muertos (`muertos`) follows the same pattern: marigold petals for snow, a carpet of petals at the
 /// bottom and on the windows, an ofrenda (altar) for the snowman, monarch butterflies for Santa, calacas
-/// (skeletons) for the nisser and papel picado for the lights. A donkey cart gathers the petals, and the
-/// camera has no costume in this theme yet.
+/// (skeletons) for the nisser and papel picado for the lights. A donkey cart gathers the petals, and in the
+/// camera the person wears a crown of marigolds and calavera make-up (CameraCostume.muertos).
 /// What the camera dresses the person in. Set from the theme before each camera frame (the hat and the costume
 /// are drawn on the camera's queue and do not see the controller): autumn's sou'wester and yellow raincoat
 /// instead of the nisse hat and the red suit. Autumn has nothing in the beard's place.
 enum CameraCostume {
     nonisolated(unsafe) static var autumn = ProcessInfo.processInfo.environment["HUE_EFTERAAR"] != nil
+    /// The Day of the Dead: a crown of marigolds in the hat's place and calavera (sugar skull) make-up in the
+    /// beard's; no suit. `HUE_MUERTOS=1` sets it in the tests.
+    nonisolated(unsafe) static var muertos = ProcessInfo.processInfo.environment["HUE_MUERTOS"] != nil
 }
 
 enum Theme: Int {
@@ -57,9 +60,6 @@ enum Theme: Int {
     /// cart: a calaca sweeps the petals up and they go in the cart, to be taken out to the graves. It sounds of
     /// hooves, a creaking wheel and the broom, and the donkey brays where the plow honks (Synth.donkeyCart and co.).
     var hasPlow: Bool { true }
-    /// The camera's costume (hat, beard, suit). The dead have none yet: the calavera make-up and flower crown
-    /// from docs/temaer are still to be made.
-    var hasCameraCostume: Bool { self != .muertos }
 
     /// The leaves' colours (the snow has none).
     static let leafColours: [CGColor] = [C(217, 84, 30), C(232, 160, 32), C(168, 67, 26), C(201, 162, 39), C(138, 59, 18)]

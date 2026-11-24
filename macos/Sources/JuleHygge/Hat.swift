@@ -590,7 +590,7 @@ final class NisseHat {
 
     /// The last crown share learned from any head (see `parts`).
     private var crownShareSeen: Double?
-    private enum Item { case quad([V], CGColor), ball(V, Double, Double) }
+    private enum Item { case quad([V], CGColor), ball(V, Double, Double), flower(V, Double, Int, Double) }
     private static let light = simd_normalize(V(-0.45, 0.6, 0.7))
 
     /// Everything the hat is made of, in the head's frame (pixels; x along the eye line, y up the head, z toward the
@@ -619,6 +619,7 @@ final class NisseHat {
         let lightH = V(Self.light.x * cr + Self.light.y * sr, -Self.light.x * sr + Self.light.y * cr, Self.light.z)
         let halfway = simd_normalize(lightH + V(0, 0, 1))
         var back: [(Double, Item)] = [], front: [(Double, Item)] = []
+        if CameraCostume.muertos { return flowerCrown(t, g, lightH) }
 
         // ---- the cloth: the smallest shape without a waist around the brim, the measured outline above it, and the tip
         let mg = Self.cloth * U
@@ -792,12 +793,110 @@ final class NisseHat {
         return (back, front, tip)
     }
 
+    /// The Day of the Dead's crown in the hat's place: big marigolds round the head with smaller purple and pink
+    /// flowers between them and leaves in the gaps. It lies on the same measured ring as the nisse hat's fur, a
+    /// little higher (in the hair, its lower edge clear of the eyebrows), and like the fur its far half is kept on
+    /// the measured outline and seen only beside the head.
+    private func flowerCrown(_ t: Track, _ g: Ring, _ lightH: V) -> (back: [(Double, Item)], front: [(Double, Item)], tip: V) {
+        let U = t.U, k = t.depth, X = g.X, rf = g.rf
+        let vLow = -Self.below * U
+        var back: [(Double, Item)] = [], front: [(Double, Item)] = []
+        func place(_ ph: Double, size: Double, lift: Double, out: Double) -> (V, V)? {
+            let sp = sin(ph), cp = cos(ph)
+            let nrm: V = simd_normalize((k * sp) * X + cp * g.B)
+            let onRing: V = g.centre + (g.a * sp) * X + (g.a * k * cp) * g.B
+            var c: V = onRing + nrm * (size * out) + g.N * lift
+            if nrm.z < 0 {
+                if c.y < vLow { return nil }
+                let (ol, or) = Self.outline(t, at: c.y)
+                let stands = size * out * (1 - nrm.z * nrm.z).squareRoot()
+                c.x = min(max(c.x, ol - stands), or + stands)
+            }
+            return (c, nrm)
+        }
+        func add(_ c: V, _ nrm: V, _ item: Item) {
+            if nrm.z >= 0 { front.append((1e6 + c.z, item)) } else { back.append((c.z, item)) }
+        }
+        // the flowers' lower edge stays where the fur's does (above the eyebrows): the bigger the flower, the higher
+        let big = 0.25 * U, small = 0.15 * U
+        let liftBig = big - rf * 0.8
+        // leaves first, so the flowers lie over them
+        let count = 14
+        for i in 0..<(count * 2) {
+            let ph = (Double(i) + 0.5) / Double(count * 2) * 2 * .pi
+            guard let (c, nrm) = place(ph, size: big * 0.5, lift: liftBig * 0.9, out: 0.6) else { continue }
+            let tangent = simd_normalize(simd_cross(g.N, nrm))
+            let len = big * 0.95, wide = big * 0.32
+            let tilt = (i % 2 == 0 ? 1.0 : -1.0) * 0.5
+            let along = simd_normalize(tangent * cos(tilt) + g.N * sin(tilt))
+            let side = simd_normalize(simd_cross(nrm, along))
+            let q = [c - along * len, c + side * wide, c + along * len, c - side * wide]
+            let shade = 0.45 + 0.55 * max(0, simd_dot(nrm, lightH))
+            add(c, nrm, .quad(q, CGColor(srgbRed: 0.18 * shade, green: 0.5 * shade, blue: 0.16 * shade, alpha: 1)))
+        }
+        for i in 0..<count {
+            let ph = Double(i) / Double(count) * 2 * .pi
+            // a smaller purple or pink flower a little above, between each pair of marigolds
+            if let (c, nrm) = place(ph + .pi / Double(count), size: small, lift: liftBig + big * 0.45, out: 0.8) {
+                add(c, nrm, .flower(c, small, Self.marigoldFlowers.count + i % 2, 0.6 + 0.4 * max(0, simd_dot(nrm, lightH))))
+            }
+            if let (c, nrm) = place(ph, size: big, lift: liftBig, out: 0.75) {
+                add(c, nrm, .flower(c, big, i % Self.marigoldFlowers.count, 0.55 + 0.45 * max(0, simd_dot(nrm, lightH))))
+            }
+        }
+        return (back, front, g.centre)
+    }
+
+    /// The crown's flowers, drawn once: marigolds (cempasúchil) in their oranges and yellows, then a purple and a
+    /// pink one. Each as a ruffled head of small petals with its shadow version to fade over it, as the fur's balls.
+    static let marigoldFlowers: [(CGImage, CGImage)] = Theme.marigoldColours.enumerated().map { i, c in flowerPair(c, seed: UInt64(11 + i), ruffled: true) }
+    static let otherFlowers: [(CGImage, CGImage)] = [flowerPair(C(123, 44, 191), seed: 31, ruffled: false), flowerPair(C(233, 30, 99), seed: 37, ruffled: false)]
+    private static func flowerPair(_ col: CGColor, seed: UInt64, ruffled: Bool) -> (CGImage, CGImage) {
+        (flower(col, seed: seed, ruffled: ruffled, dark: false), flower(col, seed: seed, ruffled: ruffled, dark: true))
+    }
+    private static func flower(_ col: CGColor, seed: UInt64, ruffled: Bool, dark: Bool) -> CGImage {
+        let s = 96, mid = 48.0
+        let g = CGContext(data: nil, width: s, height: s, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        var rng = SeededRandom(seed: seed)
+        let comps = col.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)?.components ?? [1, 0.5, 0, 1]
+        func tone(_ k: Double) -> CGColor {
+            let f = dark ? k * 0.45 : k
+            return CGColor(srgbRed: min(1, comps[0] * f), green: min(1, comps[1] * f), blue: min(1, comps[2] * f), alpha: 1)
+        }
+        func petal(_ angle: Double, _ from: Double, _ len: Double, _ wide: Double, _ c: CGColor) {
+            g.saveGState()
+            g.translateBy(x: mid, y: mid); g.rotate(by: angle)
+            g.setFillColor(c)
+            g.fillEllipse(in: CGRect(x: from, y: -wide / 2, width: len, height: wide))
+            g.restoreGState()
+        }
+        if ruffled {
+            // a marigold: rings of short frilled petals, darker toward the middle, the outer ring biggest
+            for (ring, spec) in [(26, 22.0, 0.80), (20, 15.0, 0.92), (14, 8.0, 1.0), (8, 2.0, 0.78)].enumerated() {
+                let (n, from, light) = spec
+                for i in 0..<n {
+                    let a = (Double(i) + Double(rng.next()) * 0.6) / Double(n) * 2 * .pi
+                    let len = 20.0 - Double(ring) * 3 + Double(rng.next()) * 4
+                    petal(a, from - 4, len, 11 + Double(rng.next()) * 4, tone(light - Double(rng.next()) * 0.12))
+                }
+            }
+        } else {
+            // a simpler flower: five round petals and a yellow eye
+            for i in 0..<5 { petal(Double(i) / 5 * 2 * .pi + 0.3, 6, 38, 26, tone(i % 2 == 0 ? 1 : 0.88)) }
+            g.setFillColor(dark ? CGColor(srgbRed: 0.45, green: 0.37, blue: 0.05, alpha: 1) : CGColor(srgbRed: 1, green: 0.82, blue: 0.1, alpha: 1))
+            g.fillEllipse(in: CGRect(x: mid - 9, y: mid - 9, width: 18, height: 18))
+        }
+        return g.makeImage()!
+    }
+
     /// Draws a list of parts; returns the image positioned in output coordinates.
     private func draw(_ list: [(Double, Item)], _ t: Track, alpha: CGFloat) -> CIImage? {
         let cr = cos(t.roll), sr = sin(t.roll), ox = Double(t.origin.x), oy = Double(t.origin.y)
         func screen(_ p: V) -> CGPoint { CGPoint(x: ox + cr * p.x - sr * p.y, y: oy + sr * p.x + cr * p.y) }
         var bounds = CGRect.null
         var items: [(Double, [CGPoint], CGColor?, CGFloat, Double)] = []
+        var flowers: [Int: Int] = [:]   // item index → which flower picture
         for (z, it) in list {
             switch it {
             case let .quad(q, col):
@@ -808,8 +907,14 @@ final class NisseHat {
                 let p = screen(c)
                 bounds = bounds.union(CGRect(x: p.x - r * 1.5, y: p.y - r * 1.5, width: r * 3, height: r * 3))
                 items.append((z, [p], nil, CGFloat(r), shade))
+            case let .flower(c, r, which, shade):
+                let p = screen(c)
+                bounds = bounds.union(CGRect(x: p.x - r * 1.5, y: p.y - r * 1.5, width: r * 3, height: r * 3))
+                flowers[items.count] = which
+                items.append((z, [p], nil, CGFloat(r), shade))
             }
         }
+        let flowerOf = flowers
         bounds = bounds.insetBy(dx: -4, dy: -4).integral
         guard !bounds.isNull, bounds.width > 4, bounds.height > 4, bounds.width < 4000, bounds.height < 4000,
               let g = CGContext(data: nil, width: Int(bounds.width), height: Int(bounds.height), bitsPerComponent: 8, bytesPerRow: 0,
@@ -817,9 +922,19 @@ final class NisseHat {
         g.translateBy(x: -bounds.minX, y: -bounds.minY)
         g.setAlpha(alpha)
         g.setLineWidth(1); g.setLineJoin(.round)
-        items.sort { $0.0 < $1.0 }
-        for (_, pts, col, r, shade) in items {
-            if let col {
+        let order = items.indices.sorted { items[$0].0 < items[$1].0 }
+        for i in order {
+            let (_, pts, col, r, shade) = items[i]
+            if let which = flowerOf[i] {
+                let all = Self.marigoldFlowers + Self.otherFlowers
+                let (light, darkImg) = all[min(which, all.count - 1)]
+                let p = pts[0]
+                let rect = CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2)
+                g.draw(light, in: rect)
+                g.setAlpha(alpha * CGFloat(max(0, min(1, (1 - shade) * 1.1))))
+                g.draw(darkImg, in: rect)
+                g.setAlpha(alpha)
+            } else if let col {
                 g.setFillColor(col); g.setStrokeColor(col)
                 g.addLines(between: pts); g.closePath(); g.drawPath(using: .fillStroke)
             } else {

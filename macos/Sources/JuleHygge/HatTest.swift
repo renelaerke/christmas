@@ -308,13 +308,21 @@ extension NisseHat {
             }
             let maskRaw = CIImage(cvPixelBuffer: buf)
             let mask = maskRaw.transformed(by: CGAffineTransform(scaleX: src.extent.width / maskRaw.extent.width, y: src.extent.height / maskRaw.extent.height))
-            var out = costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
+            // (HUE_MUERTOS=1 replays the Day of the Dead: make-up in the beard's place, no suit)
+            let muertos = CameraCostume.muertos
+            let tm = CFAbsoluteTimeGetCurrent()
+            var out = muertos ? costume.applyMakeup(to: src) : costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
+            if muertos, let cg = GPU.ciContext.createCGImage(out, from: src.extent) {
+                // (rendered here only to time it: what the camera pays for the make-up, model included)
+                _ = cg
+                print(name, String(format: "sminke %.1f ms", (CFAbsoluteTimeGetCurrent() - tm) * 1000))
+            }
             if costume.parts.lastMs > 0, !costume.shapes.isEmpty { partsMs.append(costume.parts.lastMs) }
             // (autumn's costume has no beard; HUE_EFTERAAR=1 replays the sou'wester and the raincoat)
-            if !CameraCostume.autumn, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
+            if !CameraCostume.autumn, !muertos, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
             out = hat.apply(to: out, person: mask)
             for s in costume.shapes {
-                for (i, p) in s.marks.enumerated() where p.x.isFinite && p.y.isFinite {
+                for (i, p) in s.marks.enumerated() where p.x.isFinite && p.y.isFinite && !muertos {
                     out = CIImage(color: colours[min(i, colours.count - 1)]).cropped(to: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)).composited(over: out)
                 }
                 print(name, s.note)

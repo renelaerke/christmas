@@ -26,8 +26,16 @@ final class PersonParts {
     private var buffer: CVPixelBuffer?
     private var history: [Float]?
     private var tick = 0
-    private var last: CIImage?
-    private static let side = 256, clothesClass = 4, classCount = 6
+    private var last: CIImage?, lastFace: CIImage?
+    private static let side = 256, clothesClass = 4, faceClass = 3, classCount = 6
+
+    /// The face's skin in `cam` (white = face skin), from the same run of the model as `clothes`; nil without the
+    /// model. The Day of the Dead's make-up is painted only there, so it stays off hair, beard and neck.
+    func faceSkin(cam: CIImage) -> CIImage? {
+        _ = clothes(cam: cam)
+        guard let lastFace, lastFace.extent == cam.extent else { return nil }
+        return lastFace
+    }
 
     private func loaded() -> MLModel? {
         lock.lock(); defer { lock.unlock() }
@@ -75,8 +83,10 @@ final class PersonParts {
               let out = try? model.prediction(from: input),
               let arr = out.featureValue(for: "classes")?.multiArrayValue,
               arr.dataType == .float32, arr.count == Self.classCount * n * n else { return nil }
-        var v = [Float](repeating: 0, count: n * n)
+        var v = [Float](repeating: 0, count: n * n), face = v
         arr.withUnsafeBufferPointer(ofType: Float32.self) { p in
+            let fb = Self.faceClass * n * n
+            for i in 0..<(n * n) { face[i] = max(0, min(1, (p[fb + i] - 0.4) * 4 + 0.5)) }
             let base = Self.clothesClass * n * n
             // Steep round one half: where the model is only fairly sure (a sleeve seen from an odd angle, 0.6–0.8)
             // the costume must still cover, or the clothes' own colour shines through it.
@@ -108,6 +118,10 @@ final class PersonParts {
             .transformed(by: shrink.inverted())
             .cropped(to: extent)
         last = image
+        lastFace = CIImage(bitmapData: Data(face.map { UInt8($0 * 255) }), bytesPerRow: n, size: CGSize(width: n, height: n), format: .L8, colorSpace: nil)
+            .applyingGaussianBlur(sigma: 0.8)
+            .transformed(by: shrink.inverted())
+            .cropped(to: extent)
         return image
     }
 }

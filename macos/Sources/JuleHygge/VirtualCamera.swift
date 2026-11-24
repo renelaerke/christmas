@@ -186,12 +186,13 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         guard let maskBuffer = segmentation.results?.first?.pixelBuffer else { return nil }
         // the nisse hat: find the faces in the same camera frame
         // autumn: a sou'wester and a yellow raincoat, and nothing in the beard's place
-        let autumn = c.cfg.theme == Theme.efteraar.rawValue
+        // the Day of the Dead: a crown of marigolds, and calavera make-up in the beard's place; no suit
+        let autumn = c.cfg.theme == Theme.efteraar.rawValue, muertos = c.cfg.theme == Theme.muertos.rawValue
         CameraCostume.autumn = autumn
-        // the Day of the Dead has no costume yet (Theme.hasCameraCostume)
-        let costumed = (Theme(rawValue: c.cfg.theme) ?? .jul).hasCameraCostume
-        let wantsHat = c.cfg.cameraHat && costumed, wantsBeard = c.cfg.cameraBeard && !autumn && costumed, wantsSuit = c.cfg.cameraSuit && costumed
-        let wantsCostume = wantsBeard || wantsSuit   // both need the face landmarks
+        CameraCostume.muertos = muertos
+        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard && !autumn && !muertos, wantsSuit = c.cfg.cameraSuit && !muertos
+        let wantsMakeup = c.cfg.cameraBeard && muertos
+        let wantsCostume = wantsBeard || wantsSuit || wantsMakeup   // all need the face landmarks
         let now = CACurrentMediaTime()
         let dt = CGFloat(min(0.2, now - lastFrameTime)); lastFrameTime = now
         var faces: [VNFaceObservation] = [], landmarks: [VNFaceObservation] = []
@@ -228,6 +229,8 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             costume.update(landmarks, extent: camImage.extent, transform: fill, dt: dt)
         }
         if wantsSuit { cam = costume.applySuit(to: cam, mask: mask, heads: hat.headOutlines) }
+        // the make-up is on the skin, so it too goes in before the cutout
+        if wantsMakeup { cam = costume.applyMakeup(to: cam) }
         let bg = aspectFill(background, W, H)
         guard let blend = CIFilter(name: "CIBlendWithMask", parameters: [
             kCIInputImageKey: cam, kCIInputBackgroundImageKey: bg, kCIInputMaskImageKey: mask]),

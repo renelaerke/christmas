@@ -23,17 +23,31 @@ Lavet 2026-11-24:
   og en kørsel med lyden slået til gik uden fejl. **Ikke lyttet til**; om æselbrølet lyder som et æsel, kan kun
   øret afgøre (en syntetisk gås lød for kunstig, se `assets/lyd/KILDER.md`). Lyden følger ikke benenes fase, kun deres tempo.
 
+Lavet 2026-11-24, kameraet (`CameraCostume.muertos`):
+- **Blomsterkrans** i hattens sted (`NisseHat.flowerCrown`): 14 tagetes rundt om hovedet med en lilla eller lyserød
+  blomst imellem og blade i hullerne, på samme målte ring som nissehuens pels, lidt højere (blomsternes underkant
+  holder sig over øjenbrynene). Den bagerste halvdel ses kun ved siden af hovedet, som pelsen.
+- **Calavera-sminke** i skæggets sted (`Makeup.swift`, menupunktet "Calavera-sminke på ansigtet i kameraet"): hvid
+  bund, der beholder ansigtets lys og skygge, sorte øjenhuler (blomsterformede, fra kindbenet op til brynet) med en
+  ring af farvede kronblade og øjnene selv fri, et sort hjerte på næsen, mørke læber med sting over, en lille blomst
+  og prikker på panden, hjerter på kinderne og prikker på hagen. Alt er placeret ud fra Visions landemærker (øjne,
+  bryn, næse, læber, kæbe) i hvert billede, også øjne og bryn, som nu glattes sammen med resten.
+  Over øjnene holder tøjmodellens "ansigtshud" den hvide bund fra håret; under øjnene bestemmer kæbelinjen alene,
+  for modellen kalder skægstubbe hår, og den hvide stoppede så under næsen (set på genafspilning).
+- Ingen dragt i temaet.
+- Set på 56 genafspillede kamerabilleder fra to steder (tog og stue; `HUE_MUERTOS=1 --kamera-replay`), forfra og
+  drejet. Sminken tager i genafspilningen 25,6 ms pr. billede i median, tøjmodellen (ca. 20 ms) og gengivelsen af
+  hele billedet medregnet; live kører modellen hvert andet billede, som for dragten.
+
 ## Mangler i temaet
 
-- **Kamera: calavera-sminke og blomsterkrans.** Hue, skæg og dragt er slået fra i temaet (`Theme.hasCameraCostume`);
-  kun baggrunden (lilla skumring) og figurerne følger temaet.
-- **Ofrendaens datoer.** Alteret bygges over 12 dage fra første start, som snemanden; idésiden foreslår et nyt trin
-  hver dag op til 2. november.
-- **Strøm:** ikke målt med `measure.sh`. Figurerne følger efterårets mønstre (billeder i puljer, færdigtegnede
-  figurposer), så det ventes at ligne efteråret, men det er ikke kontrolleret.
-- **Ikke set live:** kun `--snapshot`-billeder. Calacas' dans, sommerfuglenes vingeslag, lysenes flakken og æselkærren
-  er ikke set i bevægelse.
+Status 2026-11-24 (REL): kameraet virker live, animationerne er i orden, og strømmåling springes over.
+
+- **Ofrendaens datoer, udskudt:** alteret skal bygges op til 2. november i stedet for over 12 dage fra første
+  start. Det er skrevet og testet, men taget ud igen her, fordi snemandens 12-dages-opbygning allerede er ændret
+  på main; koden og testresultatet ligger i `docs/muertos-ofrenda-datoer.swift.txt` og lægges ind oven på main's
+  udgave efter sammenfletningen.
 
 ## Uden for selve temaet
 
-- **Windows og Linux** har ikke temaet.
+- **Windows og Linux** har ikke temaet (udskudt af REL 2026-11-24).

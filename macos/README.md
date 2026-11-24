@@ -51,7 +51,7 @@ Temaet **De dødes dag** (Día de los Muertos, `Theme=2`) er påbegyndt. Idéen 
 | Nisser, der bytter pakker | Calacas (skeletter) med sombrero og stribet serape eller catrina-hat og lang kjole; de bytter tagetesbuketter og danser med maraca. |
 | Julelys | Papel picado: udklippede papirflag med blomst, kranie eller ruder. |
 | Julekalender og nedtælling | Skjult. |
-| Nissehue, skæg og dragt i kameraet | Intet endnu; kameraets baggrund er en lilla skumring. |
+| Nissehue, skæg og dragt i kameraet | En krans af tagetes i håret (med lilla og lyserøde blomster og blade imellem) på hattens målte ring, og calavera-sminke på ansigtet i skæggets sted (`Makeup.swift`): hvid bund med ansigtets egen lys og skygge, sorte blomsterformede øjenhuler med en ring af farvede kronblade, et sort hjerte på næsen, sting over munden og pynt på pande, kinder og hage. Alt placeres ud fra ansigtets landemærker i hvert billede. Ingen dragt. Kameraets baggrund er en lilla skumring. |
 
 - **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `FirstRun` en uge eller mere tilbage viser et færdigt alter, `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav` og æselkærrens lyde som `aeselkaerre-hove.wav`, `aeselkaerre-kost.wav` og `aesel-broel.wav`.
 
@@ -113,6 +113,7 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 | `JULE_DEEPSNOW=1` | starter med fuld snedrive, også på vinduerne (til test af sneploven og af nedfald) |
 | `JULE_NO_RAIN=1` | efterår: ingen regn i stormen (til måling) |
 | `HUE_EFTERAAR=1` | kameratestene (`--kamera-replay`, `--nissehue-test`) bruger efterårets sydvest og regnfrakke |
+| `HUE_MUERTOS=1` | `--kamera-replay` bruger de dødes dags blomsterkrans og calavera-sminke (og udskriver sminkens tid pr. billede) |
 | `HUE_INGEN_MODEL=1` | kameraet finder tøjet ved farve i stedet for med modellen (til sammenligning) |
 | `JULE_TICKS=1` | skriver faktiske billeder/s til stderr |
 | `--skærmskift-test` | genopbygger overlay-vinduerne hvert 0,3 s (stresstest af skærmskift) |
