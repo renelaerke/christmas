@@ -439,6 +439,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private lazy var plowScrape = audio.voice(Synth.plowScrape, loops: true)
     private lazy var leafSuction = audio.voice(Synth.leafSuction, loops: true)
     private lazy var plowHorn = audio.voice(Synth.plowHorn, loops: false)
+    /// The donkey cart's sounds: hooves and wheel, the calaca's broom, and the bray in place of the horn.
+    private lazy var cartRoll = audio.voice({ Synth.donkeyCart(cycle: Controller.donkeyStepCycle) }, loops: true)
+    private lazy var broomSweep = audio.voice({ Synth.broomSweep(cycle: Controller.donkeyStepCycle) }, loops: true)
+    private lazy var donkeyBray = audio.voice(Synth.donkeyBray, loops: false)
     private var hornedThisRun = false
 
     private var volume: Float { [0.15, 0.35, 0.6][max(0, min(2, cfg.soundLevel))] }
@@ -464,22 +468,29 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for (i, v) in gooseVoices.enumerated() where (cfg.sound && autumn && i == jingleIndex) || v.playing {
             v.update(level: on && autumn && i == jingleIndex ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
-        if cfg.plowSound || plowEngine.playing || plowScrape.playing || leafSuction.playing {
+        if cfg.plowSound || plowEngine.playing || plowScrape.playing || leafSuction.playing || cartRoll.playing || broomSweep.playing {
             let span = max(1, plow.maxX - plow.minX)
             let margin: F = 300
             let presence = max(0, min(1, min(plow.gx - (plow.minX - margin), (plow.maxX + margin) - plow.gx) / margin))
             let pan = Float((plow.gx - plow.minX) / span * 2 - 1)
-            // the donkey cart has no sound yet
-            let on = plow.active && cfg.plowSound && !soundMuted && theme != .muertos
-            plowEngine.update(level: on ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
+            let on = plow.active && cfg.plowSound && !soundMuted
+            plowEngine.update(level: on && !muertos ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
             // scraping gets louder with the amount of snow in front of the blade
             let load = Float(min(1, sqrt(plow.pushed / 2000)))
-            plowScrape.update(level: on && !autumn ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
+            plowScrape.update(level: on && christmas ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
+            // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
+            if muertos || cartRoll.playing || broomSweep.playing {
+                cartRoll.update(level: on && muertos ? Float(presence) * volume * 0.9 : 0, pan: pan, dt: d)
+                broomSweep.update(level: on && muertos ? Float(presence) * volume * (0.25 + 0.75 * load) * 0.7 : 0, pan: pan, dt: d)
+            }
             // the leaf collector sucks instead of scraping: the fan runs all the time, a little harder with a full nozzle
             if autumn || leafSuction.playing {
                 leafSuction.update(level: on && autumn ? Float(presence) * volume * (0.55 + 0.45 * load) : 0, pan: pan, dt: d)
             }
-            if on && !hornedThisRun && presence > 0.6 { hornedThisRun = true; plowHorn.playOnce(level: volume, pan: pan) }
+            if on && !hornedThisRun && presence > 0.6 {
+                hornedThisRun = true
+                (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan)
+            }
         }
         if !plow.active { hornedThisRun = false }
         audio.idleCheck()
@@ -518,7 +529,16 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         var members = Set<ObjectIdentifier>()
     }
     let plow = PlowRun()
-    private let plowSpeed: F = 170, plowScale: F = 1.15
+    private let plowSpeed: F = Controller.plowSpeed, plowScale: F = Controller.plowScale
+    static let plowSpeed: F = 170, plowScale: F = 1.15
+    /// The donkey cart walks at a donkey's pace (a share of the plow's speed).
+    static let cartPace: F = 0.45
+    /// Seconds per step cycle of the donkey's legs (each leg lands once), worked out from how the drawing moves
+    /// them: the legs swing with sin(wheel × ScreenOverlay.donkeyStride), and the wheel turns
+    /// speed × pace / (10 × scale) radians a second. The cart's hooves sound at that pace.
+    static var donkeyStepCycle: Double {
+        Double(2 * F.pi / ScreenOverlay.donkeyStride / (plowSpeed * cartPace / (10 * plowScale)))
+    }
 
     /// Sends the plow out now (menu, --sneplov), starting from the main screen's row of screens.
     /// Sends Santa into the JuleHygge Kamera picture (only while the camera is in use).
@@ -581,7 +601,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             ?? overlays.first { plow.members.contains(ObjectIdentifier($0)) }
         let s = here?.S ?? 1
         // the donkey cart walks at a donkey's pace
-        let pace: F = theme == .muertos ? 0.45 : 1
+        let pace: F = theme == .muertos ? Controller.cartPace : 1
         plow.gx += plow.dir * plowSpeed * pace * s * dt
         plow.wheel += plowSpeed * pace * s * dt / (10 * s * plowScale)
         if (plow.dir > 0 && plow.gx > plow.maxX + 260 * s * plowScale) || (plow.dir < 0 && plow.gx < plow.minX - 260 * s * plowScale) {
@@ -759,7 +779,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
 
         menu.addItem(themed(toggle("Sneplov rydder sneen", { $0.plow }, { $0.plow = $1 }), "Løvsuger rydder bladene", "Æselkærre samler kronbladene"))
         menu.addItem(themed(item("Send sneploven ud nu!") { [unowned self] _ in sendPlow() }, "Send løvsugeren ud nu!", "Send æselkærren ud nu!"))
-        menu.addItem(themed(toggle("Lyd: motor, skraben og horn fra sneploven", { $0.plowSound }, { $0.plowSound = $1 }), "Lyd: motor, sug og horn fra løvsugeren", nil))
+        menu.addItem(themed(toggle("Lyd: motor, skraben og horn fra sneploven", { $0.plowSound }, { $0.plowSound = $1 }), "Lyd: motor, sug og horn fra løvsugeren", "Lyd: hovtramp, hjulknirk og æselbrøl fra æselkærren"))
         menu.addItem(choice("Lydstyrke", ["Lav", "Middel", "Høj"], [0, 1, 2], { $0.soundLevel }, { $0.soundLevel = $1 }))
         menu.addItem(.separator())
 

@@ -234,6 +234,9 @@ final class DotImages {
 
 /// Ét gennemsigtigt, klik-igennem overlay-vindue for én skærm.
 final class ScreenOverlay {
+    /// How fast the donkey's legs swing against the cart's wheel (radians of leg swing per radian of wheel turn).
+    /// Controller.donkeyStepCycle times the hooves' sound from it.
+    static let donkeyStride: F = 1.6
     unowned let c: Controller
     var cfg: Settings { c.cfg }
     /// nil for the virtual screen used as the camera background (it has no window).
@@ -1756,19 +1759,19 @@ final class ScreenOverlay {
             g.line(col, 3.4, kx, ky, kx + sin(a) * 3, 0, round: true)
             g.fillRect(ink, kx + sin(a) * 3 - 2, -2.5, 5, 3)
         }
-        leg(4, sin(step * 1.6 + 1.2) * 0.45, furDark)
-        leg(34, sin(step * 1.6 + 1.2 + .pi) * 0.45, furDark)
+        leg(4, sin(step * ScreenOverlay.donkeyStride + 1.2) * 0.45, furDark)
+        leg(34, sin(step * ScreenOverlay.donkeyStride + 1.2 + .pi) * 0.45, furDark)
         // tail
         g.bezier(furDark, 2, 0, -38, -8, -34, -8, -24, -6, -18)
         g.fillEllipse(ink, -10, -22, 6, 7)
         g.fillEllipse(fur, -2, -46, 44, 22)
         g.fillEllipse(belly, 6, -32, 30, 9)
-        leg(8, sin(step * 1.6 + .pi) * 0.45, fur)
-        leg(38, sin(step * 1.6) * 0.45, fur)
+        leg(8, sin(step * ScreenOverlay.donkeyStride + .pi) * 0.45, fur)
+        leg(38, sin(step * ScreenOverlay.donkeyStride) * 0.45, fur)
         // harness
         g.line(C(150, 40, 40), 2.2, 14, -46, 14, -26)
         // neck and head
-        let nod = sin(step * 1.6) * 1.2
+        let nod = sin(step * ScreenOverlay.donkeyStride) * 1.2
         g.fillPoly(fur, [(30, -44), (46, -62 + nod), (56, -56 + nod), (42, -30)])
         g.fillEllipse(fur, 44, -66 + nod, 18, 12)
         g.fillEllipse(belly, 55, -62 + nod, 11, 9)
@@ -1792,7 +1795,7 @@ final class ScreenOverlay {
         drawCalaca(g, walker, frame)
         g.restoreGState()
         // the broom: the handle from the calaca's hands down to the ground in front, the head swinging
-        let swing = sin(step * 3.2) * 5
+        let swing = sin(step * ScreenOverlay.donkeyStride * 2) * 5
         g.line(woodDark, 2.2, 82, -38, 96 + swing, -3, round: true)
         let head = CGMutablePath()
         head.start(92 + swing, -6); head.to(102 + swing, -6); head.to(108 + swing, 1); head.to(88 + swing, 1); head.closeSubpath()

@@ -47,13 +47,13 @@ Temaet **De dødes dag** (Día de los Muertos, `Theme=2`) er påbegyndt. Idéen 
 | Sne i bunden og på vinduerne | Et tæppe af kronblade, der vokser og falder fra vinduer som sneen. På vindueskanterne står små lys med flakkende flammer (ca. ét pr. 150 punkter), når der er landet kronblade; de forsvinder med vinduet. |
 | Snemand over 12 dage | En ofrenda: tre trin med duge, lys, tagetes, sukkerkranie, lys, de dødes brød, et billede, en bue af tagetes, papel picado og til sidst et glas vand, et lille sukkerkranie og en monarksommerfugl. |
 | Julemanden i kane | En sværm af monarksommerfugle. Lyd (slået fra som standard): en original lille vals i d-mol med marimba og guitar, syntetiseret (`Synth.muertosSon`). |
-| Sneplov | En æselkærre: en calaca fejer kronbladene op med en kost foran æslet, og de flyver bagud i kærren. Den går i æseltempo (45 % af sneplovens fart) og er lydløs. |
+| Sneplov | En æselkærre: en calaca fejer kronbladene op med en kost foran æslet, og de flyver bagud i kærren. Den går i æseltempo (45 % af sneplovens fart). Lyd (punktet "Lyd: hovtramp, hjulknirk og æselbrøl"): hove i takt med æslets ben, et knirk for hver omgang hjulet tager, kosten (højere, jo flere kronblade foran den), og æslet skryder én gang, hvor sneploven dytter. |
 | Nisser, der bytter pakker | Calacas (skeletter) med sombrero og stribet serape eller catrina-hat og lang kjole; de bytter tagetesbuketter og danser med maraca. |
 | Julelys | Papel picado: udklippede papirflag med blomst, kranie eller ruder. |
 | Julekalender og nedtælling | Skjult. |
 | Nissehue, skæg og dragt i kameraet | Intet endnu; kameraets baggrund er en lilla skumring. |
 
-- **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `FirstRun` en uge eller mere tilbage viser et færdigt alter, `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav`.
+- **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `FirstRun` en uge eller mere tilbage viser et færdigt alter, `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav` og æselkærrens lyde som `aeselkaerre-hove.wav`, `aeselkaerre-kost.wav` og `aesel-broel.wav`.
 
 ## Byg og kør
 

@@ -229,6 +229,153 @@ enum Synth {
         }
     }
 
+    // ------------------------------------------------------------------ the donkey cart (the Day of the Dead's plow)
+
+    /// The leg phases at which the drawn donkey's hooves land, as shares of a step cycle, with how loud each is:
+    /// the near legs (phases 0 and π in `drawPetalCart`) louder than the far ones (1.2 and 1.2 + π).
+    private static let hoofFalls: [(at: Double, loud: Double, pitch: Double)] = [
+        (0, 1, 1.0), (1.2 / (2 * .pi), 0.7, 0.86), (0.5, 0.95, 1.07), (0.5 + 1.2 / (2 * .pi), 0.65, 0.9),
+    ]
+
+    /// Adds `make(k)` (k = samples since the start) at `start`, wrapping round the end of a loop of n samples.
+    private static func addWrapped(_ out: UnsafeMutablePointer<Float>, _ n: Int, at start: Int, count: Int,
+                                   _ make: (Int) -> Double) {
+        for k in 0..<count { out[((start + k) % n + n) % n] += Float(make(k)) }
+    }
+
+    /// The donkey cart rolling: four hooves per step cycle (`cycle` seconds, Controller.donkeyStepCycle) and the
+    /// wooden wheel creaking once a turn, over the low rumble of the wheel. The loop is 8 step cycles, which is
+    /// exactly 5 turns of the wheel (the legs swing 1.6 times per turn of it), so both repeat seamlessly.
+    static func donkeyCart(cycle: Double) -> AVAudioPCMBuffer? {
+        let cycle = max(0.2, min(2, cycle))
+        let len = 8 * cycle
+        return makeBuffer(seconds: len) { out, n in
+            var rng = SeededRandom(seed: 1102)
+            func r() -> Double { Double(rng.next()) }
+            // hooves: a short hollow "tok" (two inharmonic modes of the hoof and the ground) with a soft thump
+            // and a click of grit, each a little different
+            for c in 0..<8 {
+                for f in hoofFalls {
+                    let t0 = (Double(c) + f.at) * cycle + (r() - 0.5) * 0.012
+                    let f1 = (760 + r() * 160) * f.pitch, f2 = f1 * 2.37
+                    let loud = f.loud * (0.8 + 0.25 * r())
+                    addWrapped(out, n, at: Int(t0 * sampleRate), count: Int(0.12 * sampleRate)) { k in
+                        let t = Double(k) / sampleRate
+                        let tok = 0.55 * sin(2 * .pi * f1 * t) * exp(-t / 0.016) + 0.22 * sin(2 * .pi * f2 * t) * exp(-t / 0.008)
+                        let thump = 0.5 * sin(2 * .pi * 120 * t) * exp(-t / 0.035)
+                        let grit = (r() * 2 - 1) * 0.35 * exp(-t / 0.003)
+                        return loud * (tok + thump + grit) * 0.55
+                    }
+                }
+            }
+            // the wheel creaks once a turn: stick-slip pulses, getting quicker, ringing a wooden resonance
+            let turn = len / 5
+            for w in 0..<5 {
+                let t0 = Double(w) * turn + turn * 0.35 + (r() - 0.5) * 0.04
+                let dur = 0.2 + r() * 0.08, f0 = 150 + r() * 40, rise = 1.5 + r() * 0.3
+                let res = 1250 + r() * 300
+                let rr = 0.9965, cw = 2 * rr * cos(2 * .pi * res / sampleRate)
+                var y1 = 0.0, y2 = 0.0, phase = 0.0
+                addWrapped(out, n, at: Int(t0 * sampleRate), count: Int((dur + 0.06) * sampleRate)) { k in
+                    let t = Double(k) / sampleRate
+                    var x = 0.0
+                    if t < dur {
+                        phase += f0 * (1 + (rise - 1) * t / dur) / sampleRate
+                        if phase >= 1 { phase -= 1; x = 1 }
+                    }
+                    let y = cw * y1 - rr * rr * y2 + x
+                    y2 = y1; y1 = y
+                    let env = t < dur ? sin(.pi * min(1, t / dur)) : 1
+                    return y * env * 0.012
+                }
+            }
+            // the rumble of the wheel on the ground: low-passed noise, cross-faded over the loop's seam
+            let over = Int(0.2 * sampleRate)
+            var lp = 0.0, lp2 = 0.0
+            var rumble = [Double](repeating: 0, count: n + over)
+            for i in 0..<(n + over) {
+                lp += (r() * 2 - 1 - lp) * 0.02
+                lp2 += (lp - lp2) * 0.05
+                rumble[i] = lp2
+            }
+            for i in 0..<over { let k = Double(i) / Double(over); rumble[i] = rumble[i] * k + rumble[n + i] * (1 - k) }
+            for i in 0..<n { out[i] += Float(rumble[i] * 0.2) }
+        }
+    }
+
+    /// The calaca's broom: a swish on each forward stroke (the broom swings twice per step cycle), with a
+    /// rustle of petals. Same loop length as `donkeyCart`, so the two keep the same pace.
+    static func broomSweep(cycle: Double) -> AVAudioPCMBuffer? {
+        let cycle = max(0.2, min(2, cycle))
+        return makeBuffer(seconds: 8 * cycle) { out, n in
+            var rng = SeededRandom(seed: 2011)
+            func r() -> Double { Double(rng.next()) }
+            for s in 0..<16 {
+                let t0 = (Double(s) * 0.5 + 0.12) * cycle + (r() - 0.5) * 0.01
+                let dur = cycle * 0.3, loud = 0.8 + 0.3 * r()
+                // band-passed noise whose centre falls as the bristles slow down
+                var low = 0.0, band = 0.0
+                addWrapped(out, n, at: Int(t0 * sampleRate), count: Int(dur * sampleRate)) { k in
+                    let t = Double(k) / sampleRate, u = t / dur
+                    let fc = 3200 - 1700 * u
+                    let f = 2 * sin(.pi * fc / sampleRate)
+                    let high = (r() * 2 - 1) - low - 0.9 * band
+                    band += f * high
+                    low += f * band
+                    let env = pow(sin(.pi * u), 2) * (1 - 0.4 * u)
+                    // petals: a few tiny ticks in the swish
+                    let tick = r() < 0.0015 ? (r() - 0.5) * 1.2 : 0
+                    return (band * 0.5 + tick) * env * loud
+                }
+            }
+        }
+    }
+
+    /// The donkey's bray (the cart's form of the horn): "hee-haw, hee-haw". The "hee" is drawn in, high and
+    /// thin; the "haw" pushed out, low, loud and rough. A buzzy source (harmonics up to 5 kHz) through two
+    /// formant resonances for each vowel.
+    static func donkeyBray() -> AVAudioPCMBuffer? {
+        return makeBuffer(seconds: 1.9) { out, n in
+            var rng = SeededRandom(seed: 315)
+            // (start, length, f0 from, f0 to, formant 1, formant 2, loudness, roughness)
+            let parts: [(Double, Double, Double, Double, Double, Double, Double, Double)] = [
+                (0.00, 0.30, 470, 560, 1150, 2700, 0.45, 0.10),
+                (0.34, 0.42, 210, 150, 720, 1150, 1.00, 0.35),
+                (0.84, 0.26, 450, 530, 1150, 2700, 0.40, 0.10),
+                (1.14, 0.48, 200, 135, 700, 1100, 0.95, 0.40),
+            ]
+            for p in parts {
+                let start = Int(p.0 * sampleRate), count = Int(p.1 * sampleRate)
+                var phase = 0.0
+                var l1 = 0.0, b1 = 0.0, l2 = 0.0, b2 = 0.0
+                let g1 = 2 * sin(.pi * p.4 / sampleRate), g2 = 2 * sin(.pi * p.5 / sampleRate)
+                var jitter = 0.0
+                for k in 0..<count where start + k < n {
+                    let t: Double = Double(k) / sampleRate, u: Double = t / p.1
+                    // the pitch rises (hee) or falls (haw) along a curve, with a little wobble
+                    let noise: Double = Double(rng.next()) * 2 - 1
+                    jitter += (noise - jitter) * 0.002
+                    let glide: Double = p.2 + (p.3 - p.2) * sin(Double.pi / 2 * u)
+                    let wobble: Double = 1 + 0.025 * sin(2 * Double.pi * 6 * t) + 0.05 * jitter
+                    let f0: Double = glide * wobble
+                    phase += f0 / sampleRate
+                    if phase >= 1 { phase -= 1 }
+                    var src = 0.0
+                    let harmonics = max(1, Int(5000 / f0))
+                    for h in 1...harmonics { src += sin(2 * Double.pi * Double(h) * phase) / Double(h) }
+                    // roughness: the voice flutters at about 28 Hz
+                    let flutter: Double = 0.5 + 0.5 * sin(2 * Double.pi * 28 * t)
+                    src *= 1 - p.7 * flutter
+                    let h1: Double = src - l1 - 0.25 * b1; b1 += g1 * h1; l1 += g1 * b1
+                    let h2: Double = src - l2 - 0.3 * b2; b2 += g2 * h2; l2 += g2 * b2
+                    let env: Double = min(1, t / 0.03) * min(1, (p.1 - t) / 0.06)
+                    let voice: Double = b1 * 0.6 + b2 * 0.35 + src * 0.05
+                    out[start + k] += Float(voice * env * p.6 * 0.3)
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ geese (autumn's flyer)
 
     /// The two moods of a flock of geese passing over; each trip picks one (alone twice as often as in wind).

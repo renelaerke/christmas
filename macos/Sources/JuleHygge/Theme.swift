@@ -54,7 +54,8 @@ enum Theme: Int {
     /// for the dead papel picado (cut paper flags).
     var hasLights: Bool { true }
     /// What clears the pile when it gets high: the snow plow, in autumn a leaf collector, for the dead a donkey
-    /// cart: a calaca sweeps the petals up and they go in the cart, to be taken out to the graves (silent so far).
+    /// cart: a calaca sweeps the petals up and they go in the cart, to be taken out to the graves. It sounds of
+    /// hooves, a creaking wheel and the broom, and the donkey brays where the plow honks (Synth.donkeyCart and co.).
     var hasPlow: Bool { true }
     /// The camera's costume (hat, beard, suit). The dead have none yet: the calavera make-up and flower crown
     /// from docs/temaer are still to be made.
