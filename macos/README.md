@@ -53,7 +53,24 @@ Temaet **De dødes dag** (Día de los Muertos, `Theme=2`) er påbegyndt. Idéen 
 | Julekalender og nedtælling | Skjult. |
 | Nissehue, skæg og dragt i kameraet | En krans af tagetes i håret (med lilla og lyserøde blomster og blade imellem) på hattens målte ring, og calavera-sminke på ansigtet i skæggets sted (`Makeup.swift`): hvid bund med ansigtets egen lys og skygge, sorte blomsterformede øjenhuler med en ring af farvede kronblade, et sort hjerte på næsen, sting over munden og pynt på pande, kinder og hage. Alt placeres ud fra ansigtets landemærker i hvert billede. Ingen dragt. Kameraets baggrund er en lilla skumring. |
 
-- **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `FirstRun` en uge eller mere tilbage viser et færdigt alter, `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav` og æselkærrens lyde som `aeselkaerre-hove.wav`, `aeselkaerre-kost.wav` og `aesel-broel.wav`.
+- **Test:** sæt `Theme=2` i en settings-fil og brug den med `JULE_SETTINGS`; `OfrendaSeconds=39600` viser et færdigt alter (det får ét trin pr. time, appen kører; `JULE_SNOWMAN_SPEED=3600` giver et trin i sekundet), `JULE_DEEPSNOW=1` et fuldt tæppe (også på vinduerne, med lys), `--julemand` sommerfuglene, `--sneplov` æselkærren, og `--lyd-test=MAPPE` gemmer melodien som `sommerfugle-son.wav` og æselkærrens lyde som `aeselkaerre-hove.wav`, `aeselkaerre-kost.wav` og `aesel-broel.wav`.
+
+## Halloween
+Temaet **Halloween** (`Theme=3`) er påbegyndt 2026-11-24. Idéen står i `docs/temaer/index.html`, det udestående og de valg, der er truffet undervejs, i `docs/halloween-udestaaende.md`. Figurerne er i `Sources/JuleHygge/OverlayHalloween.swift`.
+
+| Jul | Halloween |
+|---|---|
+| Snevejr, og sne i bunden og på vinduerne | Efterårets blade, som de er. |
+| Snemand, som tre børn bygger på et kvarter | Tre græskar, der sættes frem og skæres ud til græskarlygter: ét trin for hver time, appen kører (12 trin, med samme ur som ofrendaen; færdige bliver de stående, til et andet tema vælges). Til sidst en heksehat og en sort kat. |
+| Julemanden i kane | En heks på kost med en kat bagpå og seks flagermus efter sig. Lyd (slået fra som standard): en original langsom vals i a-mol for en tynd, svævende stemme over et orgel (`Synth.witchTune`). |
+| Sneplov | Én af to, med lige stor chance pr. tur (trukket to ad gangen, så hver kommer præcis halvdelen af gangene): en lille heks fejer bladene op i en gryde på en vogn, som hendes sorte kat trækker, eller tre spøgelser svæver frem og puster bladene væk. Lyd: kosten, eller en hul susen (`Synth.ghostWind`). Intet horn. |
+| Nisser, der bytter pakker | Spøgelser under lagner og udklædte børn (en lille heks, et lille græskar); de bytter spande med slik, og børnene vinker med en slikkepind. |
+| Julelys | En lyskæde med små græskarlygter, der blinker, og sovende flagermus. |
+| (intet) | På vindueskanterne en sort kat, der svinger med halen og blinker, og edderkopper, der firer sig ned i en tråd. |
+| Julekalender og nedtælling | Skjult. |
+| Nissehue, skæg og dragt i kameraet | Ét valg, "Udklædning i kameraet" (`CameraHalloween`): ingen, **heksehat og heksenæse** (med sort tøj og grønlig hud) eller **græskarhoved** (hele hovedet som udskåret, lysende græskar, der drejer med). Næsen står på ens egen næse, genopbygget i tre dimensioner ud fra næserod, punktet under næsen og næsetip (se `AGENTS.md`). |
+
+- **Test:** sæt `Theme=3` og `OfrendaSeconds=39600` (færdige lygter) i en settings-fil og brug den med `JULE_SETTINGS`; `--julemand` sender heksen, `--sneplov` den, der rydder bladene (`JULE_HALLOWEEN_PLOV=heks` eller `=spoegelser` låser hvilken), `JULE_DEEPSNOW=1` giver en fuld bunke. Kameraet: `HUE_HALLOWEEN=1 … --kamera-replay=MAPPE` (heks), med `HUE_GRAESKAR=1` græskarhovedet, og `HUE_NAESE_MAAL=1` viser næsens tre målte punkter og udskriver målingen.
 
 ## Byg og kør
 
@@ -121,6 +138,9 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 | `HUE_FOLK=1…5` | kameratestene klæder personen som det folk (1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud) |
 | `HUE_EFTERAAR=1` | kameratestene (`--kamera-replay`, `--nissehue-test`) bruger efterårets sydvest og regnfrakke |
 | `HUE_MUERTOS=1` | `--kamera-replay` bruger de dødes dags blomsterkrans og calavera-sminke (og udskriver sminkens tid pr. billede) |
+| `HUE_HALLOWEEN=1` | `--kamera-replay` bruger Halloweens heksehat, heksenæse, sorte tøj og grønne hud; med `HUE_GRAESKAR=1` græskarhovedet i stedet |
+| `HUE_NAESE_MAAL=1` | sammen med `HUE_HALLOWEEN=1`: tegner næsens tre målte punkter (rod, under næsen, udregnet tip) og udskriver længde og fremspring pr. billede |
+| `JULE_HALLOWEEN_PLOV=heks\|spoegelser` | Halloween: låser, om heksen fejer eller spøgelserne puster (ellers trækkes der lod) |
 | `HUE_INGEN_MODEL=1` | kameraet finder tøjet ved farve i stedet for med modellen (til sammenligning) |
 | `JULE_TICKS=1` | skriver faktiske billeder/s til stderr |
 | `--skærmskift-test` | genopbygger overlay-vinduerne hvert 0,3 s (stresstest af skærmskift) |
@@ -148,10 +168,11 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/Overlay.swift` | Ét klik-igennem vindue pr. skærm: sne, sneplov, nisser, julelys, høstak |
 | `Sources/JuleHygge/SnowmanBuild.swift` | Snemanden, børnene bygger: kugler, løft, pynt, sneboldkamp, ventetid på sneploven, et nyt sted (som `src/SnowmanBuild.cs`) |
 | `Sources/JuleHygge/OverlaySnowman.swift` | Tegner snemanden, børnene og deres snebolde, og lader sneploven køre snemanden ned (som `src/LayerSnowman.cs`) |
+| `Sources/JuleHygge/OverlayHalloween.swift` | Halloweens figurer: græskarlygter, heks, flagermus, spøgelser og udklædte børn, lyskæde, katte og edderkopper, og de to, der rydder bladene |
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
-| `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger), gåseoptagelsen og delt lydmotor |
-| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår eller de dødes dag) og hvad der skifter med det |
+| `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger, de dødes dags og Halloweens lyde), gåseoptagelsen og delt lydmotor |
+| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår, de dødes dag eller Halloween) og hvad der skifter med det, også i kameraet |
 | `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
 | `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
 | `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |

@@ -1,7 +1,8 @@
 # Halloween: hvad der er lavet, og hvad der mangler
 
-Tema nr. 3 i menuen "Tema" (`Theme.halloween`), kun macOS, første runde 2026-11-24 på grenen `halloween` (skåret af
-`muertos`). Bygget ud fra skitsen "halloween" i `docs/temaer/index.html`.
+Tema nr. 3 i menuen "Tema" (`Theme.halloween`, `Theme=3`), lavet 2026-11-24 på grenen `halloween` (skåret af
+`muertos`): først macOS (`5f41529`), så Windows og Linux uden kameraet (`46e4988`). Hvordan det bruges og prøves, står
+i `macos/README.md` ("Halloween") og `linux/README.md` ("Test aids"); hvordan det er bygget, i `AGENTS.md`. Bygget ud fra skitsen "halloween" i `docs/temaer/index.html`.
 
 ## Lavet (macOS)
 
@@ -14,9 +15,9 @@ som tekst (`JULE_MENU_DUMP`). Melodien er skrevet ud som fil (10,1 s).
 
 ## Ikke set eller prøvet
 
-- Ikke set live, kun stillbilleder: bevægelserne (spøgelsernes svæv, heksens kappe, flagermusenes vinger, kattens
-  hale, edderkoppernes tråd, lygternes blink) er kun tegnet, ikke set bevæge sig.
-- Melodien er ikke hørt af nogen.
+- macOS er installeret og prøvet live af REL 2026-11-24. Hans ene fund: et lastbilhorn lød, når spøgelserne eller
+  heksen blev sendt ud (plovens horn); det er fjernet for Halloween på alle tre platforme. Hvad han i øvrigt så og
+  hørte, har han ikke sagt noget om.
 - Skiftet til og fra temaet i menuen (som tager lygterne ned), og beskeden, når de er færdige.
 - Strømforbrug er ikke målt med `measure.sh`.
 - Kamerascenen (JuleHygge Kamera) i temaet.

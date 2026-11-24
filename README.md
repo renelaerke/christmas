@@ -89,6 +89,12 @@ Al grafik tegnes i koden, så der ikke er billedfiler.
 | `src/Updater.cs` | Self-update from GitHub releases: check, download, verify, swap the exe |
 | `src/SnowmanBuild.cs` | The snowman the children build: balls, lifts, dressing, snowball fight, waiting for the plow, a new place |
 | `src/LayerSnowman.cs` | Draws the snowman, the children and their snowballs, and lets the plow run the snowman down |
+| `src/Weather.cs` | The changing weather: the day's course between light snow, normal and storm |
+| `src/Lang.cs` | The menu's language: reads `assets/sprog/*.ini` (built in as resources) and looks texts up |
+| `src/Folk.cs`, `src/LayerElf.cs` | Who walks at the bottom by language and region (nisser, elves, Wichtel, kabouters, päkapikud), and their drawing |
+| `src/LayerAutumn.cs` | The autumn theme's figures and the drawing helpers the other themes share |
+| `src/LayerMuertos.cs` | The Day of the Dead theme's figures (ofrenda, calacas, butterflies, papel picado, candles, donkey cart) |
+| `src/LayerHalloween.cs` | The Halloween theme's figures (jack-o'-lanterns, witch, ghosts, garland, cats and spiders, and the two that clear the leaves) |
 
 ## Ideer til næste version
 - Sne der lægger sig på toppen af åbne vinduer
