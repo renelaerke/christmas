@@ -20,7 +20,7 @@ namespace JuleHygge
             var b = c.Build;
             left = (b.SiteX - SnowmanBuild.PlayHalfWidth) * S;
             right = (b.SiteX + SnowmanBuild.PlayHalfWidth) * S;
-            return IsPrimary && cfg.Snowman && !c.Autumn && b.Playing;
+            return IsPrimary && cfg.Snowman && c.Christmas && b.Playing;
         }
 
         float BuildGround(float x)

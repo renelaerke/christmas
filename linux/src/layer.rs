@@ -26,6 +26,7 @@ mod elves;
 mod ground;
 mod ledges;
 mod lights;
+mod muertos;
 mod plow;
 mod santa;
 mod snowman;
@@ -84,10 +85,31 @@ pub struct SceneState<'a> {
     pub ledge_u: f32,
     /// The autumn theme (setting `Theme` = 1): leaves for snow.
     pub autumn: bool,
+    /// De dødes dag (setting `Theme` = 2): marigold petals for snow, and every figure in its form for the dead
+    /// (`layer/muertos.rs`).
+    pub muertos: bool,
     /// Who the walkers are in the Christmas theme (setting `Folk`, see `folk.rs`).
     pub folk: Folk,
     /// Autumn's kite over the primary screen (setting `Kite`).
     pub kite: bool,
+}
+
+impl SceneState<'_> {
+    /// Leaves or petals instead of snow (autumn and De dødes dag): fewer and bigger pictures, turning as they fall.
+    pub fn leaves(&self) -> bool {
+        self.autumn || self.muertos
+    }
+
+    /// The dark between the leaves (or petals) of a pile; None when the pile is snow.
+    pub fn pile_fill(&self) -> Option<draw::Argb> {
+        if self.muertos {
+            Some((245, 168, 72, 8))
+        } else if self.autumn {
+            Some((245, 122, 62, 24))
+        } else {
+            None
+        }
+    }
 }
 
 /// Width in pixels of one column of the snow pile, as on Windows.
@@ -356,8 +378,10 @@ pub struct Layer {
     /// scale), and clumps that reached this screen's pile; the controller applies them.
     ledge_hits: Vec<(usize, f32, f32)>,
     clumps_landed: Vec<usize>,
-    /// The leaves' pictures for the autumn theme (`make_leaf_sprites`).
+    /// The pictures of what falls for snow: the leaves of the autumn theme (`make_leaf_sprites`) or, when `petals`,
+    /// the marigold petals of De dødes dag (`muertos::make_petal_sprites`). See `use_fall_sprites`.
     leaf_sprites: Vec<Vec<u32>>,
+    petals: bool,
 }
 
 impl Layer {
@@ -427,6 +451,7 @@ impl Layer {
             ledge_hits: Vec::new(),
             clumps_landed: Vec::new(),
             leaf_sprites: make_leaf_sprites()?,
+            petals: false,
         })
     }
 
@@ -493,6 +518,20 @@ impl Layer {
         ));
     }
 
+    /// Leaves or petals: the pictures follow the theme (the controller builds the screens anew when it changes, so
+    /// nothing cached was laid out with the other set).
+    fn use_fall_sprites(&mut self, st: &SceneState) {
+        if st.muertos == self.petals {
+            return;
+        }
+        let made = if st.muertos { muertos::make_petal_sprites() } else { make_leaf_sprites() };
+        match made {
+            Ok(sprites) => self.leaf_sprites = sprites,
+            Err(e) => crate::log::error(&format!("petals: {e}")),
+        }
+        self.petals = st.muertos;
+    }
+
     // ------------------------------------------------------------------ one frame
     pub fn frame(&mut self, dt: f32, st: &SceneState) -> Present {
         let fullscreen = st.fullscreen.is_some_and(|fs| fs.contains(&self.rect));
@@ -520,6 +559,7 @@ impl Layer {
             self.full_present = true;
         }
 
+        self.use_fall_sprites(st);
         self.update_snow(dt, st);
         self.update_plow(dt, st);
         self.update_elves(dt, st);
@@ -540,9 +580,10 @@ impl Layer {
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
         self.draw_build(st);
+        self.draw_ledge_candles(st);
         self.draw_santa_and_sparks(st);
         self.draw_kite(dt, st);
-        self.draw_elves(st.autumn, st.folk);
+        self.draw_elves(st.autumn, st.muertos, st.folk);
         self.draw_plow(st);
         self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
@@ -617,7 +658,7 @@ impl Layer {
         let lower = (amount as usize).min(1);
         // (leaves are much bigger than flakes, so far fewer are needed)
         let wanted = (BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32))
-            * if st.autumn { 0.2 } else { 1.0 };
+            * if st.leaves() { 0.2 } else { 1.0 };
         let logical_area = self.w as f32 * self.h as f32 / (self.dpi_scale * self.dpi_scale);
         // Snow covers the whole screen also in power-save mode; power-save only lowers the frame rate.
         let target = if st.snow_on {
@@ -791,8 +832,8 @@ impl Layer {
         let rot_spd = (self.rng.f() - 0.5) * 2.0;
         let catches = self.rng.f() < 0.5;
         let mut f = Flake { x, y, r, vy, phase, sway, sway_spd, rot, rot_spd, a, crystal, catches, kind: 0 };
-        if st.autumn {
-            // a leaf: bigger, opaque, swaying wide and turning as it falls
+        if st.leaves() {
+            // a leaf (or a petal): bigger, opaque, swaying wide and turning as it falls
             f.r = (5.0 + depth * 7.0) * s;
             f.vy = (30.0 + depth * 40.0 + self.rng.f() * 20.0) * s * if st.snow_level == 2 { 1.4 } else { 1.0 };
             f.sway = (25.0 + self.rng.f() * 45.0) * s;
@@ -874,7 +915,7 @@ impl Layer {
     fn draw_snow(&mut self, st: &SceneState) {
         // Dots go straight into the buffer, so Cairo must finish the figures first.
         self.canvas.surface.flush();
-        if st.autumn {
+        if st.leaves() {
             self.draw_leaves(st);
             return;
         }
@@ -1009,6 +1050,7 @@ mod tests {
             clumps: &[],
             ledge_u: 1.0,
             autumn: false,
+            muertos: false,
             folk: Folk::Nisser,
             kite: false,
         }
@@ -1285,6 +1327,64 @@ mod tests {
                 assert!(drawn || p == q, "lights erased at {x},{y}");
             }
         }
+    }
+
+    #[test]
+    fn the_day_of_the_dead_leaves_no_trails() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its form for the dead: papel picado, calacas, the finished
+        // ofrenda, the butterflies and the donkey cart, and a window whose petals carry candles
+        let rect = Rect::new(0, 0, 1280, 720);
+        let mut l = Layer::new(rect, true, 1.0, 13).unwrap();
+        l.heap.fill(18.0 * l.s);
+        let mut f = Figures::new(6);
+        f.muertos = true;
+        let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+        f.launch_santa(&info(&l));
+        f.send_plow(&info(&l));
+        let mut ws = WindowSnow::new(1.0, 5);
+        let win = WinInfo { id: 1, rect: FRect { x: 200.0, y: 400.0, w: 700.0, h: 300.0 }, visible: vec![(206.0, 894.0)] };
+        ws.update_ledges(vec![win]);
+        let mut t = 5.0;
+        for _ in 0..1200 {
+            t += 0.05;
+            f.update(0.05, t, &info(&l), true, true);
+            let st = SceneState {
+                time: t,
+                muertos: true,
+                lights: true,
+                elves: true,
+                snow_amount: 2.0,
+                snowman_stage: 12,
+                santa: f.santa.as_ref(),
+                sparks: &f.sparks,
+                plow: Some(&f.plow),
+                ledges: &ws.ledges,
+                clumps: &ws.clumps,
+                ..state()
+            };
+            l.frame(0.05, &st);
+            f.plow.pushed += l.take_pushed();
+            for (li, x, r) in l.take_ledge_hits() {
+                ws.ledges[li].deposit(x, r);
+            }
+            ws.update(0.05, false, false, 0.0, 720.0);
+        }
+        assert!(l.petals, "the petals' pictures are not in use");
+        // every lit pixel was drawn this frame or is what clearing restores (the ground with the ofrenda, the
+        // papel picado, the petals on the window)
+        let background = l.background();
+        let w = l.width();
+        for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+            let (x, y) = (i as i32 % w, i as i32 / w);
+            let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+            assert!(*p == *b || drawn, "stale pixel at {x},{y}");
+        }
+        // the ofrenda stands in the cached ground: something of it shows well above the pile
+        let x0 = (1280.0 * 0.78) as usize;
+        let above = (640..690).any(|y| (x0 - 30..x0 + 30).any(|x| background[y * w as usize + x] >> 24 > 200));
+        assert!(above, "no ofrenda in the ground image");
     }
 
     #[test]

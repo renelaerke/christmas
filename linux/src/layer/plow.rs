@@ -91,7 +91,27 @@ impl Layer {
         if let Some(h) = here.filter(|h| self.plow_on_screen(h)) {
             let gy = self.ground_y - heap_at(&self.heap, h.x) + s;
             let ph = self.plow_pile_height(h.pushed);
-            if st.autumn {
+            if st.muertos {
+                // the broom: petals are swept up and fly back over the donkey into the cart
+                if ph > 5.0 {
+                    self.plow_chunk_acc += dt * 10.0;
+                    while self.plow_chunk_acc >= 1.0 {
+                        self.plow_chunk_acc -= 1.0;
+                        let r = &mut self.rng;
+                        self.plow_bits.push(PlowBit {
+                            x: h.x + h.dir * (90.0 + r.f() * 14.0) * sc,
+                            y: gy - (2.0 + r.f() * 6.0) * sc,
+                            vx: -h.dir * (70.0 + r.f() * 70.0) * s,
+                            vy: -(150.0 + r.f() * 70.0) * s,
+                            life: 1.6,
+                            max: 1.6,
+                            size: (3.0 + r.f() * 2.0) * s,
+                            smoke: false,
+                            kind: r.range(0, 1000) as usize,
+                        });
+                    }
+                }
+            } else if st.autumn {
                 // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
                 if ph > 6.0 {
                     self.plow_chunk_acc += dt * 14.0;
@@ -130,7 +150,8 @@ impl Layer {
                 }
             }
             self.plow_smoke_timer -= dt;
-            if self.plow_smoke_timer <= 0.0 {
+            // (a donkey makes no smoke)
+            if self.plow_smoke_timer <= 0.0 && !st.muertos {
                 self.plow_smoke_timer = 0.2;
                 self.plow_bits.push(PlowBit {
                     x: h.x - h.dir * 2.0 * sc,
@@ -174,7 +195,7 @@ impl Layer {
     }
 
     pub(super) fn draw_plow(&mut self, st: &SceneState) {
-        if st.autumn && self.plow_bits.iter().any(|b| !b.smoke) {
+        if st.leaves() && self.plow_bits.iter().any(|b| !b.smoke) {
             // the leaves the leaf collector whirls up, turning as they fly (straight into the pixels, as the
             // falling ones)
             self.canvas.surface.flush();
@@ -193,7 +214,7 @@ impl Layer {
         }
         for i in 0..self.plow_bits.len() {
             let b = &self.plow_bits[i];
-            if st.autumn && !b.smoke {
+            if st.leaves() && !b.smoke {
                 continue;
             }
             let (x, y, size) = (b.x, b.y, b.size);
@@ -214,6 +235,11 @@ impl Layer {
         let saved = cr.matrix();
         cr.translate(h.x as f64, gy as f64);
         cr.scale((h.dir * sc) as f64, sc as f64);
+        if st.muertos {
+            super::muertos::petal_cart(cr, ph, h.wheel as f64);
+            cr.set_matrix(saved);
+            return;
+        }
         if st.autumn {
             leaf_collector(cr, ph, h.wheel as f64, st.time);
             cr.set_matrix(saved);

@@ -15,11 +15,16 @@ pub(super) fn bounds(x: f32, y: f32, s: f32) -> (f32, f32, f32, f32) {
 
 /// Draws the haystack and scarecrow at `stage` standing at (x, y). It is drawn into the cached ground image
 /// (`ground.rs`), so the pile, drawn after it, covers its foot as on Windows.
-pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32) {
+/// On De dødes dag (`muertos`) it is the ofrenda instead (`muertos.rs`), in the same place and box.
+pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32, muertos: bool) {
     let saved = cr.matrix();
     cr.translate(x, y);
     cr.scale(s, s);
-    scarecrow(cr, stage);
+    if muertos {
+        super::muertos::ofrenda(cr, stage);
+    } else {
+        scarecrow(cr, stage);
+    }
     cr.set_matrix(saved);
 }
 

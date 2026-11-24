@@ -57,4 +57,10 @@ Status 2026-11-24 (REL): kameraet virker live, animationerne er i orden, og str�
 
 ## Uden for selve temaet
 
-- **Windows og Linux** har ikke temaet (udskudt af REL 2026-11-24).
+- **Windows og Linux har temaet (uden kameraet), skrevet 2026-11-24 på REL's ord, men er ikke set:**
+  - Windows (`src/LayerMuertos.cs`): kompilerer med mono, og de fire lyde er skrevet ud med `--lyd-test` under mono
+    (melodien 18,2 s, kærrens løkke 4,7 s, brølet 1,9 s). Tegningen er aldrig set (GDI+ kan ikke køres på Mac'en):
+    se den på Windows, især papel picado (hullerne), lysenes glød og kronbladenes form, og mål CPU.
+  - Linux (`linux/src/layer/muertos.rs`): aldrig kompileret her. Det bygges, testes og tages et billede af
+    (`screen0-muertos.png`) i CI, når det bliver pushet; se billedet, før det regnes for færdigt.
+  - Ikke hørt på nogen af de to: lydene. Ikke set: skiftet af tema i menuen, som tager ofrendaen ned.

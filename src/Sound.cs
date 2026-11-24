@@ -368,6 +368,256 @@ namespace JuleHygge
             });
         }
 
+        // ------------------------------------------------------------------ the donkey cart (the Day of the Dead's plow)
+        // The leg phases at which the drawn donkey's hooves land, as shares of a step cycle, with how loud each is
+        // and its pitch: the near legs (phases 0 and pi in DrawPetalCart) louder than the far ones (1.2 and 1.2 + pi).
+        static readonly double[,] HoofFalls = {
+            { 0, 1, 1.0 }, { 1.2 / (2 * Math.PI), 0.7, 0.86 }, { 0.5, 0.95, 1.07 }, { 0.5 + 1.2 / (2 * Math.PI), 0.65, 0.9 } };
+
+        // Adds make(k) (k = samples since the start) at `start`, wrapping round the end of a loop of n samples.
+        static void AddWrapped(float[] output, int n, int start, int count, Func<int, double> make)
+        {
+            for (int k = 0; k < count; k++) output[((start + k) % n + n) % n] += (float)make(k);
+        }
+
+        // The donkey cart rolling: four hooves per step cycle (`cycle` seconds, Controller.DonkeyStepCycle) and the
+        // wooden wheel creaking once a turn, over the low rumble of the wheel. The loop is 8 step cycles, which is
+        // exactly 5 turns of the wheel (the legs swing 1.6 times per turn of it), so both repeat seamlessly.
+        public static float[] DonkeyCart(double cycle)
+        {
+            cycle = Math.Max(0.2, Math.Min(2, cycle));
+            double len = 8 * cycle;
+            return MakeBuffer(len, (output, n) =>
+            {
+                var rng = new Random(1102);
+                // hooves: a short hollow "tok" (two inharmonic modes of the hoof and the ground) with a soft thump
+                // and a click of grit, each a little different
+                for (int c = 0; c < 8; c++)
+                    for (int f = 0; f < HoofFalls.GetLength(0); f++)
+                    {
+                        double t0 = (c + HoofFalls[f, 0]) * cycle + (rng.NextDouble() - 0.5) * 0.012;
+                        double f1 = (760 + rng.NextDouble() * 160) * HoofFalls[f, 2], f2 = f1 * 2.37;
+                        double loud = HoofFalls[f, 1] * (0.8 + 0.25 * rng.NextDouble());
+                        AddWrapped(output, n, (int)(t0 * Rate), (int)(0.12 * Rate), k =>
+                        {
+                            double t = k / Rate;
+                            double tok = 0.55 * Math.Sin(2 * Math.PI * f1 * t) * Math.Exp(-t / 0.016) + 0.22 * Math.Sin(2 * Math.PI * f2 * t) * Math.Exp(-t / 0.008);
+                            double thump = 0.5 * Math.Sin(2 * Math.PI * 120 * t) * Math.Exp(-t / 0.035);
+                            double grit = Noise(rng) * 0.35 * Math.Exp(-t / 0.003);
+                            return loud * (tok + thump + grit) * 0.55;
+                        });
+                    }
+                // the wheel creaks once a turn: stick-slip pulses, getting quicker, ringing a wooden resonance
+                double turn = len / 5;
+                for (int w = 0; w < 5; w++)
+                {
+                    double t0 = w * turn + turn * 0.35 + (rng.NextDouble() - 0.5) * 0.04;
+                    double dur = 0.2 + rng.NextDouble() * 0.08, f0 = 150 + rng.NextDouble() * 40, rise = 1.5 + rng.NextDouble() * 0.3;
+                    double res = 1250 + rng.NextDouble() * 300;
+                    double rr = 0.9965, cw = 2 * rr * Math.Cos(2 * Math.PI * res / Rate);
+                    double y1 = 0, y2 = 0, phase = 0;
+                    AddWrapped(output, n, (int)(t0 * Rate), (int)((dur + 0.06) * Rate), k =>
+                    {
+                        double t = k / Rate, x = 0;
+                        if (t < dur)
+                        {
+                            phase += f0 * (1 + (rise - 1) * t / dur) / Rate;
+                            if (phase >= 1) { phase -= 1; x = 1; }
+                        }
+                        double y = cw * y1 - rr * rr * y2 + x;
+                        y2 = y1; y1 = y;
+                        double env = t < dur ? Math.Sin(Math.PI * Math.Min(1, t / dur)) : 1;
+                        return y * env * 0.012;
+                    });
+                }
+                // the rumble of the wheel on the ground: low-passed noise, cross-faded over the loop's seam
+                int over = (int)(0.2 * Rate);
+                double lp = 0, lp2 = 0;
+                var rumble = new double[n + over];
+                for (int i = 0; i < n + over; i++)
+                {
+                    lp += (Noise(rng) - lp) * 0.02;
+                    lp2 += (lp - lp2) * 0.05;
+                    rumble[i] = lp2;
+                }
+                for (int i = 0; i < over; i++) { double k = (double)i / over; rumble[i] = rumble[i] * k + rumble[n + i] * (1 - k); }
+                for (int i = 0; i < n; i++) output[i] += (float)(rumble[i] * 0.2);
+            });
+        }
+
+        // The calaca's broom: a swish on each forward stroke (the broom swings twice per step cycle), with a
+        // rustle of petals. Same loop length as DonkeyCart, so the two keep the same pace.
+        public static float[] BroomSweep(double cycle)
+        {
+            cycle = Math.Max(0.2, Math.Min(2, cycle));
+            return MakeBuffer(8 * cycle, (output, n) =>
+            {
+                var rng = new Random(2011);
+                for (int s = 0; s < 16; s++)
+                {
+                    double t0 = (s * 0.5 + 0.12) * cycle + (rng.NextDouble() - 0.5) * 0.01;
+                    double dur = cycle * 0.3, loud = 0.8 + 0.3 * rng.NextDouble();
+                    // band-passed noise whose centre falls as the bristles slow down
+                    double low = 0, band = 0;
+                    AddWrapped(output, n, (int)(t0 * Rate), (int)(dur * Rate), k =>
+                    {
+                        double t = k / Rate, u = t / dur;
+                        double fc = 3200 - 1700 * u;
+                        double f = 2 * Math.Sin(Math.PI * fc / Rate);
+                        double high = Noise(rng) - low - 0.9 * band;
+                        band += f * high;
+                        low += f * band;
+                        double env = Math.Pow(Math.Sin(Math.PI * u), 2) * (1 - 0.4 * u);
+                        // petals: a few tiny ticks in the swish
+                        double tick = rng.NextDouble() < 0.0015 ? (rng.NextDouble() - 0.5) * 1.2 : 0;
+                        return (band * 0.5 + tick) * env * loud;
+                    });
+                }
+            });
+        }
+
+        // The donkey's bray (the cart's form of the horn): "hee-haw, hee-haw". The "hee" is drawn in, high and
+        // thin; the "haw" pushed out, low, loud and rough. A buzzy source (harmonics up to 5 kHz) through two
+        // formant resonances for each vowel.
+        public static float[] DonkeyBray()
+        {
+            return MakeBuffer(1.9, (output, n) =>
+            {
+                var rng = new Random(315);
+                // start, length, f0 from, f0 to, formant 1, formant 2, loudness, roughness
+                double[,] parts = {
+                    { 0.00, 0.30, 470, 560, 1150, 2700, 0.45, 0.10 },
+                    { 0.34, 0.42, 210, 150, 720, 1150, 1.00, 0.35 },
+                    { 0.84, 0.26, 450, 530, 1150, 2700, 0.40, 0.10 },
+                    { 1.14, 0.48, 200, 135, 700, 1100, 0.95, 0.40 } };
+                for (int p = 0; p < parts.GetLength(0); p++)
+                {
+                    int start = (int)(parts[p, 0] * Rate), count = (int)(parts[p, 1] * Rate);
+                    double length = parts[p, 1];
+                    double phase = 0, l1 = 0, b1 = 0, l2 = 0, b2 = 0, jitter = 0;
+                    double g1 = 2 * Math.Sin(Math.PI * parts[p, 4] / Rate), g2 = 2 * Math.Sin(Math.PI * parts[p, 5] / Rate);
+                    for (int k = 0; k < count && start + k < n; k++)
+                    {
+                        double t = k / Rate, u = t / length;
+                        // the pitch rises (hee) or falls (haw) along a curve, with a little wobble
+                        jitter += (Noise(rng) - jitter) * 0.002;
+                        double glide = parts[p, 2] + (parts[p, 3] - parts[p, 2]) * Math.Sin(Math.PI / 2 * u);
+                        double f0 = glide * (1 + 0.025 * Math.Sin(2 * Math.PI * 6 * t) + 0.05 * jitter);
+                        phase += f0 / Rate;
+                        if (phase >= 1) phase -= 1;
+                        double src = 0;
+                        int harmonics = Math.Max(1, (int)(5000 / f0));
+                        for (int h = 1; h <= harmonics; h++) src += Math.Sin(2 * Math.PI * h * phase) / h;
+                        // roughness: the voice flutters at about 28 Hz
+                        double flutter = 0.5 + 0.5 * Math.Sin(2 * Math.PI * 28 * t);
+                        src *= 1 - parts[p, 7] * flutter;
+                        double h1 = src - l1 - 0.25 * b1; b1 += g1 * h1; l1 += g1 * b1;
+                        double h2 = src - l2 - 0.3 * b2; b2 += g2 * h2; l2 += g2 * b2;
+                        double env = Math.Min(1, t / 0.03) * Math.Min(1, (length - t) / 0.06);
+                        double voice = b1 * 0.6 + b2 * 0.35 + src * 0.05;
+                        output[start + k] += (float)(voice * env * parts[p, 6] * 0.3);
+                    }
+                }
+            });
+        }
+
+        // ------------------------------------------------------------------ de dødes dag
+        // The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the
+        // style of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar
+        // that plays the bass on the first beat and strums the chord on the second and third (down, up, down).
+        // Written for JuleHygge, so it is free of rights. Same as macOS Sound.swift (Synth.muertosSon).
+        public static float[] MuertosSon()
+        {
+            const double beat = 0.38;
+            const int A4 = 69, Cs5 = 73, C5 = 72, D5 = 74, E5 = 76, F5 = 77, G5 = 79, A5 = 81, Bb5 = 82, C6 = 84, D6 = 86;
+            double[,] melody = {
+                { A4, 1 }, { D5, 1 }, { F5, 1 },             { A5, 2 }, { G5, 0.5 }, { F5, 0.5 },
+                { E5, 1.5 }, { F5, 0.5 }, { G5, 1 },         { A5, 2 }, { 0, 1 },
+                { F5, 1 }, { E5, 0.5 }, { D5, 0.5 }, { F5, 1 }, { A5, 1 }, { D6, 1 }, { A5, 1 },
+                { Bb5, 1 }, { A5, 0.5 }, { G5, 0.5 }, { F5, 1 }, { E5, 2 }, { 0, 1 },
+                { C5, 1 }, { F5, 1 }, { A5, 1 },             { C6, 2 }, { A5, 1 },
+                { Bb5, 1 }, { G5, 1 }, { E5, 1 },            { E5, 1 }, { G5, 1 }, { Bb5, 1 },
+                { A5, 1.5 }, { G5, 0.5 }, { F5, 1 },         { F5, 1 }, { E5, 0.5 }, { D5, 0.5 }, { A5, 1 },
+                { G5, 1 }, { E5, 1 }, { Cs5, 1 },            { D5, 2 }, { 0, 1 } };
+            // the guitar's chords, lowest string first (the first note is the bass)
+            int[] Dm = { 50, 57, 62, 65 }, A7 = { 45, 52, 55, 61, 64 }, Gm = { 43, 50, 55, 58, 62 }, Fmaj = { 41, 48, 53, 57, 60 }, C7 = { 48, 52, 58, 60, 64 };
+            int[][] chords = { Dm, Dm, A7, A7, Dm, Dm, Gm, A7, Fmaj, Fmaj, C7, C7, Gm, Dm, A7, Dm };
+            double totalBeats = 0;
+            for (int i = 0; i < melody.GetLength(0); i++) totalBeats += melody[i, 1];
+            int n = (int)(totalBeats * beat * Rate);
+            var output = new float[n];
+            Func<int, double> freq = midi => 440 * Math.Pow(2, (midi - 69) / 12.0);
+            var rng = new Random(1102);
+
+            // One marimba stroke: the bar's fundamental with its 4th and 10th partials (a marimba bar is tuned so),
+            // all dying fast, plus a soft knock of the mallet. Wraps round the loop's end, so the seam is clean.
+            Action<double, int, double> strike = (t0, midi, amp) =>
+            {
+                double f = freq(midi);
+                int start = (int)(t0 * Rate), count = (int)(1.2 * Rate);
+                for (int k = 0; k < count; k++)
+                {
+                    double t = k / Rate;
+                    double env = Math.Min(1, t / 0.002);
+                    double v = Math.Exp(-t * 4.5) * Math.Sin(2 * Math.PI * f * t);
+                    v += 0.22 * Math.Exp(-t * 14) * Math.Sin(2 * Math.PI * f * 4 * t);
+                    v += 0.05 * Math.Exp(-t * 30) * Math.Sin(2 * Math.PI * f * 10 * t);
+                    v += 0.15 * Math.Exp(-t * 300) * Math.Sin(2 * Math.PI * 180 * t);
+                    output[(start + k) % n] += (float)(v * env * amp);
+                }
+            };
+            // One plucked string (Karplus-Strong): a burst of soft noise circulating in a delay line one period
+            // long, averaged a little each round, so it rings and darkens like a nylon string.
+            Action<double, int, double, double> pluck = (t0, midi, amp, len) =>
+            {
+                int period = Math.Max(2, (int)(Rate / freq(midi)));
+                var line = new double[period];
+                double prev = 0;
+                for (int i = 0; i < period; i++) { prev = prev * 0.5 + Noise(rng) * 0.5; line[i] = prev; }
+                int start = (int)(t0 * Rate), count = (int)(len * Rate);
+                for (int k = 0; k < count; k++)
+                {
+                    int j = k % period, j2 = (k + 1) % period;
+                    double v = line[j];
+                    line[j] = 0.4985 * (line[j] + line[j2]);
+                    double fadeOut = k > count - 800 ? (count - k) / 800.0 : 1;
+                    output[(start + k) % n] += (float)(v * amp * fadeOut);
+                }
+            };
+            Action<double, int[], bool, double> strum = (t0, chord, down, amp) =>
+            {
+                // down: every string but the bass, lowest first; up: the three highest, highest first
+                int count = down ? chord.Length - 1 : 3;
+                for (int k = 0; k < count; k++)
+                    pluck(t0 + k * 0.011, down ? chord[1 + k] : chord[chord.Length - 1 - k], amp, beat * 1.4);
+            };
+
+            // melody: short notes struck once, long ones rolled
+            double at = 0;
+            for (int i = 0; i < melody.GetLength(0); i++)
+            {
+                int note = (int)melody[i, 0];
+                double len = melody[i, 1];
+                if (note > 0)
+                {
+                    if (len >= 1.5) { for (double r = 0; r < len * beat - 0.1; r += 0.085) strike(at + r, note, r == 0 ? 0.30 : 0.17); }
+                    else strike(at, note, 0.30);
+                }
+                at += len * beat;
+            }
+            // guitar: bass on 1, strum down on 2, up on the "and", down on 3
+            for (int b = 0; b < chords.Length; b++)
+            {
+                double t0 = b * 3 * beat;
+                pluck(t0, chords[b][0], 0.38, beat * 2.2);
+                strum(t0 + beat, chords[b], true, 0.16);
+                strum(t0 + beat * 1.5, chords[b], false, 0.10);
+                strum(t0 + beat * 2, chords[b], true, 0.14);
+            }
+            Normalize(output);
+            return output;
+        }
+
         // ------------------------------------------------------------------ geese (autumn's flyer)
         // The two moods of a flock of geese passing over; each trip picks one (alone twice as often as in wind).
         public static readonly string[] GooseMoods = { "alene", "blaest" };
@@ -679,6 +929,10 @@ namespace JuleHygge
             sounds.Add("sneplov-skraben", PlowScrape);
             sounds.Add("sneplov-horn", PlowHorn);
             sounds.Add("loevsuger-sug", LeafSuction);
+            sounds.Add("sommerfugle-son", MuertosSon);
+            sounds.Add("aeselkaerre-rul", () => DonkeyCart(Controller.DonkeyStepCycle));
+            sounds.Add("aeselkaerre-kost", () => BroomSweep(Controller.DonkeyStepCycle));
+            sounds.Add("aeselkaerre-broel", DonkeyBray);
             for (int m = 0; m < GooseMoods.Length; m++) { int mood = m; sounds.Add("gaes-" + GooseMoods[m], () => Geese(mood)); }
             foreach (var kv in sounds)
             {

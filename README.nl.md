@@ -20,6 +20,7 @@ Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bur
 - **Sneeuwschuiver:** rijdt uit en ruimt de sneeuw als de hoop hoog wordt.
 - **Geluid** staat uit tot je het in het menu aanzet: belletjes en een deuntje voor de Kerstman, motor en claxon voor de sneeuwschuiver.
 - **Herfstthema:** het menu "Thema" verruilt de sneeuw voor vallende bladeren, de Kerstman voor trekganzen en de sneeuwpop voor een vogelverschrikker.
+- **Thema Dag van de Doden:** in hetzelfde menu staat "De dødes dag" (Día de los Muertos): bloemblaadjes van afrikaantjes vallen, skeletten met sombrero lopen onderaan, monarchvlinders vliegen over, papieren vlaggetjes hangen bovenaan en er wordt een altaar gebouwd, één stap voor elk uur dat het programma draait.
 - De animatie pauzeert vanzelf zolang een app in volledig scherm draait (games, films), en stopt helemaal als het scherm vergrendeld is of in de sluimerstand staat.
 - Een uitgebrachte versie houdt zichzelf up-to-date.
 

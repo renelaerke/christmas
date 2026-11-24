@@ -76,7 +76,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
 // Windows versions).
 pub const MENU_THEME: &str = "Tema";
-pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
+pub const THEMES: [&str; 3] = ["Jul", "Efterår", "De dødes dag"];
 pub const MENU_LEAVES: &str = "Løvfald";
 pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
@@ -93,6 +93,42 @@ pub const MENU_SEND_LEAF_COLLECTOR: &str = "Send løvsugeren ud nu!";
 pub const MENU_ANIMALS: &str = "Pindsvin og egern";
 pub const MENU_ANIMAL_COUNT: &str = "Antal dyr pr. skærm";
 pub const NOTICE_SCARECROW_TITLE: &str = "Høstakken vokser!";
+
+// ---------------------------------------------------------------------- De dødes dag (menu "Tema")
+// The same menu on the Day of the Dead (as in the macOS and Windows versions): marigold petals for snow, an ofrenda
+// for the snowman, monarch butterflies for Santa, calacas for the nisser, papel picado for the lights and a donkey
+// cart for the plow.
+pub const MENU_PETALS: &str = "Kronblade fra tagetes";
+pub const MENU_PETAL_LEVEL: &str = "Mængde af kronblade";
+pub const PETAL_LEVELS: [&str; 4] = ["Få kronblade", "Normal", "Kronbladsstorm", "Skiftende vejr"];
+pub const MENU_PETAL_GROUND: &str = "Tagetes-tæppe på panelet";
+pub const MENU_WINDOW_PETALS: &str = "Kronblade på vinduerne";
+pub const MENU_BUTTERFLIES: &str = "Monarksommerfugle";
+pub const MENU_SEND_BUTTERFLIES: &str = "Send sommerfuglene afsted nu!";
+pub const MENU_BUTTERFLY_SOUND: &str = "Lyd: guitar og marimba når sommerfuglene flyver";
+pub const MENU_CART_SOUND: &str = "Lyd: hovtramp, hjulknirk og æselbrøl fra æselkærren";
+pub const MENU_PICADO: &str = "Papel picado";
+pub const MENU_CART: &str = "Æselkærre samler kronbladene";
+pub const MENU_SEND_CART: &str = "Send æselkærren ud nu!";
+pub const MENU_CALACAS: &str = "Calacas (skeletter)";
+pub const MENU_CALACA_COUNT: &str = "Antal calacas pr. skærm";
+pub const NOTICE_OFRENDA_TITLE: &str = "Ofrendaen er færdig!";
+pub const FRAME_RATES_MUERTOS: [&str; 4] = [
+    "12 billeder/s - mindst strøm",
+    "20 billeder/s - normal",
+    "30 billeder/s - glattere kronbladsfald",
+    "60 billeder/s - mest strøm",
+];
+
+pub fn menu_ofrenda(stage: i32, max: i32) -> String {
+    crate::lang::trf("Ofrenda (alter) (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the ofrenda's last step is in place (it grows a step for every hour the app runs).
+pub fn notice_ofrenda() -> String {
+    "Calacas har pyntet alteret. Til sidst kom der et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!"
+        .to_string()
+}
 
 pub fn menu_scarecrow(stage: i32, max: i32) -> String {
     crate::lang::trf("Høstak med fugleskræmsel (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])

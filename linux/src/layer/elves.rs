@@ -397,16 +397,16 @@ impl Layer {
     }
 
     /// `folk`: who the walkers are in the Christmas theme (setting `Folk`).
-    pub(super) fn draw_elves(&mut self, autumn: bool, folk: Folk) {
+    pub(super) fn draw_elves(&mut self, autumn: bool, muertos: bool, folk: Folk) {
         for i in 0..self.elves.len() {
             // (one that is gone by magic for a moment is not drawn)
             if self.elves[i].magic <= 0.0 {
-                self.draw_elf(i, autumn, folk);
+                self.draw_elf(i, autumn, muertos, folk);
             }
         }
     }
 
-    fn draw_elf(&mut self, i: usize, autumn: bool, folk: Folk) {
+    fn draw_elf(&mut self, i: usize, autumn: bool, muertos: bool, folk: Folk) {
         let e = &self.elves[i];
         let sc = self.s * e.size;
         let gy = self.ground_y - heap_at(&self.heap, e.x) + 2.0 * self.s;
@@ -420,6 +420,26 @@ impl Layer {
         cr.scale((dir * sc) as f64, sc as f64);
         if autumn {
             animal(cr, e);
+            cr.set_matrix(saved);
+            return;
+        }
+        if muertos {
+            // De dødes dag: a calaca (`muertos.rs`), in the same pose as the elf it stands in for
+            let walking = e.state == ElfState::Walk;
+            let waving = e.state == ElfState::Wave;
+            super::muertos::calaca(
+                cr,
+                super::muertos::CalacaPose {
+                    tunic: tunic_index(e),
+                    gift: GIFTS.iter().position(|g| *g == e.gift).unwrap_or(0),
+                    walking,
+                    waving,
+                    carries_gift: e.carries_gift,
+                    walk: if walking { e.walk_phase as f64 } else { 0.0 },
+                    stand: if e.state == ElfState::Stand { e.t as f64 * 1.5 } else { 0.0 },
+                    wave: if waving { e.t as f64 * 11.0 } else { 0.0 },
+                },
+            );
             cr.set_matrix(saved);
             return;
         }

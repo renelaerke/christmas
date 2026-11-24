@@ -20,6 +20,7 @@ Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt übe
 - **Schneepflug:** fährt los und räumt den Schnee, wenn der Haufen hoch wird.
 - **Ton** ist aus, bis du ihn im Menü einschaltest: Schellen und eine Melodie für den Weihnachtsmann, Motor und Hupe für den Schneepflug.
 - **Herbst-Thema:** Das Menü „Thema“ tauscht den Schnee gegen fallendes Laub, den Weihnachtsmann gegen Zuggänse und den Schneemann gegen eine Vogelscheuche.
+- **Thema „Tag der Toten“:** Im selben Menü gibt es „De dødes dag“ (Día de los Muertos): Tagetes-Blütenblätter fallen, Skelette mit Sombrero laufen am unteren Rand, Monarchfalter fliegen vorbei, Papierfähnchen hängen am oberen Rand, und ein Altar wächst um einen Schritt für jede Stunde, die das Programm läuft.
 - Die Animation pausiert von selbst, solange eine App im Vollbild läuft (Spiele, Filme), und hält ganz an, wenn der Bildschirm gesperrt ist oder ruht.
 - Eine veröffentlichte Version hält sich selbst aktuell.
 

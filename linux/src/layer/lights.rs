@@ -40,10 +40,12 @@ pub(super) struct LightsImage {
     timer: f32,
     /// The autumn theme's form: a vine of leaves with small lanterns (`MakeGarland` on Windows).
     autumn: bool,
+    /// De dødes dag's form: papel picado, flags of cut paper with no lights of their own (so there are no bulbs).
+    muertos: bool,
 }
 
 impl LightsImage {
-    fn new(w: i32, h: i32, s: f64, autumn: bool, leaves: &[Vec<u32>]) -> Res<LightsImage> {
+    fn new(w: i32, h: i32, s: f64, autumn: bool, muertos: bool, leaves: &[Vec<u32>]) -> Res<LightsImage> {
         let (span, sag, top) = (230.0 * s, 22.0 * s, 1.0);
         let mut wire = Image::new(w, h)?;
         let mut bulbs = Vec::new();
@@ -57,12 +59,15 @@ impl LightsImage {
                 .collect();
             wire.cr.new_path();
             curve_path(&wire.cr, &pts);
-            if autumn {
+            if muertos {
+                stroke(&wire.cr, (200, 40, 30, 36), 2.0 * s, LineCap::Round);
+            } else if autumn {
                 stroke(&wire.cr, (235, 104, 68, 34), 2.0 * s, LineCap::Round);
             } else {
                 stroke(&wire.cr, (220, 25, 60, 35), 2.0 * s, LineCap::Butt);
             }
-            for b in 0..PER_SPAN {
+            // (the papel picado has no lights: nothing twinkles, and the flags are drawn below)
+            for b in (0..PER_SPAN).filter(|_| !muertos) {
                 let u = (b as f64 + 0.5) / PER_SPAN as f64;
                 let (x, y) = (x0 + u * span, top + sag * (1.0 - (2.0 * u - 1.0) * (2.0 * u - 1.0)));
                 let index = bulbs.len();
@@ -83,6 +88,10 @@ impl LightsImage {
             x0 += span;
         }
         wire.surface.flush();
+        if muertos {
+            super::muertos::papel_picado(&wire.cr, w as f64, s);
+            wire.surface.flush();
+        }
         if autumn {
             // leaves along the vine, each hanging by its stalk at its own angle (none where a lantern hangs)
             let (sf, mut n) = (s as f32, 0usize);
@@ -118,7 +127,7 @@ impl LightsImage {
             wire.surface.flush();
         }
         let current = Image::new(w, h)?;
-        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn };
+        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn, muertos };
         l.current.pixels.copy_from_slice(&l.wire.pixels);
         Ok(l)
     }
@@ -221,8 +230,8 @@ impl Layer {
             }
             return;
         }
-        if self.lights.as_ref().is_none_or(|l| l.h != lh || l.autumn != st.autumn) {
-            match LightsImage::new(self.w, lh, self.s as f64, st.autumn, &self.leaf_sprites) {
+        if self.lights.as_ref().is_none_or(|l| l.h != lh || l.autumn != st.autumn || l.muertos != st.muertos) {
+            match LightsImage::new(self.w, lh, self.s as f64, st.autumn, st.muertos, &self.leaf_sprites) {
                 Ok(l) => self.lights = Some(l),
                 Err(e) => {
                     crate::log::error(&format!("lights: {e}"));

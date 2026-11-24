@@ -42,7 +42,7 @@ fn overlaps(a: &Rect, b: &Rect) -> bool {
 
 impl Layer {
     /// True when this screen shows the ledge's snow now.
-    fn shows(&self, l: &Ledge) -> bool {
+    pub(super) fn shows(&self, l: &Ledge) -> bool {
         // a window dragged around (same size) takes its snow along, so the pile is hidden until it settles; a
         // window that shrinks (minimize) or is resized leaves the snow where it was until it is gone
         let dragged = l.moving && l.rect.w == l.settled.w && l.rect.h == l.settled.h;
@@ -253,7 +253,7 @@ impl Layer {
         let mut fresh: Vec<(&Ledge, Vec<Run>)> = Vec::new();
         for l in wanted.iter().filter(|l| redraw.contains(&l.id)) {
             let runs: Vec<Run> = self
-                .runs_for(l, u, st.autumn)
+                .runs_for(l, u, st.leaves())
                 .into_iter()
                 .map(|mut r| {
                     r.rect = r.rect.clip(self.w, self.h);
@@ -277,11 +277,11 @@ impl Layer {
         self.canvas.surface.mark_dirty();
         for (_, runs) in &fresh {
             for run in runs {
-                draw_run(&self.canvas.cr, run, u as f64, st.autumn);
+                draw_run(&self.canvas.cr, run, u as f64, st.pile_fill());
             }
         }
         self.canvas.surface.flush();
-        if st.autumn {
+        if st.leaves() {
             for (l, runs) in &fresh {
                 for run in runs {
                     self.lay_ledge_leaves(l, run, u);
@@ -327,7 +327,7 @@ impl Layer {
 
 /// One stretch: the pile's top from left to right, then back along the drape hanging below the edge. In autumn it
 /// is the dark between the leaves, without an outline.
-fn draw_run(cr: &Context, run: &Run, u: f64, autumn: bool) {
+fn draw_run(cr: &Context, run: &Run, u: f64, leaf_fill: Option<Argb>) {
     let b = run.base_y as f64;
     let top: Vec<(f64, f64)> = run.pts.iter().map(|p| (p.0 as f64, b - p.1 as f64)).collect();
     let low: Vec<(f64, f64)> = run.pts.iter().rev().map(|p| (p.0 as f64, b + 0.5 + p.2 as f64)).collect();
@@ -336,8 +336,8 @@ fn draw_run(cr: &Context, run: &Run, u: f64, autumn: bool) {
     curve_path(cr, &top);
     curve_path_joined(cr, &low);
     cr.close_path();
-    if autumn {
-        set(cr, (245, 122, 62, 24));
+    if let Some(col) = leaf_fill {
+        set(cr, col);
         let _ = cr.fill();
         return;
     }

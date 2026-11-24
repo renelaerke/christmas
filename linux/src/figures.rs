@@ -57,6 +57,17 @@ pub struct PlowRun {
 
 pub const PLOW_SPEED: f32 = 170.0;
 pub const PLOW_SCALE: f32 = 1.15;
+/// The Day of the Dead's donkey cart walks at a donkey's pace (a share of the plow's speed).
+pub const CART_PACE: f32 = 0.45;
+/// How fast the donkey's legs swing against the cart's wheel (radians of leg swing per radian of wheel turn).
+pub const DONKEY_STRIDE: f32 = 1.6;
+
+/// Seconds per step cycle of the donkey's legs (each leg lands once), worked out from how the drawing moves them:
+/// the legs swing with sin(wheel x DONKEY_STRIDE), and the wheel turns PLOW_SPEED x CART_PACE / (10 x PLOW_SCALE)
+/// radians a second. The hooves' sound is timed from it (`sound::donkey_cart`).
+pub fn donkey_step_cycle() -> f64 {
+    (std::f32::consts::TAU / DONKEY_STRIDE / (PLOW_SPEED * CART_PACE / (10.0 * PLOW_SCALE))) as f64
+}
 
 /// A screen as the figures see it.
 pub struct ScreenInfo {
@@ -83,6 +94,9 @@ pub struct Figures {
     /// The autumn theme (set by the controller): geese fly in Santa's place, at varying distance and with no
     /// trail of sparks.
     pub autumn: bool,
+    /// De dødes dag (set by the controller): monarch butterflies fly in Santa's place, also at varying distance
+    /// and with no sparks, and the plow is a donkey cart at a donkey's pace.
+    pub muertos: bool,
     /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
     pub flyer_depth: f32,
 }
@@ -121,6 +135,7 @@ impl Figures {
             santa_pace: 1.0,
             new_trip: false,
             autumn: false,
+            muertos: false,
             flyer_depth: 1.0,
         }
     }
@@ -161,7 +176,7 @@ impl Figures {
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
         let b = target.rect;
         // the geese pass at very different distances (as `flyerDepth` on Windows)
-        self.flyer_depth = if self.autumn { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
+        self.flyer_depth = if self.autumn || self.muertos { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
         let scale = target.s * self.flyer_depth;
         let y0 = b.y as f32 + b.h as f32 * (0.12 + self.rng.f() * 0.25);
         // fly over every screen at the same height
@@ -197,7 +212,7 @@ impl Figures {
         };
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
-        if !self.autumn {
+        if !self.autumn && !self.muertos {
             self.spark_acc += dt * 45.0;
         }
         let r = &mut self.rng;
@@ -292,6 +307,7 @@ impl Figures {
             }
             return;
         }
+        let pace = if self.muertos { CART_PACE } else { 1.0 };
         let p = &mut self.plow;
         // speed and size follow the screen the truck is on
         let here = p
@@ -300,8 +316,8 @@ impl Figures {
             .find(|&&i| p.gx >= screens[i].rect.x as f32 && p.gx < screens[i].rect.right() as f32)
             .or(p.members.first());
         let s = here.map_or(1.0, |&i| screens[i].s);
-        p.gx += p.dir * PLOW_SPEED * s * dt;
-        p.wheel += PLOW_SPEED * s * dt / (10.0 * s * PLOW_SCALE);
+        p.gx += p.dir * PLOW_SPEED * pace * s * dt;
+        p.wheel += PLOW_SPEED * pace * s * dt / (10.0 * s * PLOW_SCALE);
         let margin = 260.0 * s * PLOW_SCALE;
         if (p.dir > 0.0 && p.gx > p.max_x + margin) || (p.dir < 0.0 && p.gx < p.min_x - margin) {
             p.active = false;
