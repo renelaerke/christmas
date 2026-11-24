@@ -77,8 +77,9 @@ impl Layer {
 
         let g = self.ground_y;
         let max = self.heap.iter().cloned().fold(0.0f32, f32::max);
-        // the snowman stands on the pile at 78% of the width, on the primary screen only
-        let snowman = (self.primary && st.snowman_stage > 0).then(|| {
+        // autumn's haystack stands on the pile at 78% of the width, on the primary screen only (the Christmas
+        // snowman is built by children and drawn each frame: `build.rs`)
+        let snowman = (self.primary && st.snowman_stage > 0 && st.autumn).then(|| {
             let x = self.w as f32 * 0.78;
             (st.snowman_stage, x, g - heap_at(&self.heap, x) + 3.0 * s)
         });
@@ -147,7 +148,7 @@ impl Layer {
         cr.clip();
         cr.translate(0.0, -gi.y0 as f64);
         if let Some((stage, x, y)) = snowman {
-            snowman::draw(cr, x as f64, y as f64, s as f64, stage, st.autumn);
+            snowman::draw(cr, x as f64, y as f64, s as f64, stage);
         }
         if max >= 0.5 {
             draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.autumn);

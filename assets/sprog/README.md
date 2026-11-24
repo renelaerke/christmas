@@ -10,7 +10,7 @@ lets the user choose another.
 # a comment
 @name = Deutsch
 Snevejr = Schneefall
-Snemand (trin {0} af {1}) = Schneemann (Schritt {0} von {1})
+Høstak med fugleskræmsel (trin {0} af {1}) = Heuhaufen mit Vogelscheuche (Schritt {0} von {1})
 ```
 
 - One text per line: the Danish text, ` = `, the text in this language.

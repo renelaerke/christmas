@@ -39,6 +39,11 @@ pub struct Elf {
     meet_timer: f32,
     meet_cooldown: f32,
     meet_with: Option<u64>,
+    /// Magic past the children's snowman: gone for `magic` seconds, then back at `magic_to`. `zone_bumps` counts
+    /// the turns at the play zone since the last time.
+    magic: f32,
+    magic_to: f32,
+    zone_bumps: i32,
     tunic: Argb,
     mitten: Argb,
     gift: Argb,
@@ -47,6 +52,7 @@ pub struct Elf {
 impl Elf {
     fn free_to_meet(&self) -> bool {
         self.state == ElfState::Walk
+            && self.magic <= 0.0
             && self.meet_timer <= 0.0
             && self.meet_cooldown <= 0.0
             && !self.entering
@@ -133,6 +139,9 @@ impl Layer {
             meet_timer: 0.0,
             meet_cooldown: 0.0,
             meet_with: None,
+            magic: 0.0,
+            magic_to: 0.0,
+            zone_bumps: 0,
             tunic,
             mitten,
             gift,
@@ -192,10 +201,22 @@ impl Layer {
         }
 
         self.meet_elves();
+        let zone = self.play_zone(st);
+        // where an elf vanished or reappeared by magic (x, size)
+        let mut puffs: Vec<(f32, f32)> = Vec::new();
         let mut exchanges = Vec::new();
         for i in 0..self.elves.len() {
             let e = &mut self.elves[i];
             e.meet_cooldown = (e.meet_cooldown - dt).max(0.0);
+            if e.magic > 0.0 {
+                // vanished by magic: it reappears on the other side of the children, walking on
+                e.magic -= dt;
+                if e.magic <= 0.0 {
+                    e.x = e.magic_to;
+                    puffs.push((e.x, e.size));
+                }
+                continue;
+            }
             if e.meet_timer > 0.0 {
                 let before = e.meet_timer;
                 e.meet_timer -= dt;
@@ -223,6 +244,28 @@ impl Layer {
             }
             e.state_timer -= dt;
             if e.state == ElfState::Walk {
+                // The elves keep out of the way where the children build their snowman: they turn before it (one
+                // that is already inside when they begin just walks on out). One that is trapped behind the
+                // children (a narrow strip to the screen edge, or back at the children a second time) vanishes
+                // by magic and reappears on the other side, if there is room there.
+                if let Some((zl, zr)) = zone {
+                    let ahead = e.x + e.dir * 14.0 * s;
+                    if !e.entering && (e.x < zl || e.x > zr) && ahead >= zl && ahead <= zr {
+                        let to = if e.dir > 0.0 { zr + 20.0 * s } else { zl - 20.0 * s };
+                        let behind = if e.dir > 0.0 { zl } else { w - zr };
+                        let room = to > 45.0 * s && to < w - 45.0 * s;
+                        if room && (e.zone_bumps >= 1 || behind < 250.0 * s) {
+                            e.zone_bumps = 0;
+                            puffs.push((e.x, e.size));
+                            e.magic = 0.8;
+                            e.magic_to = to;
+                            crate::log::debug(&format!("elf magic past the children: x={} to {}", e.x as i32, to as i32));
+                            continue;
+                        }
+                        e.zone_bumps += 1;
+                        e.dir = -e.dir;
+                    }
+                }
                 e.x += e.dir * e.speed * dt;
                 e.walk_phase += dt * e.speed / (4.5 * s);
                 if e.entering && e.x > 30.0 * s && e.x < w - 30.0 * s {
@@ -278,6 +321,10 @@ impl Layer {
         }
         for (a, b) in exchanges {
             self.exchange_gifts(a, b);
+        }
+        for (x, size) in puffs {
+            let gy = self.ground_y - heap_at(&self.heap, x.clamp(0.0, w - 1.0)) + 2.0 * s;
+            self.magic_puffs.push((self.rect.x as f32 + x, self.rect.y as f32 + gy, s * size));
         }
 
         // Elves that walked off the screen continue on the neighbouring screen in that direction, if there is one
@@ -352,7 +399,10 @@ impl Layer {
     /// `folk`: who the walkers are in the Christmas theme (setting `Folk`).
     pub(super) fn draw_elves(&mut self, autumn: bool, folk: Folk) {
         for i in 0..self.elves.len() {
-            self.draw_elf(i, autumn, folk);
+            // (one that is gone by magic for a moment is not drawn)
+            if self.elves[i].magic <= 0.0 {
+                self.draw_elf(i, autumn, folk);
+            }
         }
     }
 

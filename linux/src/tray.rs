@@ -194,7 +194,7 @@ impl ksni::Tray for AppTray {
         let snowman = if autumn {
             text::menu_scarecrow(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
         } else {
-            text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+            text::MENU_SNOWMAN.to_string()
         };
         items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
         // (the kite only exists in autumn)

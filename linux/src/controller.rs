@@ -15,10 +15,11 @@ use x11rb::protocol::Event;
 
 use crate::calendar::{Calendar, CalendarAction};
 use crate::figures::{Figures, ScreenInfo};
-use crate::folk::{self, Folk};
+use crate::folk;
 use crate::layer::{Layer, PixelStore, Present, SceneState, SNOWMAN_MAX_STAGE};
 use crate::rng::Rng;
 use crate::session::SessionWatch;
+use crate::snowman_build::SnowmanBuild;
 use crate::settings::Settings;
 use crate::sound::{AudioHub, Voice};
 use crate::text;
@@ -77,7 +78,11 @@ pub struct Controller {
     tray_rx: Receiver<TrayMsg>,
     snapshot: Option<(PathBuf, f32)>,
     figures: Figures,
-    /// The snowman's stage today, 1..=12 (checked every 30 seconds, for the day changing at midnight).
+    /// The snowman the children build in the Christmas theme (drawn by the primary screen; it lives here, so it
+    /// survives the screens being rebuilt).
+    build: SnowmanBuild,
+    /// The stage today of what grows by the day (autumn's haystack), 1..=12 (checked every 30 seconds, for the day
+    /// changing at midnight).
     snowman_stage: i32,
     day_timer: f32,
     last_day: NaiveDate,
@@ -149,6 +154,7 @@ impl Controller {
         let snow_phase_a = rng.f64() * 2.0 * std::f64::consts::PI;
         let snow_phase_b = rng.f64() * 2.0 * std::f64::consts::PI;
         let figures_seed = rng.next_u64();
+        let build_seed = rng.next_u64();
         let (display_scale, window_snow_seed) = (display.dpi_scale, rng.next_u64());
         let mut c = Controller {
             display,
@@ -161,6 +167,7 @@ impl Controller {
             tray_rx,
             snapshot: opts.snapshot,
             figures: Figures::new(figures_seed),
+            build: SnowmanBuild::new(build_seed),
             snowman_stage: 1,
             day_timer: 30.0,
             last_day: today,
@@ -311,12 +318,12 @@ impl Controller {
         if self.snowman_stage > self.cfg.snowman_seen_stage {
             if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman {
                 let at = self.snowman_stage as usize - 1;
-                notice = Some(if self.cfg.theme == 1 {
-                    (text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false)
-                } else {
-                    (text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(text::SNOWMAN_STEPS[at], folk::chosen(self.cfg.folk) == Folk::Alfer), false)
-                });
-                self.celebrate_at = Some(self.time + 2.0);
+                // (only autumn's haystack grows by the day; the Christmas snowman is built while you watch)
+                if self.cfg.theme == 1 {
+                    notice =
+                        Some((text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false));
+                    self.celebrate_at = Some(self.time + 2.0);
+                }
             }
             self.cfg.snowman_seen_stage = self.snowman_stage;
             self.cfg.save();
@@ -804,6 +811,11 @@ impl Controller {
             let autumn = self.cfg.theme == 1;
             self.figures.autumn = autumn;
             self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
+            // In the Christmas theme children build the snowman; autumn's haystack grows by the day.
+            let children = self.cfg.snowman && !autumn;
+            if children {
+                self.update_build(dt);
+            }
 
             let amount = self.snow_amount();
             let level = if amount > 1.5 {
@@ -832,7 +844,8 @@ impl Controller {
                 lights: self.cfg.lights,
                 elves: self.cfg.elves,
                 elf_count: self.cfg.elf_count,
-                snowman_stage: if self.cfg.snowman { self.snowman_stage } else { 0 },
+                snowman_stage: if self.cfg.snowman && autumn { self.snowman_stage } else { 0 },
+                build: children.then_some(&self.build),
                 santa: self.figures.santa.as_ref(),
                 sparks: &self.figures.sparks,
                 plow: Some(&self.figures.plow),
@@ -925,7 +938,7 @@ impl Controller {
             if self.cfg.snowman {
                 if let Some(s) = self.screens.iter().find(|s| s.layer.primary) {
                     if let Some(pos) = s.layer.snowman_pos() {
-                        self.figures.snowman_celebrate(pos, s.layer.scale());
+                        self.figures.snowman_celebrate(pos, s.layer.scale(), false);
                     }
                 }
             }
@@ -967,8 +980,38 @@ impl Controller {
         }
     }
 
-    /// What the screens hand back after a frame: snow the plow scraped up, and elves walking over to a
-    /// neighbouring screen.
+    /// One frame of the children's snowman on the primary screen: it is told where the plow is (which runs it
+    /// down), sparkles fly when it is finished, and a few minutes later the plow is sent (`UpdateBuild` and the
+    /// start of `UpdatePlow` on Windows).
+    fn update_build(&mut self, dt: f32) {
+        let Some(p) = self.screens.iter().position(|s| s.layer.primary) else { return };
+        let layer = &self.screens[p].layer;
+        // (a fullscreen app pauses the screen, and the story with it)
+        if layer.paused() {
+            return;
+        }
+        let (x0, s, width) = (layer.rect.x as f32, layer.scale(), layer.rect.w as f32);
+        let pos = layer.snowman_pos();
+        let plow = &self.figures.plow;
+        let truck = (plow.active && plow.members.contains(&p)).then(|| ((plow.gx - x0) / s, plow.dir));
+        let pushed = self.build.update(dt, width / s, truck);
+        self.figures.plow.pushed += pushed * s;
+        if self.build.just_finished {
+            if let Some(pos) = pos {
+                self.figures.snowman_celebrate(pos, s, true);
+            }
+        }
+        if self.build.wants_plow {
+            self.build.wants_plow = false;
+            if self.cfg.plow && !self.figures.plow.active {
+                let screens = self.screen_infos();
+                self.figures.send_plow(&screens);
+            }
+        }
+    }
+
+    /// What the screens hand back after a frame: snow the plow scraped up, elves walking over to a neighbouring
+    /// screen, and where an elf vanished by magic.
     fn after_frame(&mut self) {
         for i in 0..self.screens.len() {
             self.figures.plow.pushed += self.screens[i].layer.take_pushed();
@@ -983,6 +1026,9 @@ impl Controller {
                 }
             }
             let from_scale = self.screens[i].layer.scale();
+            for (x, y, sc) in self.screens[i].layer.take_magic_puffs() {
+                self.figures.magic_puff((x, y), sc, from_scale);
+            }
             for elf in self.screens[i].layer.take_outgoing_elves() {
                 let rects: Vec<Rect> = self.screens.iter().map(|s| s.layer.rect).collect();
                 if let Some(j) = crate::figures::neighbor(&rects, i, elf.dir()) {

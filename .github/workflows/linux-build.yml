@@ -124,6 +124,21 @@ jobs:
           [ "$code" = 124 ] || exit 1
           test -s "$RUNNER_TEMP/shots-efteraar/screen0.png"
           cp "$RUNNER_TEMP/shots-efteraar/screen0.png" build/screen0-efteraar.png
+          # the children's snowman at three points of its story, to look at: being dressed, the snowball fight,
+          # and the plow just after it has run the snowman down (the blade reaches x=900 about 6.5 s in)
+          printf 'FirstRun=2020-01-01\nSnowLevel=1\nSanta=0\nNisseCount=8\n' > "$RUNNER_TEMP/snemand.ini"
+          for shot in snemand:860,900:4: sneboldkamp:898,900:14: snemand-plov:898,900:7:--plow=1; do
+            IFS=: read -r name start secs extra <<< "$shot"
+            set +e
+            JULE_SETTINGS="$RUNNER_TEMP/snemand.ini" JULE_DEEPSNOW=1 JULE_SNOWMAN_START="$start" xvfb-run -a -s "-screen 0 1920x1080x24" timeout $((secs + 6)) build/JuleHygge $extra --snapshot="$RUNNER_TEMP/shots-$name,$secs"
+            code=$?
+            set -e
+            [ "$code" = 124 ] || exit 1
+            test -s "$RUNNER_TEMP/shots-$name/screen0.png"
+            cp "$RUNNER_TEMP/shots-$name/screen0.png" "build/screen0-$name.png"
+          done
+          grep 'snowman:' "$XDG_RUNTIME_DIR/julehygge-debug.log"
+          grep -q 'snowman: run down by the plow' "$XDG_RUNTIME_DIR/julehygge-debug.log"
           # who the walkers are (setting Folk): the rule by language and region, and a picture of each folk but
           # the nisser (who are in the first picture) to look at
           JULE_LOCALE=en_US build/JuleHygge --folk-test | tee "$RUNNER_TEMP/folk.txt"
@@ -164,6 +179,9 @@ jobs:
             linux/build/screen0-wichtel.png
             linux/build/screen0-kabouter.png
             linux/build/screen0-paekapikk.png
+            linux/build/screen0-snemand.png
+            linux/build/screen0-sneboldkamp.png
+            linux/build/screen0-snemand-plov.png
             linux/Cargo.lock
 
       - name: Attach to the release
