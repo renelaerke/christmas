@@ -224,13 +224,14 @@ final class NisseCostume {
         // red cloth with the clothes' own light and shade
         let gray = cam.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.25, kCIInputBrightnessKey: 0.02])
         // (in autumn the same cloth is a yellow raincoat)
-        let autumn = CameraCostume.autumn
+        // (and each folk has its own colour: see CameraLook)
+        let autumn = CameraCostume.autumn, look = CameraCostume.look
         let red = gray.applyingFilter("CIColorMatrix", parameters: [
-            "inputRVector": CIVector(x: autumn ? 0.50 : 0.9, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: autumn ? 0.42 : 0.10, y: 0, z: 0, w: 0),
-            "inputBVector": CIVector(x: autumn ? 0.03 : 0.12, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            "inputRVector": CIVector(x: autumn ? 0.50 : look.suit.r, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: autumn ? 0.42 : look.suit.g, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: autumn ? 0.03 : look.suit.b, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
             // (dark clothes came out olive with the red suit's small lift: the yellow needs a higher floor)
             // (both a touch clearer 2026-11-19: yellow from mustard toward oilskin, red with less grey in it)
-            "inputBiasVector": autumn ? CIVector(x: 0.60, y: 0.47, z: 0.0, w: 0) : CIVector(x: 0.38, y: 0.01, z: 0.03, w: 0)])
+            "inputBiasVector": autumn ? CIVector(x: 0.60, y: 0.47, z: 0.0, w: 0) : CIVector(x: look.suitFloor.r, y: look.suitFloor.g, z: look.suitFloor.b, w: 0)])
         // where: the person, not the head, and only the clothes
         // The cut-out fades the person out over a few pixels at the outline. The red must cover the clothes all the
         // way through that fade (what lies outside is cut away anyway); fading the red with the same mask left a
@@ -560,7 +561,8 @@ final class NisseCostume {
         var bounds = CGRect.null
         for s in shapes {
             for p in s.contour { bounds = bounds.union(CGRect(origin: p, size: .zero)) }
-            bounds = bounds.union(CGRect(origin: s.chin - s.up * (s.fh * 0.6), size: .zero))
+            // (a longer beard, as the Wichtel's, needs more room below the chin)
+            bounds = bounds.union(CGRect(origin: s.chin - s.up * (s.fh * 0.6 * max(1, CameraCostume.look.beard)), size: .zero))
             bounds = bounds.union(CGRect(x: s.centre.x - s.fh * 1.5, y: s.centre.y - s.fh * 1.7, width: s.fh * 3, height: s.fh * 2.6))
         }
         bounds = bounds.insetBy(dx: -40, dy: -40).intersection(extent).integral
@@ -635,7 +637,8 @@ final class NisseCostume {
             // the jaw bone stays covered. (Nearly full length all the way out made the bottom too broad.)
             // (rounded: full under the chin and a good way out, then shorter; a straight shortening from the chin
             // out made the beard end in a point)
-            let hang = f.size * (0.5 * max(0, 1 - pow(u / 0.95, 1.5)) + 0.06) * (1 - up2)
+            // (the folk's beard is longer or shorter than the nisse's: only what hangs below the jaw changes)
+            let hang = f.size * (0.5 * CGFloat(CameraCostume.look.beard) * max(0, 1 - pow(u / 0.95, 1.5)) + 0.06) * (1 - up2)
             bottom.append(place(wBottom * sp + out * nx, z + out * nz, jawLine - hang))
         }
         guard let a = seen.firstIndex(of: true), let b = seen.lastIndex(of: true), b - a >= 4 else { return nil }
@@ -700,7 +703,7 @@ final class NisseCostume {
                 let p = k < i1 ? s.contour[k] + (s.contour[k + 1] - s.contour[k]) * f : s.contour[k]
                 let t = (CGFloat(k - i0) + f) / CGFloat(max(1, i1 - i0))
                 let out = norm(p - s.centre)
-                let hang = pow(sin(.pi * t), 1.3) * s.fh * 0.5
+                let hang = pow(sin(.pi * t), 1.3) * s.fh * 0.5 * CGFloat(CameraCostume.look.beard)
                 // soft curls: a small wave along the edge, fixed to the beard (not flickering)
                 let curl = s.fw * 0.05 * sin(.pi * t) * (abs(sin(t * 26)) * 0.8 + abs(sin(t * 63)) * 0.2)
                 outer.append(p + out * (s.fw * (0.04 + 0.08 * sin(.pi * t)) + curl) - up * hang)

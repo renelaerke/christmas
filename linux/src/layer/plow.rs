@@ -6,7 +6,7 @@ use cairo::LineCap;
 
 use super::draw::*;
 use super::elves::ElfState;
-use super::{heap_at, Layer, SceneState, HEAP_STEP};
+use super::{blend_leaf, heap_at, leaf_sprite, Layer, SceneState, HEAP_STEP, LEAF_COLOURS};
 use crate::figures::{PlowRun, PLOW_SCALE};
 
 pub(super) struct PlowBit {
@@ -18,6 +18,8 @@ pub(super) struct PlowBit {
     max: f32,
     size: f32,
     smoke: bool,
+    /// Which leaf it is, in the autumn theme.
+    kind: usize,
 }
 
 /// The plow as this screen sees it: x in screen coordinates.
@@ -82,7 +84,27 @@ impl Layer {
         if let Some(h) = here.filter(|h| self.plow_on_screen(h)) {
             let gy = self.ground_y - heap_at(&self.heap, h.x) + s;
             let ph = self.plow_pile_height(h.pushed);
-            if ph > 10.0 {
+            if st.autumn {
+                // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
+                if ph > 6.0 {
+                    self.plow_chunk_acc += dt * 14.0;
+                    while self.plow_chunk_acc >= 1.0 {
+                        self.plow_chunk_acc -= 1.0;
+                        let r = &mut self.rng;
+                        self.plow_bits.push(PlowBit {
+                            x: h.x + h.dir * (58.0 + r.f() * 26.0) * sc,
+                            y: gy - (2.0 + r.f() * 10.0) * sc,
+                            vx: h.dir * (r.f() - 0.35) * 110.0 * s,
+                            vy: -(90.0 + r.f() * 150.0) * s,
+                            life: 2.0,
+                            max: 2.0,
+                            size: (4.0 + r.f() * 3.0) * s,
+                            smoke: false,
+                            kind: r.range(0, 1000) as usize,
+                        });
+                    }
+                }
+            } else if ph > 10.0 {
                 self.plow_chunk_acc += dt * 30.0;
                 while self.plow_chunk_acc >= 1.0 {
                     self.plow_chunk_acc -= 1.0;
@@ -96,6 +118,7 @@ impl Layer {
                         max: 2.0,
                         size: (1.5 + r.f() * 2.5) * s,
                         smoke: false,
+                        kind: 0,
                     });
                 }
             }
@@ -111,6 +134,7 @@ impl Layer {
                     max: 1.6,
                     size: 5.0 * s,
                     smoke: true,
+                    kind: 0,
                 });
             }
             // the elves wave at the truck as it passes
@@ -143,8 +167,28 @@ impl Layer {
     }
 
     pub(super) fn draw_plow(&mut self, st: &SceneState) {
+        if st.autumn && self.plow_bits.iter().any(|b| !b.smoke) {
+            // the leaves the leaf collector whirls up, turning as they fly (straight into the pixels, as the
+            // falling ones)
+            self.canvas.surface.flush();
+            let (w, h) = (self.w, self.h);
+            for i in 0..self.plow_bits.len() {
+                let b = &self.plow_bits[i];
+                if b.smoke {
+                    continue;
+                }
+                let (x, y, size, rot, kind) = (b.x, b.y, b.size * 2.6, b.life * 7.0 + b.kind as f32, b.kind);
+                self.mark(x - size * 0.71, y - size * 0.71, size * 1.42, size * 1.42);
+                let Some(sprite) = self.leaf_sprites.get(leaf_sprite(kind)) else { continue };
+                blend_leaf(&mut self.canvas.pixels[..], w, h, sprite, x, y, size, rot, 255);
+            }
+            self.canvas.surface.mark_dirty();
+        }
         for i in 0..self.plow_bits.len() {
             let b = &self.plow_bits[i];
+            if st.autumn && !b.smoke {
+                continue;
+            }
             let (x, y, size) = (b.x, b.y, b.size);
             let col = if b.smoke { ((90.0 * b.life / b.max) as u8, 120, 120, 125) } else { (235, 250, 252, 255) };
             self.mark(x - size, y - size, size * 2.0, size * 2.0);
@@ -163,6 +207,11 @@ impl Layer {
         let saved = cr.matrix();
         cr.translate(h.x as f64, gy as f64);
         cr.scale((h.dir * sc) as f64, sc as f64);
+        if st.autumn {
+            leaf_collector(cr, ph, h.wheel as f64, st.time);
+            cr.set_matrix(saved);
+            return;
+        }
 
         let orange = rgb(235, 130, 20);
         let orange_dark = rgb(185, 95, 10);
@@ -246,4 +295,68 @@ impl Layer {
         stroke(cr, rgb(130, 95, 10), 1.2, LineCap::Butt);
         cr.set_matrix(saved);
     }
+}
+
+/// Autumn's form of the snow plow (`DrawLeafCollector` on Windows): the same truck in green, with a suction nozzle
+/// and hose in place of the blade, and an open body heaped with leaves in place of the salt spreader. `ph` is how
+/// much it has taken (the height the snow pile in front of the blade would have). Drawn in the plow's frame.
+fn leaf_collector(cr: &cairo::Context, ph: f64, wheel: f64, time: f64) {
+    let (o, od) = (rgb(72, 138, 78), rgb(44, 96, 52));
+    let (dark, grey, glass) = (rgb(50, 50, 55), rgb(110, 110, 115), rgb(175, 210, 235));
+    // exhaust stack
+    fill_rect(cr, grey, -4.0, -76.0, 4.0, 30.0);
+    // the hose rises in front of the cab and bends back over it into the body (drawn first, so the cab hides part
+    // of it)
+    for (col, width) in [(rgb(38, 38, 42), 8.0), (rgb(90, 90, 96), 1.5)] {
+        cr.new_path();
+        cr.move_to(62.0, -12.0);
+        cr.curve_to(66.0, -62.0, 38.0, -80.0, -10.0, -56.0);
+        stroke(cr, col, width, LineCap::Round);
+    }
+    // leaves heaped over the edge of the body
+    let n = LEAF_COLOURS.len();
+    for (i, hx) in [-74.0, -63.0, -52.0, -41.0, -30.0, -19.0].into_iter().enumerate() {
+        let odd = (i % 2) as f64 * 3.0;
+        fill_ellipse(cr, LEAF_COLOURS[(i * 2) % n], hx - 8.0, -62.0 + odd, 16.0, 12.0);
+        fill_ellipse(cr, LEAF_COLOURS[(i * 2 + 1) % n], hx - 2.0, -59.0 - odd, 12.0, 9.0);
+    }
+    // dump body with ribs and a reflective stripe
+    fill_rect(cr, o, -80.0, -50.0, 74.0, 36.0);
+    fill_rect(cr, od, -82.0, -53.0, 78.0, 5.0);
+    for rx in [-62.0, -44.0, -26.0] {
+        line(cr, od, 2.0, LineCap::Butt, rx, -48.0, rx, -16.0);
+    }
+    // cab
+    fill_polygon(cr, o, &[(-2.0, -14.0), (-2.0, -64.0), (26.0, -64.0), (40.0, -44.0), (43.0, -14.0)]);
+    fill_polygon(cr, glass, &[(14.0, -59.0), (25.0, -59.0), (36.0, -43.0), (14.0, -43.0)]);
+    fill_rect(cr, glass, 1.0, -59.0, 10.0, 16.0);
+    line(cr, od, 1.2, LineCap::Butt, 12.0, -60.0, 12.0, -16.0);
+    fill_rect(cr, dark, 4.0, -38.0, 5.0, 2.0);
+    fill_rect(cr, (230, 255, 255, 255), -80.0, -26.0, 123.0, 3.0);
+    fill_ellipse(cr, rgb(255, 245, 190), 38.0, -26.0, 5.0, 5.0);
+    // amber beacon on the roof, flashing
+    fill_rect(cr, dark, 12.0, -68.0, 10.0, 4.0);
+    let flash = 0.5 + 0.5 * (time * 12.0).sin();
+    fill_ellipse(cr, ((150.0 * flash) as u8, 255, 170, 0), 3.0, -82.0, 28.0, 24.0);
+    fill_ellipse(cr, rgb(255, (200.0 + 55.0 * flash) as u8, (120.0 + 60.0 * flash) as u8), 13.0, -74.0, 8.0, 7.0);
+    // chassis and wheels with rotating spokes
+    fill_rect(cr, dark, -86.0, -16.0, 132.0, 7.0);
+    for wx in [-58.0, -32.0, 26.0] {
+        fill_ellipse(cr, rgb(30, 30, 32), wx - 10.0, -20.0, 20.0, 20.0);
+        fill_ellipse(cr, rgb(160, 160, 165), wx - 5.0, -15.0, 10.0, 10.0);
+        for k in 0..3 {
+            let a = wheel + k as f64 * std::f64::consts::FRAC_PI_3;
+            let (dx, dy) = (a.cos() * 5.0, a.sin() * 5.0);
+            line(cr, rgb(60, 60, 65), 1.6, LineCap::Butt, wx - dx, -10.0 - dy, wx + dx, -10.0 + dy);
+        }
+    }
+    // the leaves it is about to take, and the wide nozzle at the ground with a warning stripe
+    for (i, ax) in [74.0, 82.0, 90.0, 98.0].into_iter().enumerate() {
+        if ((i * 7) as f64) < ph {
+            fill_ellipse(cr, LEAF_COLOURS[i % n], ax - 7.0, -7.0 - (i % 2) as f64 * 3.0, 14.0, 9.0);
+        }
+    }
+    line(cr, rgb(80, 80, 85), 3.0, LineCap::Butt, 42.0, -12.0, 56.0, -14.0);
+    fill_polygon(cr, dark, &[(54.0, -18.0), (70.0, -18.0), (80.0, 2.0), (50.0, 2.0)]);
+    fill_rect(cr, rgb(250, 195, 30), 51.0, -3.0, 28.0, 3.0);
 }

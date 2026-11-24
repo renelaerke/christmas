@@ -319,7 +319,7 @@ extension NisseHat {
             }
             if costume.parts.lastMs > 0, !costume.shapes.isEmpty { partsMs.append(costume.parts.lastMs) }
             // (autumn's costume has no beard; HUE_EFTERAAR=1 replays the sou'wester and the raincoat)
-            if !CameraCostume.autumn, !muertos, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
+            if !CameraCostume.autumn, !muertos, CameraCostume.look.beard > 0, let beard = costume.beardImage(extent: src.extent) { out = beard.composited(over: out) }
             out = hat.apply(to: out, person: mask)
             for s in costume.shapes {
                 for (i, p) in s.marks.enumerated() where p.x.isFinite && p.y.isFinite && !muertos {

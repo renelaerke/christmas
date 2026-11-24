@@ -1,5 +1,6 @@
 //! All user-facing text, in one place. It is Danish, like in the Windows and macOS versions (see AGENTS.md);
-//! code, identifiers and comments are English. Where Windows says "proceslinjen" (the taskbar), Linux says
+//! code, identifiers and comments are English. The menu's texts are shown in the user's language: the Danish text
+//! here is the key to its translation (see `lang.rs` and `assets/sprog`), and the tray menu's helpers look it up. Where Windows says "proceslinjen" (the taskbar), Linux says
 //! "panelet" (the panel).
 
 /// Tray menu: quit the app.
@@ -26,8 +27,32 @@ pub const MENU_SOUND: &str = "Lyd: bjælder og jingle når julemanden flyver";
 pub const MENU_PLOW_SOUND: &str = "Lyd: motor, skraben og horn fra sneploven";
 pub const MENU_VOLUME: &str = "Lydstyrke";
 pub const VOLUMES: [&str; 3] = ["Lav", "Middel", "Høj"];
-pub const MENU_ELVES: &str = "Nisser";
-pub const MENU_ELF_COUNT: &str = "Antal nisser pr. skærm";
+// The walkers (see `folk.rs`): the two items are named after the folk that walks (indexed by `Folk::index`), and
+// the choice between the folks.
+pub const MENU_WALKERS: [&str; 5] = ["Nisser", "Alfer", "Wichtel", "Kabouters", "Päkapikud"];
+pub const MENU_WALKER_COUNT: [&str; 5] = [
+    "Antal nisser pr. skærm",
+    "Antal alfer pr. skærm",
+    "Antal Wichtel pr. skærm",
+    "Antal kabouters pr. skærm",
+    "Antal päkapikud pr. skærm",
+];
+pub const MENU_FOLK: &str = "Nisser eller alfer";
+/// The menu's language (see `lang.rs`).
+pub const MENU_LANGUAGE: &str = "Sprog";
+
+/// The automatic language, with which one that is on this machine.
+pub fn menu_language_automatic(name: &str) -> String {
+    crate::lang::trf("Automatisk ({0})", &[name])
+}
+/// Indexed by `Folk::index`.
+pub const FOLK: [&str; 5] =
+    ["Nisser", "Alfer", "Wichtel (tyske nisser)", "Kabouters (hollandske nisser)", "Päkapikud (estiske nisser)"];
+
+/// The automatic choice, with what it came to on this machine.
+pub fn menu_folk_automatic(folk: &str) -> String {
+    crate::lang::trf("Automatisk efter sprog og land ({0})", &[crate::lang::tr(folk).as_str()])
+}
 pub const MENU_POWER_SAVE: &str = "Strømspare";
 /// Indexed by the `PowerSave` setting (0 off, 1 on, 2 only on battery).
 pub const POWER_SAVE: [&str; 3] =
@@ -49,7 +74,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 
 // ---------------------------------------------------------------------- the autumn theme (menu "Tema")
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
-// Windows versions). Items whose element has no autumn form on Linux yet are left out of the menu in autumn.
+// Windows versions).
 pub const MENU_THEME: &str = "Tema";
 pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
 pub const MENU_LEAVES: &str = "Løvfald";
@@ -57,6 +82,41 @@ pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
 pub const MENU_LEAF_GROUND: &str = "Blade på panelet";
 pub const MENU_WINDOW_LEAVES: &str = "Blade på vinduerne";
+pub const MENU_GEESE: &str = "Trækgæs";
+pub const MENU_SEND_GEESE: &str = "Send gæssene afsted nu!";
+pub const MENU_GOOSE_SOUND: &str = "Lyd: gåsetræk når gæssene flyver";
+pub const MENU_LEAF_COLLECTOR_SOUND: &str = "Lyd: motor, sug og horn fra løvsugeren";
+pub const MENU_KITE: &str = "Drage";
+pub const MENU_GARLAND: &str = "Løvranke med lygter";
+pub const MENU_LEAF_COLLECTOR: &str = "Løvsuger rydder panelet";
+pub const MENU_SEND_LEAF_COLLECTOR: &str = "Send løvsugeren ud nu!";
+pub const MENU_ANIMALS: &str = "Pindsvin og egern";
+pub const MENU_ANIMAL_COUNT: &str = "Antal dyr pr. skærm";
+pub const NOTICE_SCARECROW_TITLE: &str = "Høstakken vokser!";
+
+pub fn menu_scarecrow(stage: i32, max: i32) -> String {
+    crate::lang::trf("Høstak med fugleskræmsel (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+pub fn notice_scarecrow(step: &str) -> String {
+    format!("Pindsvinene og egernene har bygget videre. I dag kom der {step}")
+}
+
+/// What the haystack and the scarecrow got on each day (stage 1..=12).
+pub const SCARECROW_STEPS: [&str; 12] = [
+    "en lille bunke hø",
+    "mere hø",
+    "en hel høstak",
+    "en stolpe til fugleskræmslet",
+    "en tværpind til armene",
+    "et hoved af sækkelærred",
+    "en ternet skjorte",
+    "hænder af halm",
+    "et ansigt",
+    "et grønt halstørklæde",
+    "en stråhat",
+    "et græskar og en krage - fugleskræmslet er færdigt!",
+];
 pub const FRAME_RATES_AUTUMN: [&str; 4] = [
     "12 billeder/s - mindst strøm",
     "20 billeder/s - normal",
@@ -65,19 +125,19 @@ pub const FRAME_RATES_AUTUMN: [&str; 4] = [
 ];
 
 pub fn menu_version(v: &str) -> String {
-    format!("Version {v}")
+    crate::lang::trf("Version {0}", &[v])
 }
 
 pub fn menu_snowman(stage: i32, max: i32) -> String {
-    format!("Snemand (trin {stage} af {max})")
+    crate::lang::trf("Snemand (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
 }
 
 /// "★ 12 dage til juleaften ★" for the given number of days.
 pub fn countdown(days: i64) -> String {
     match days {
-        0 => "★ Glædelig jul! ★".into(),
-        1 => "★ 1 dag til juleaften ★".into(),
-        d => format!("★ {d} dage til juleaften ★"),
+        0 => crate::lang::tr("★ Glædelig jul! ★"),
+        1 => crate::lang::tr("★ 1 dag til juleaften ★"),
+        d => crate::lang::trf("★ {0} dage til juleaften ★", &[d.to_string().as_str()]),
     }
 }
 
@@ -109,8 +169,9 @@ pub fn notice_install_failed(v: &str, e: &str) -> String {
     format!("Kunne ikke installere version {v}: {e}")
 }
 
-pub fn notice_snowman(step: &str) -> String {
-    format!("Nisserne har bygget videre på snemanden. I dag fik den {step}")
+pub fn notice_snowman(step: &str, alfer: bool) -> String {
+    let who = if alfer { "Alferne" } else { "Nisserne" };
+    format!("{who} har bygget videre på snemanden. I dag fik den {step}")
 }
 
 pub fn notice_door(day: u32) -> String {

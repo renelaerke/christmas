@@ -590,7 +590,7 @@ final class NisseHat {
 
     /// The last crown share learned from any head (see `parts`).
     private var crownShareSeen: Double?
-    private enum Item { case quad([V], CGColor), ball(V, Double, Double), flower(V, Double, Int, Double) }
+    private enum Item { case quad([V], CGColor), ball(V, Double, Double), disc(V, Double, CGColor), flower(V, Double, Int, Double) }
     private static let light = simd_normalize(V(-0.45, 0.6, 0.7))
 
     /// Everything the hat is made of, in the head's frame (pixels; x along the eye line, y up the head, z toward the
@@ -633,7 +633,10 @@ final class NisseHat {
         pts.append(P2(t.crownX, top + mg))
         // (a sou'wester's crown is low and round: two more points beside the top one keep it from ending in a peak)
         if CameraCostume.autumn { pts.append(P2(t.crownX - 0.38 * U, top + mg * 0.8)); pts.append(P2(t.crownX + 0.38 * U, top + mg * 0.8)) }
-        let L = Self.free * U
+        // (the folk's look: the tip's length and bend, the cloth, what is round the brow and at the tip)
+        let look = CameraLook.of(CameraCostume.folk)
+        let free = Self.free * look.free, bendBy = Self.bend * look.bend
+        let L = free * U
         // Autumn's hat is a sou'wester: the same cloth on the measured head, but closed in a dome over the crown
         // instead of running on into a long bent tip, and with a stiff brim in place of the fur (see below).
         let autumn = CameraCostume.autumn
@@ -643,13 +646,13 @@ final class NisseHat {
 
         // the part above the head bends over: the centre line by its length, and how far it has turned there
         let vBend = top + Self.bendStart * U * Y.y
-        let Lf = (Self.free - Self.bendStart) * U
+        let Lf = (free - Self.bendStart) * U
         let D = simd_normalize(X * 0.8 - Z * 0.6)   // toward the person's side and back
         let axis = simd_normalize(simd_cross(Y, D))
         let steps = 48
         var curve = [V(0, 0, 0)]
         for i in 1...steps {
-            let al = Self.bend * pow((Double(i) - 0.5) / Double(steps), 1.6)
+            let al = bendBy * pow((Double(i) - 0.5) / Double(steps), 1.6)
             let dirn: V = cos(al) * Y + sin(al) * D
             curve.append(curve[i - 1] + dirn * (Lf / Double(steps)))
         }
@@ -685,7 +688,7 @@ final class NisseHat {
             }
             if v > vBend && !autumn {
                 let along = (v - vBend) / Y.y, w = along / Lf
-                let Rb = Self.rotationMatrix(axis * (Self.bend * pow(min(1, w), 1.6)))
+                let Rb = Self.rotationMatrix(axis * (bendBy * pow(min(1, w), 1.6)))
                 let straight = Qb + Y * along, moved = Qb + bent(w)
                 ring = ring.map { moved + Rb * ($0 - straight) }
                 c = moved + Rb * (c - straight)
@@ -714,8 +717,8 @@ final class NisseHat {
                 let shade = 0.32 + 0.68 * diffuse
                 let col = autumn
                     ? CGColor(srgbRed: min(1, 0.97 * shade + spec), green: min(1, 0.77 * shade + spec), blue: min(1, 0.08 * shade + spec * 0.8), alpha: 1)
-                    : CGColor(srgbRed: min(1, 0.80 * shade + spec), green: min(1, 0.07 * shade + spec * 0.9),
-                              blue: min(1, 0.12 * shade + spec * 0.9), alpha: 1)
+                    : CGColor(srgbRed: min(1, look.cloth.r * shade + spec), green: min(1, look.cloth.g * shade + spec * 0.9),
+                              blue: min(1, look.cloth.b * shade + spec * 0.9), alpha: 1)
                 front.append((m.z, .quad(q, col)))
             }
         }
@@ -756,9 +759,47 @@ final class NisseHat {
             }
             return (back, front, centres.last ?? g.centre)
         }
-        // pompom at the tip
+        // at the tip: the nisse's pompom, the elf's bell, or nothing
         let tip = Qb + bent(1)
-        front.append((tip.z + Self.pompom * U, .ball(tip, Self.pompom * U, 0.9)))
+        switch look.tip {
+        case .pompom: front.append((tip.z + Self.pompom * U, .ball(tip, Self.pompom * U, 0.9)))
+        case .bell: front.append((tip.z + Self.pompom * U, .disc(tip, Self.pompom * U * 0.8, CGColor(srgbRed: 0.92, green: 0.76, blue: 0.27, alpha: 1))))
+        case .bare: break
+        }
+
+        // ---- a band of cloth round the brow where the nisse hat has its fur: plain, or with teeth pointing up
+        let bandColour: CameraLook.RGB?, teeth: Bool
+        switch look.band {
+        case .fur: bandColour = nil; teeth = false
+        case let .plain(c): bandColour = c; teeth = false
+        case let .jagged(c): bandColour = c; teeth = true
+        }
+        if let bc = bandColour {
+            let n = 40
+            /// A point on the band: round the ring at `i`, a little out from the head, `lift` fur radii up the ring's axis.
+            func at(_ i: Double, _ lift: Double) -> (p: V, nrm: V) {
+                let ph = i / Double(n) * 2 * .pi, sp = sin(ph), cp = cos(ph)
+                let nrm: V = simd_normalize((k * sp) * X + cp * g.B)
+                let onRing: V = g.centre + (g.a * sp) * X + (g.a * k * cp) * g.B
+                // (as far out as the fur stands, so the band covers the cloth's lower edge all the way round)
+                return (onRing + nrm * (rf * 1.0) + g.N * (lift * rf), nrm)
+            }
+            func add(_ q: [V], _ nrm: V) {
+                let m = q.reduce(V(0, 0, 0), +) / Double(q.count)
+                let shade = 0.5 + 0.5 * max(0, simd_dot(nrm, lightH))
+                let col = CGColor(srgbRed: min(1, bc.r * shade), green: min(1, bc.g * shade), blue: min(1, bc.b * shade), alpha: 1)
+                // as the fur: the near half lies on the forehead and is drawn after the cloth, the far half goes behind the head
+                if nrm.z >= 0 { front.append((1e6 + m.z, .quad(q, col))) } else if m.y >= vLow { back.append((m.z, .quad(q, col))) }
+            }
+            let low = -1.4, high = teeth ? 0.3 : 1.1
+            for i in 0..<n {
+                let a = at(Double(i), low), b = at(Double(i + 1), low), c = at(Double(i + 1), high), d = at(Double(i), high)
+                let mid = at(Double(i) + 0.5, 0)
+                add([a.p, b.p, c.p, d.p], mid.nrm)
+                if teeth { add([d.p, c.p, at(Double(i) + 0.5, 1.7).p], mid.nrm) }
+            }
+            return (back, front, tip)
+        }
 
         // ---- the fur brim: two rows of fluffy balls round the ring, a little out from the head
         let balls = 56
@@ -912,6 +953,10 @@ final class NisseHat {
                 bounds = bounds.union(CGRect(x: p.x - r * 1.5, y: p.y - r * 1.5, width: r * 3, height: r * 3))
                 flowers[items.count] = which
                 items.append((z, [p], nil, CGFloat(r), shade))
+            case let .disc(c, r, col):
+                let p = screen(c)
+                bounds = bounds.union(CGRect(x: p.x - r * 1.5, y: p.y - r * 1.5, width: r * 3, height: r * 3))
+                items.append((z, [p], col, CGFloat(r), 0))
             }
         }
         let flowerOf = flowers
@@ -926,6 +971,7 @@ final class NisseHat {
         for i in order {
             let (_, pts, col, r, shade) = items[i]
             if let which = flowerOf[i] {
+                // a flower of the Day of the Dead's crown
                 let all = Self.marigoldFlowers + Self.otherFlowers
                 let (light, darkImg) = all[min(which, all.count - 1)]
                 let p = pts[0]
@@ -934,6 +980,14 @@ final class NisseHat {
                 g.setAlpha(alpha * CGFloat(max(0, min(1, (1 - shade) * 1.1))))
                 g.draw(darkImg, in: rect)
                 g.setAlpha(alpha)
+            } else if let col, pts.count == 1 {
+                // a bell: a ball of one colour with a light spot and a slit
+                let p = pts[0]
+                g.setFillColor(col); g.fillEllipse(in: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
+                g.setFillColor(CGColor(srgbRed: 1, green: 0.95, blue: 0.7, alpha: 0.7))
+                g.fillEllipse(in: CGRect(x: p.x - r * 0.55, y: p.y + r * 0.1, width: r * 0.6, height: r * 0.5))
+                g.setFillColor(CGColor(srgbRed: 0.45, green: 0.32, blue: 0.05, alpha: 0.9))
+                g.fill(CGRect(x: p.x - r * 0.5, y: p.y - r * 0.5, width: r, height: r * 0.16))
             } else if let col {
                 g.setFillColor(col); g.setStrokeColor(col)
                 g.addLines(between: pts); g.closePath(); g.drawPath(using: .fillStroke)

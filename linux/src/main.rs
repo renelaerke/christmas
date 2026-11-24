@@ -6,7 +6,9 @@ mod calendar;
 mod clock;
 mod controller;
 mod figures;
+mod folk;
 mod icon;
+mod lang;
 mod layer;
 mod log;
 mod rng;
@@ -57,6 +59,16 @@ fn main() {
                     std::process::exit(1);
                 }
             }
+            return;
+        } else if a == "--sprog-test" {
+            // prints the languages found for the menu, the automatic choice, and what each lacks
+            // (JULE_LOCALE=de_DE pretends to be that locale)
+            print!("{}", lang::test_report());
+            return;
+        } else if a == "--folk-test" {
+            // prints whether this machine's language and region give nisser or elves, and the rule for other
+            // locales (JULE_LOCALE=en_US pretends to be that locale)
+            print!("{}", folk::test_report());
             return;
         } else if a == "--list-windows" {
             // prints the windows as the snow on windows sees them (only reads from the X server, shows nothing)

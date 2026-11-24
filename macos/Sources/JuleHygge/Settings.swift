@@ -9,8 +9,10 @@ final class Settings {
         sound = false, plowSound = false   // lyd er slået fra, indtil man selv slår den til
     var theme = 0              // 0 = jul, 1 = efterår, 2 = de dødes dag (Theme)
     var kite = true            // efterårets drage
+    var folk = 0               // 0 = automatisk efter sprog og land, ellers 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud (Folk)
     var autoUpdate = true      // install new GitHub releases by itself
     var lastVersion = ""       // the version that ran last time, to announce an update
+    var language = ""          // the menu's language: empty = automatic, or a code such as "en" (Lang)
     var snowLevel = 3          // 0 = let, 1 = normal, 2 = snestorm, 3 = skiftende vejr (Weather), som er standard
     var nisseCount = 3         // pr. skærm
     var powerSave = 2          // 0 = fra, 1 = altid til, 2 = kun på batteri
@@ -67,8 +69,11 @@ final class Settings {
         s.frameRate = [12, 20, 30, 60].contains(i("FrameRate", 20)) ? i("FrameRate", 20) : 20
         s.theme = Theme(rawValue: i("Theme", 0)) != nil ? i("Theme", 0) : 0
         s.kite = b("Kite", s.kite)
+        s.folk = Folk(rawValue: i("Folk", s.folk)) != nil ? i("Folk", s.folk) : 0
         s.autoUpdate = b("AutoUpdate", s.autoUpdate)
         s.lastVersion = d["LastVersion"] ?? ""
+        s.language = d["Language"] ?? ""
+        Lang.setting = s.language
         s.snowmanSeenStage = i("SnowmanSeenStage", 0)
         s.calendarYear = i("CalendarYear", 0)
         s.firstRun = d["FirstRun"].flatMap(JuleClock.parse)
@@ -88,7 +93,7 @@ final class Settings {
             "Nisser=" + b(nisser), "Lights=" + b(lights), "PauseFullscreen=" + b(pauseFullscreen),
             "Snowman=" + b(snowman), "AllScreens=" + b(allScreens), "Plow=" + b(plow), "WindowSnow=" + b(windowSnow), "CameraHat=" + b(cameraHat), "CameraFront=" + b(cameraFront), "CameraBeard=" + b(cameraBeard), "CameraSuit=" + b(cameraSuit), "Sound=" + b(sound), "CameraPausesScreens=" + b(cameraPausesScreens), "PlowSound=" + b(plowSound), "SoundLevel=\(soundLevel)",
             "SnowLevel=\(snowLevel)", "NisseCount=\(nisseCount)", "PowerSave=\(powerSave)", "FrameRate=\(frameRate)",
-            "Theme=\(theme)", "Kite=" + b(kite),"AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion,
+            "Theme=\(theme)", "Kite=" + b(kite), "Folk=\(folk)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
             "SnowmanSeenStage=\(snowmanSeenStage)", "CalendarYear=\(calendarYear)",
             "FirstRun=" + ds(firstRun), "LastDoorNotice=" + ds(lastDoorNotice),
             "OpenedDoors=" + openedDoors.sorted().map(String.init).joined(separator: ","),

@@ -72,6 +72,9 @@ namespace JuleHygge
         // for the lights (Layer.cs and LayerAutumn.cs). The calendar and the countdown belong to Christmas and
         // are hidden in autumn.
         public bool Autumn { get { return Cfg.Theme == 1; } }
+        // Nisser or elves in the Christmas theme: the user's choice, or by language and region (see Folk).
+        public int WalkerFolk { get { return Folk.Chosen(Cfg.Folk); } }
+        public bool Elves { get { return WalkerFolk == Folk.Alfer; } }
 
         // Snowfall slowly drifts between ~60% and ~140% of the chosen amount (two slow waves of about
         // 3 and 7 minutes with random phases), so it feels organic but averages out to the chosen level.
@@ -704,7 +707,7 @@ namespace JuleHygge
                     else
                     {
                         title = "Snemanden vokser!";
-                        msg = "Nisserne har bygget videre på snemanden. I dag fik den " + SnowmanSteps[SnowmanStage - 1];
+                        msg = (Elves ? "Alferne" : "Nisserne") + " har bygget videre på snemanden. I dag fik den " + SnowmanSteps[SnowmanStage - 1];
                     }
                     celebrateAt = Time + 2;
                 }
@@ -756,6 +759,7 @@ namespace JuleHygge
             menu.Items.Add(Themed(cal, null));
             countdownItem = new ToolStripMenuItem(Countdown());
             countdownItem.Enabled = false;
+            dynamicItems.Add(countdownItem);
             menu.Items.Add(Themed(countdownItem, null));
             menu.Items.Add(new ToolStripSeparator());
 
@@ -807,7 +811,8 @@ namespace JuleHygge
                 () => Cfg.SoundLevel, v => Cfg.SoundLevel = v));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern"));
+            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern",
+                folk: new[] { null, "Alfer", "Wichtel", "Kabouters", "Päkapikud" }));
             var count = new ToolStripMenuItem("Antal nisser pr. skærm");
             foreach (int c in new[] { 1, 2, 3, 5, 8, 12 })
             {
@@ -822,7 +827,16 @@ namespace JuleHygge
                 };
                 count.DropDownItems.Add(it);
             }
-            menu.Items.Add(Themed(count, "Antal dyr pr. skærm"));
+            menu.Items.Add(Themed(count, "Antal dyr pr. skærm",
+                folk: new[] { null, "Antal alfer pr. skærm", "Antal Wichtel pr. skærm", "Antal kabouters pr. skærm", "Antal päkapikud pr. skærm" }));
+            // Nisser or elves: automatic follows the language and region; the other two are for when that is wrong.
+            // The walkers are drawn anew every frame, so they change clothes at once.
+            var folkChoice = Choice("Nisser eller alfer",
+                new[] { "", Folk.Names[0], Folk.Names[1], Folk.Names[2], Folk.Names[3], Folk.Names[4] },
+                new[] { 0, Folk.Nisser, Folk.Alfer, Folk.Wichtel, Folk.Kabouter, Folk.Paekapikk }, () => Cfg.Folk, v => { Cfg.Folk = v; ApplyTheme(); });
+            folkAutoItem = folkChoice.DropDownItems[0];   // its text says what automatic came to (see ApplyTheme)
+            dynamicItems.Add(folkAutoItem);
+            menu.Items.Add(Themed(folkChoice, null));
             menu.Items.Add(new ToolStripSeparator());
 
             var power = new ToolStripMenuItem("Strømspare");
@@ -867,9 +881,28 @@ namespace JuleHygge
             menu.Items.Add(autostart);
             menu.Items.Add(new ToolStripSeparator());
 
-            var version = new ToolStripMenuItem(Updater.IsReleaseBuild ? "Version " + Updater.Display(Updater.Current) : "Udviklerversion (opdaterer ikke)");
-            version.Enabled = false;
-            menu.Items.Add(version);
+            // The menu "Sprog": automatic (Windows' own language, or English when there is no file for it), and every
+            // language there is a file for, each under its own name.
+            languageItem = new ToolStripMenuItem("Sprog");
+            dynamicItems.Add(languageItem);
+            var codes = new List<string> { "" };
+            foreach (var l in Lang.Listed) codes.Add(l.Code);
+            foreach (string code in codes)
+            {
+                string lc = code;
+                var it = new ToolStripMenuItem(lc == "" ? "" : Lang.NameOf(lc));
+                it.Tag = lc;
+                it.Click += (s, e) => { Cfg.Language = lc; Lang.Setting = lc; Cfg.Save(); ApplyTheme(); };
+                dynamicItems.Add(it);
+                languageItem.DropDownItems.Add(it);
+            }
+            menu.Items.Add(languageItem);
+            menu.Items.Add(new ToolStripSeparator());
+
+            versionItem = new ToolStripMenuItem("");
+            versionItem.Enabled = false;
+            dynamicItems.Add(versionItem);
+            menu.Items.Add(versionItem);
             if (Updater.IsReleaseBuild)
             {
                 menu.Items.Add(Toggle("Opdatér automatisk", () => Cfg.AutoUpdate, v => Cfg.AutoUpdate = v));
@@ -883,12 +916,12 @@ namespace JuleHygge
             exit.Click += (s, e) => Exit();
             menu.Items.Add(exit);
 
+            // every item's Danish text is the key to its text in the user's language (see ApplyTheme)
+            RememberTexts(menu.Items);
             ApplyTheme();
             menu.Opening += (s, e) =>
             {
                 ApplyTheme();
-                countdownItem.Text = Countdown();
-                snowmanItem.Text = (Autumn ? "Høstak med fugleskræmsel" : "Snemand") + " (trin " + SnowmanStage + " af " + SnowmanMaxStage + ")";
                 syncingMenu = true;
                 autostart.Checked = GetAutostart();
                 syncingMenu = false;
@@ -898,25 +931,61 @@ namespace JuleHygge
 
         // Menu items whose text follows the theme: the Christmas text, and the autumn one (null = the element has
         // no autumn form yet, so the item is hidden in autumn). Applied when the menu opens and when the theme changes.
-        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar; }
+        // Folk holds the Christmas text for each folk that is not called nisser there, by the folk's number less one
+        // (null = the same text).
+        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar; public string[] Folk; }
+
+        // Every menu item with its Danish text, which is the key to its text in the user's language (see Lang).
+        // The items in dynamicItems have a number or a name in them and get their text in ApplyTheme.
+        readonly Dictionary<ToolStripItem, string> danish = new Dictionary<ToolStripItem, string>();
+        readonly HashSet<ToolStripItem> dynamicItems = new HashSet<ToolStripItem>();
+        ToolStripItem folkAutoItem;
+        ToolStripMenuItem languageItem, versionItem;
+
+        void RememberTexts(ToolStripItemCollection items)
+        {
+            foreach (ToolStripItem it in items)
+            {
+                if (it is ToolStripSeparator) continue;
+                if (!dynamicItems.Contains(it)) danish[it] = it.Text;
+                var sub = it as ToolStripMenuItem;
+                if (sub != null && sub.DropDownItems.Count > 0) RememberTexts(sub.DropDownItems);
+            }
+        }
         readonly List<ThemedItem> themedItems = new List<ThemedItem>();
         ContextMenuStrip trayMenu;
 
-        T Themed<T>(T item, string efteraar) where T : ToolStripItem
+        T Themed<T>(T item, string efteraar, string[] folk = null) where T : ToolStripItem
         {
-            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar });
+            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar, Folk = folk });
             return item;
         }
 
         void ApplyTheme()
         {
             // (Available, not Visible: Visible is false for every item while the menu itself is closed)
+            // every text in the user's language: first each item's own text, then the ones that follow the theme and
+            // the folk, then the ones with a number or a name in them
+            foreach (var kv in danish) kv.Key.Text = Lang.T(kv.Value);
             foreach (var t in themedItems)
             {
                 t.Item.Available = !Autumn || t.Efteraar != null;
-                t.Item.Text = Autumn ? (t.Efteraar ?? t.Jul) : t.Jul;
+                string own = t.Folk != null ? t.Folk[WalkerFolk - 1] : null;
+                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : (own ?? t.Jul));
             }
             kiteItem.Available = Autumn;
+            countdownItem.Text = Countdown();
+            snowmanItem.Text = Lang.T(Autumn ? "Høstak med fugleskræmsel (trin {0} af {1})" : "Snemand (trin {0} af {1})", SnowmanStage, SnowmanMaxStage);
+            folkAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(Folk.Name(Folk.Auto)));
+            versionItem.Text = Updater.IsReleaseBuild ? Lang.T("Version {0}", Updater.Display(Updater.Current)) : Lang.T("Udviklerversion (opdaterer ikke)");
+            // (the menu "Sprog" also says "Language", so it can be found by someone who cannot read the language chosen)
+            languageItem.Text = Lang.T("Sprog") == "Language" ? "Language" : Lang.T("Sprog") + " / Language";
+            string chosen = Lang.All.ContainsKey(Cfg.Language ?? "") ? Cfg.Language : "";
+            foreach (ToolStripMenuItem it in languageItem.DropDownItems)
+            {
+                it.Checked = (string)it.Tag == chosen;
+                if ((string)it.Tag == "") it.Text = Lang.T("Automatisk ({0})", Lang.NameOf(Lang.Automatic));
+            }
             // hidden items must not leave two separators in a row, or one at the top
             bool afterSeparator = true;
             foreach (ToolStripItem it in trayMenu.Items)
@@ -980,9 +1049,9 @@ namespace JuleHygge
             var eve = new DateTime(today.Year, 12, 24);
             if (today > eve) eve = eve.AddYears(1);
             int d = (int)(eve - today).TotalDays;
-            if (d == 0) return "★ Glædelig jul! ★";
-            if (d == 1) return "★ 1 dag til juleaften ★";
-            return "★ " + d + " dage til juleaften ★";
+            if (d == 0) return Lang.T("★ Glædelig jul! ★");
+            if (d == 1) return Lang.T("★ 1 dag til juleaften ★");
+            return Lang.T("★ {0} dage til juleaften ★", d);
         }
 
         bool syncingMenu;

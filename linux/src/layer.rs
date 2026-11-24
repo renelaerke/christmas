@@ -20,6 +20,7 @@ use std::f32::consts::{FRAC_PI_3, TAU};
 use cairo::{Context, Format, ImageSurface};
 
 pub(crate) mod draw;
+mod autumn;
 mod elves;
 mod ground;
 mod ledges;
@@ -32,6 +33,7 @@ pub use elves::Elf;
 pub use snowman::MAX_STAGE as SNOWMAN_MAX_STAGE;
 
 use crate::figures::{PlowRun, Santa, Spark};
+use crate::folk::Folk;
 use crate::rng::Rng;
 use crate::window_snow::{Clump, Ledge};
 use crate::x11::{Rect, Res};
@@ -76,6 +78,10 @@ pub struct SceneState<'a> {
     pub ledge_u: f32,
     /// The autumn theme (setting `Theme` = 1): leaves for snow.
     pub autumn: bool,
+    /// Who the walkers are in the Christmas theme (setting `Folk`, see `folk.rs`).
+    pub folk: Folk,
+    /// Autumn's kite over the primary screen (setting `Kite`).
+    pub kite: bool,
 }
 
 /// Width in pixels of one column of the snow pile, as on Windows.
@@ -173,6 +179,13 @@ fn make_leaf_sprites() -> Res<Vec<Vec<u32>>> {
         }
     }
     Ok(all)
+}
+
+/// Which leaf lies where in a pile is fixed by its place, so the pile does not flicker: 0..1 from two whole
+/// numbers (as `Chance` on Windows).
+fn chance(i: i32, j: i32) -> f32 {
+    let v = (i as f64 * 12.9898 + j as f64 * 78.233).sin() * 43758.5453;
+    (v - v.floor()) as f32
 }
 
 /// One leaf, turned by `rot` and `size` pixels across, blended into a premultiplied buffer of `bw` x `bh` pixels
@@ -318,6 +331,9 @@ pub struct Layer {
     lights_shown: bool,
     /// Where the snowman stands, in global coordinates (for the celebration sparks in phase 4).
     snowman_pos: Option<(f32, f32)>,
+    /// Autumn's kite and the rain of an autumn storm (`layer/autumn.rs`).
+    kite: Option<autumn::Kite>,
+    rain: Vec<autumn::RainDrop>,
     plow_bits: Vec<plow::PlowBit>,
     plow_smoke_timer: f32,
     plow_chunk_acc: f32,
@@ -386,6 +402,8 @@ impl Layer {
             ledge_cache: Vec::new(),
             lights_shown: false,
             snowman_pos: None,
+            kite: None,
+            rain: Vec::new(),
             plow_bits: Vec::new(),
             plow_smoke_timer: 0.0,
             plow_chunk_acc: 0.0,
@@ -491,6 +509,7 @@ impl Layer {
         self.update_snow(dt, st);
         self.update_plow(dt, st);
         self.update_elves(dt, st);
+        self.update_rain(dt, st);
 
         // Clear what was drawn last frame (Cairo must finish before the buffer is touched directly).
         self.canvas.surface.flush();
@@ -506,8 +525,10 @@ impl Layer {
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
         self.draw_santa_and_sparks(st);
-        self.draw_elves();
+        self.draw_kite(dt, st);
+        self.draw_elves(st.autumn, st.folk);
         self.draw_plow(st);
+        self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
         self.canvas.surface.flush();
 
@@ -971,6 +992,8 @@ mod tests {
             clumps: &[],
             ledge_u: 1.0,
             autumn: false,
+            folk: Folk::Nisser,
+            kite: false,
         }
     }
 

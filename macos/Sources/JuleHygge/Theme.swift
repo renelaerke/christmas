@@ -17,6 +17,48 @@ enum CameraCostume {
     /// The Day of the Dead: a crown of marigolds in the hat's place and calavera (sugar skull) make-up in the
     /// beard's; no suit. `HUE_MUERTOS=1` sets it in the tests.
     nonisolated(unsafe) static var muertos = ProcessInfo.processInfo.environment["HUE_MUERTOS"] != nil
+    /// Who the person is dressed as in the Christmas theme (see Folk), set the same way. HUE_FOLK=1…5 sets it in the tests.
+    nonisolated(unsafe) static var folk = Folk(rawValue: Int(ProcessInfo.processInfo.environment["HUE_FOLK"] ?? "") ?? 0) ?? .nisser
+    static var look: CameraLook { CameraLook.of(folk) }
+}
+
+/// What tells one folk's hat, beard and suit from another's in the camera. The hat is always the same cloth on the
+/// measured head (Hat.swift) and the beard the same band on the face (Costume.swift); these are the differences.
+struct CameraLook {
+    typealias RGB = (r: Double, g: Double, b: Double)
+    enum Band { case fur, plain(RGB), jagged(RGB) }
+    enum Tip { case pompom, bell, bare }
+
+    /// The hat's cloth.
+    var cloth: RGB = (0.80, 0.07, 0.12)
+    /// The tip's length and how far it bends over, against the nisse hat's (0 bend = a stiff, straight cone).
+    var free = 1.0, bend = 1.0
+    /// Round the brow: the fur band, or a band of cloth (plain, or with teeth pointing up onto the hat).
+    var band = Band.fur
+    var tip = Tip.pompom
+    /// The beard's length against the nisse beard's (0 = no beard).
+    var beard = 1.0
+    /// The suit: the clothes' own light and shade times `suit`, plus `suitFloor` (so dark clothes get colour too).
+    var suit: RGB = (0.9, 0.10, 0.12), suitFloor: RGB = (0.38, 0.01, 0.03)
+
+    static func of(_ folk: Folk) -> CameraLook {
+        var l = CameraLook()
+        switch folk {
+        case .nisser: break
+        case .alfer:      // a green cap with a red toothed band and a bell, no beard, green clothes
+            l.cloth = (0.16, 0.56, 0.28); l.band = .jagged((0.80, 0.14, 0.18)); l.tip = .bell; l.beard = 0
+            l.suit = (0.14, 0.56, 0.22); l.suitFloor = (0.02, 0.22, 0.06)
+        case .wichtel:    // a tall grey felt cap that hardly bends, a long beard, a moss green coat
+            l.cloth = (0.56, 0.57, 0.61); l.free = 1.35; l.bend = 0.4; l.band = .plain((0.40, 0.41, 0.45)); l.tip = .bare; l.beard = 1.6
+            l.suit = (0.36, 0.44, 0.22); l.suitFloor = (0.10, 0.15, 0.05)
+        case .kabouter:   // a stiff red cone, a short beard, a rust jacket
+            l.free = 1.15; l.bend = 0; l.band = .plain((0.58, 0.05, 0.09)); l.tip = .bare; l.beard = 0.6
+            l.suit = (0.72, 0.36, 0.15); l.suitFloor = (0.28, 0.10, 0.02)
+        case .paekapikk:  // the nisse's hat and red clothes, no beard
+            l.beard = 0
+        }
+        return l
+    }
 }
 
 enum Theme: Int {

@@ -39,6 +39,12 @@ Lavet 2026-11-24, kameraet (`CameraCostume.muertos`):
   drejet. Sminken tager i genafspilningen 25,6 ms pr. billede i median, tøjmodellen (ca. 20 ms) og gengivelsen af
   hele billedet medregnet; live kører modellen hvert andet billede, som for dragten.
 
+Flettet sammen med main 2026-11-24 (folkene, menuen på flere sprog): calacas går i nissernes sted uanset folk,
+og valget "Nisser eller alfer" er skjult i temaet, som i efteråret. Kameraets hue, skæg og dragt pr. folk gælder
+kun julen; temaet har sin krans og sminke. Temaets menutekster står i alle sprogfilerne, og italiensk (`it.ini`) og
+spansk (`es.ini`) er kommet til med hele menuen (REL). Tjekket med `JULE_MENU_DUMP` på dansk, spansk og italiensk.
+Oversættelserne er mine og ikke læst af nogen, der har sproget som modersmål.
+
 ## Mangler i temaet
 
 Status 2026-11-24 (REL): kameraet virker live, animationerne er i orden, og strømmåling springes over.

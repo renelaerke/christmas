@@ -14,7 +14,7 @@
 use cairo::{Context, LineCap};
 
 use super::draw::*;
-use super::{Layer, SceneState};
+use super::{blend_leaf, chance, leaf_sprite, Layer, SceneState};
 use crate::window_snow::{FRect, Ledge};
 use crate::x11::Rect;
 
@@ -52,7 +52,9 @@ impl Layer {
     }
 
     /// The stretches of snow on one window's edge, in screen coordinates.
-    fn runs_for(&self, l: &Ledge, u: f32) -> Vec<Run> {
+    /// (In autumn each stretch's box has room for the leaves lying over the pile's edges.)
+    fn runs_for(&self, l: &Ledge, u: f32, autumn: bool) -> Vec<Run> {
+        let pad = if autumn { 13.0 * u } else { 0.0 };
         let (ox, oy, w) = (self.rect.x as f32, self.rect.y as f32, self.w as f32);
         let mut runs = Vec::new();
         let mut cur: Vec<(f32, f32, f32)> = Vec::new();
@@ -62,7 +64,8 @@ impl Layer {
                 let max_d = cur.iter().map(|p| p.2).fold(0.0, f32::max);
                 let (x0, x1) = (cur[0].0, cur[cur.len() - 1].0);
                 // as `mark()` with the run's box
-                let (bx, by, bw, bh) = (x0 - 2.0, base_y - max_h - 3.0, x1 - x0 + 4.0, max_h + max_d + 6.0);
+                let (bx, by) = (x0 - 2.0 - pad, base_y - max_h - 3.0 - pad);
+                let (bw, bh) = (x1 - x0 + 4.0 + 2.0 * pad, max_h + max_d + 6.0 + 2.0 * pad);
                 let rect =
                     Rect::new(bx.floor() as i32 - 2, by.floor() as i32 - 2, bw.ceil() as i32 + 5, bh.ceil() as i32 + 5);
                 runs.push(Run { pts: std::mem::take(cur), base_y, rect });
@@ -96,6 +99,54 @@ impl Layer {
             }
         }
         runs
+    }
+
+    /// The piles on the windows are made of leaves too (`DrawLedgeLeaves` on Windows): single leaves over the dark
+    /// fill, from the pile's top down to where it hangs below the window's edge. They are laid out in a picture
+    /// of the stretch's box and put over the screen from there, so no leaf reaches outside the box that is cached
+    /// and cleared. Cairo must be flushed before.
+    fn lay_ledge_leaves(&mut self, l: &Ledge, run: &Run, u: f32) {
+        let r = run.rect;
+        let (Some(first), Some(last)) = (run.pts.first(), run.pts.last()) else { return };
+        if r.is_empty() {
+            return;
+        }
+        let mut leaves = vec![0u32; r.w as usize * r.h as usize];
+        let ox = self.rect.x as f32;
+        let (size, across, down) = (13.0 * u, 6.0 * u, 4.5 * u);
+        let id = (l.id & 0xFFFF) as i32;
+        let (mut x, x1) = (first.0 + ox, last.0 + ox);
+        let mut column = (x / across) as i32;
+        while x <= x1 {
+            let (h, d) = (l.height_at(x), l.hang_at(x));
+            if h > 0.4 * u {
+                for row in 0..=((h + d) / down) as i32 {
+                    let (p, q, t) = (chance(column, row + id), chance(row + 31, column), chance(column + 7, row + 3));
+                    let y = run.base_y - h + row as f32 * down + (p - 0.5) * 3.0 * u - size * 0.1;
+                    if let Some(sprite) = self.leaf_sprites.get(leaf_sprite((p * 9973.0) as usize)) {
+                        let (cx, cy) = (x - ox + (q - 0.5) * across - r.x as f32, y - r.y as f32);
+                        let turn = t * std::f32::consts::TAU;
+                        blend_leaf(&mut leaves, r.w, r.h, sprite, cx, cy, size * (0.75 + 0.5 * q), turn, 255);
+                    }
+                }
+            }
+            x += across;
+            column += 1;
+        }
+        let w = self.w as usize;
+        for y in 0..r.h as usize {
+            let dst = (r.y as usize + y) * w + r.x as usize;
+            let src = y * r.w as usize;
+            for (d, s) in self.canvas.pixels[dst..dst + r.w as usize].iter_mut().zip(&leaves[src..src + r.w as usize]) {
+                let sa = s >> 24;
+                if sa == 0 {
+                    continue;
+                }
+                let inv = 255 - sa;
+                let ch = |sh: u32| (((s >> sh) & 0xFF) + ((*d >> sh) & 0xFF) * inv / 255).min(255);
+                *d = (ch(24) << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0);
+            }
+        }
     }
 
     /// Copies the cached snow on windows over row `y`, pixels `x0..x1` (after the row's background is restored).
@@ -202,7 +253,7 @@ impl Layer {
         let mut fresh: Vec<(&Ledge, Vec<Run>)> = Vec::new();
         for l in wanted.iter().filter(|l| redraw.contains(&l.id)) {
             let runs: Vec<Run> = self
-                .runs_for(l, u)
+                .runs_for(l, u, st.autumn)
                 .into_iter()
                 .map(|mut r| {
                     r.rect = r.rect.clip(self.w, self.h);
@@ -226,10 +277,17 @@ impl Layer {
         self.canvas.surface.mark_dirty();
         for (_, runs) in &fresh {
             for run in runs {
-                draw_run(&self.canvas.cr, run, u as f64);
+                draw_run(&self.canvas.cr, run, u as f64, st.autumn);
             }
         }
         self.canvas.surface.flush();
+        if st.autumn {
+            for (l, runs) in &fresh {
+                for run in runs {
+                    self.lay_ledge_leaves(l, run, u);
+                }
+            }
+        }
         for r in &under {
             self.blend_lights_over(*r);
         }
@@ -267,8 +325,9 @@ impl Layer {
     }
 }
 
-/// One stretch: the pile's top from left to right, then back along the drape hanging below the edge.
-fn draw_run(cr: &Context, run: &Run, u: f64) {
+/// One stretch: the pile's top from left to right, then back along the drape hanging below the edge. In autumn it
+/// is the dark between the leaves, without an outline.
+fn draw_run(cr: &Context, run: &Run, u: f64, autumn: bool) {
     let b = run.base_y as f64;
     let top: Vec<(f64, f64)> = run.pts.iter().map(|p| (p.0 as f64, b - p.1 as f64)).collect();
     let low: Vec<(f64, f64)> = run.pts.iter().rev().map(|p| (p.0 as f64, b + 0.5 + p.2 as f64)).collect();
@@ -277,6 +336,11 @@ fn draw_run(cr: &Context, run: &Run, u: f64) {
     curve_path(cr, &top);
     curve_path_joined(cr, &low);
     cr.close_path();
+    if autumn {
+        set(cr, (245, 122, 62, 24));
+        let _ = cr.fill();
+        return;
+    }
     set(cr, (245, 248, 252, 255));
     let _ = cr.fill();
     let line = (110, 170, 200, 230);
