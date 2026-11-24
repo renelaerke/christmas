@@ -87,9 +87,13 @@ enum Theme: Int {
     /// Santa leaves a trail of sparks; the geese and butterflies do not. (The geese's sound is Synth.geese
     /// instead of a tune; the butterflies are silent.)
     var santaSparkles: Bool { self == .jul }
-    /// What is built a little more every day: the snowman, in autumn a haystack with a scarecrow, for the dead
-    /// an ofrenda (an altar with candles, marigolds and a sugar skull).
+    /// What is built: the snowman, in autumn a haystack with a scarecrow, for the dead an ofrenda (an altar
+    /// with candles, marigolds and a sugar skull).
     var hasSnowman: Bool { true }
+    /// In the Christmas theme three children build the snowman while you watch, and the plow runs it down
+    /// (SnowmanBuild). Every other theme's form of it grows one stage a day (Controller.snowmanStage) and gets
+    /// the daily notice.
+    var childrenBuild: Bool { self == .jul }
     /// The walkers exist in every theme; in autumn they are hedgehogs and squirrels (`animals`), for the dead
     /// calacas, small skeletons in sombreros and catrina hats (`skeletons`).
     var hasNisser: Bool { true }

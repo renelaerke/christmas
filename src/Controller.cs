@@ -41,9 +41,9 @@ namespace JuleHygge
         static readonly string[] ScarecrowSteps = {
             "en lille bunke hø", "mere hø", "en hel høstak", "en stolpe til fugleskræmslet", "en tværpind til armene", "et hoved af sækkelærred",
             "en ternet skjorte", "hænder af halm", "et ansigt", "et grønt halstørklæde", "en stråhat", "et græskar og en krage - fugleskræmslet er færdigt!" };
-        static readonly string[] SnowmanSteps = {
-            "en lille snebold", "en stor snebold", "maven", "hovedet", "øjne af kul", "en gulerodsnæse",
-            "knapper", "arme af grene", "et smil", "et rødt halstørklæde", "en høj hat", "en kost - snemanden er færdig!" };
+        // The Christmas snowman is built by children in real time (SnowmanBuild, drawn in LayerSnowman.cs);
+        // only autumn's haystack still grows by the day (SnowmanStage).
+        public readonly SnowmanBuild Build = new SnowmanBuild();
 
         readonly List<Layer> layers = new List<Layer>();
         readonly Timer timer;
@@ -422,6 +422,12 @@ namespace JuleHygge
 
         void UpdatePlow(float dt)
         {
+            // a few minutes after the children have finished their snowman, the plow comes by and runs it down
+            if (Build.WantsPlow)
+            {
+                Build.WantsPlow = false;
+                if (Cfg.Plow && Cfg.Snowman && !Autumn && !Plow.Active) SendPlow();
+            }
             if (!Plow.Active)
             {
                 Plow.Cooldown -= dt;
@@ -661,19 +667,21 @@ namespace JuleHygge
             }
         }
 
-        void SnowmanCelebrate()
+        // Sparkles around the snowman (the children's, when finished) or the haystack (a new stage in autumn).
+        public void SnowmanCelebrate()
         {
             if (!Cfg.Snowman) return;
+            float wide = Autumn ? 90 : 60, high = Autumn ? 120 : 70;
             foreach (var l in layers)
             {
                 if (!l.IsPrimary || l.SnowmanPos.IsEmpty) continue;
                 var p = l.SnowmanPos;
                 float s = l.S;
-                for (int i = 0; i < 70; i++)
+                for (int i = 0; i < (Autumn ? 70 : 45); i++)
                 {
                     var sp = new Spark();
-                    sp.X = p.X + (R() - 0.5f) * 90 * s;
-                    sp.Y = p.Y - R() * 120 * s;
+                    sp.X = p.X + (R() - 0.5f) * wide * s;
+                    sp.Y = p.Y - R() * high * s;
                     sp.VX = (R() - 0.5f) * 60 * s;
                     sp.VY = -(20 + R() * 60) * s;
                     sp.Max = sp.Life = 1.5f + R() * 1.5f;
@@ -697,18 +705,11 @@ namespace JuleHygge
             balloonOpensCalendar = false;
             if (SnowmanStage > Cfg.SnowmanSeenStage)
             {
-                if (Cfg.SnowmanSeenStage > 0 && Cfg.Snowman)
+                // (only autumn's haystack grows by the day; the Christmas snowman is built while you watch)
+                if (Cfg.SnowmanSeenStage > 0 && Cfg.Snowman && Autumn)
                 {
-                    if (Autumn)
-                    {
-                        title = "Høstakken vokser!";
-                        msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + ScarecrowSteps[SnowmanStage - 1];
-                    }
-                    else
-                    {
-                        title = "Snemanden vokser!";
-                        msg = (Elves ? "Alferne" : "Nisserne") + " har bygget videre på snemanden. I dag fik den " + SnowmanSteps[SnowmanStage - 1];
-                    }
+                    title = "Høstakken vokser!";
+                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + ScarecrowSteps[SnowmanStage - 1];
                     celebrateAt = Time + 2;
                 }
                 Cfg.SnowmanSeenStage = SnowmanStage;
@@ -975,7 +976,7 @@ namespace JuleHygge
             }
             kiteItem.Available = Autumn;
             countdownItem.Text = Countdown();
-            snowmanItem.Text = Lang.T(Autumn ? "Høstak med fugleskræmsel (trin {0} af {1})" : "Snemand (trin {0} af {1})", SnowmanStage, SnowmanMaxStage);
+            snowmanItem.Text = Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Lang.T("Snemand");
             folkAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(Folk.Name(Folk.Auto)));
             versionItem.Text = Updater.IsReleaseBuild ? Lang.T("Version {0}", Updater.Display(Updater.Current)) : Lang.T("Udviklerversion (opdaterer ikke)");
             // (the menu "Sprog" also says "Language", so it can be found by someone who cannot read the language chosen)

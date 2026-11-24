@@ -2,7 +2,7 @@
 
 [Dansk](README.md) · [English](README.en.md) · [Svenska](README.sv.md) · [Deutsch](README.de.md) · [Nederlands](README.nl.md)
 
-Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt über den Desktop und bleibt auf der Taskleiste und auf deinen Fenstern liegen, der Weihnachtsmann fliegt im Schlitten mit Rentieren (und Rudolph) vorbei, kleine Figuren laufen am unteren Bildschirmrand entlang und tauschen Geschenke, oben hängt eine Lichterkette, ein Schneemann wird jeden Tag ein Stück weitergebaut, und es gibt einen Adventskalender mit 24 Türchen.
+Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt über den Desktop und bleibt auf der Taskleiste und auf deinen Fenstern liegen, der Weihnachtsmann fliegt im Schlitten mit Rentieren (und Rudolph) vorbei, kleine Figuren laufen am unteren Bildschirmrand entlang und tauschen Geschenke, oben hängt eine Lichterkette, Kinder bauen einen Schneemann (den der Schneepflug umfährt), und es gibt einen Adventskalender mit 24 Türchen.
 
 ![Der Weihnachtsmann fliegt im Schneesturm über den Bildschirm, und der Schneepflug räumt die Taskleiste](docs/media/julehygge.gif)
 
@@ -16,7 +16,7 @@ Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt übe
 - Es funktioniert auf **allen Bildschirmen**. Der Weihnachtsmann fliegt über Bildschirme hinweg, die nebeneinander stehen.
 - **Das Menü:** Ein Rechtsklick auf die Schneeflocke bei der Uhr (Windows und Linux) oder ein Klick auf sie in der Menüleiste (macOS) öffnet die Einstellungen und den Adventskalender. Dort lässt sich alles ein- und ausschalten.
 - **Adventskalender:** Ab dem 1. Dezember kannst du jeden Tag ein neues Türchen öffnen. Dahinter stecken Witze, gemütliche Tipps und Wissenswertes rund um Weihnachten, und manche Türchen lösen einen Effekt aus: den Weihnachtsmann, einen Schneesturm, ein Fest oder einen Sternenregen.
-- **Schneemann:** wird über 12 Tage gebaut, gerechnet ab dem ersten Start der App.
+- **Schneemann:** Drei Kinder bauen in etwa einer Viertelstunde einen Schneemann auf der Taskleiste: Sie rollen die Kugeln, heben sie aufeinander und geben ihm Augen, eine Karottennase, Knöpfe, Arme, ein Lächeln, einen Schal und eine Mütze. Wenn er fertig ist, jubeln sie und machen eine Schneeballschlacht, und ein paar Minuten später kommt der Schneepflug und fährt ihn um. Dann gehen die Kinder woandershin und fangen von vorn an.
 - **Schneepflug:** fährt los und räumt den Schnee, wenn der Haufen hoch wird.
 - **Ton** ist aus, bis du ihn im Menü einschaltest: Schellen und eine Melodie für den Weihnachtsmann, Motor und Hupe für den Schneepflug.
 - **Herbst-Thema:** Das Menü „Thema“ tauscht den Schnee gegen fallendes Laub, den Weihnachtsmann gegen Zuggänse und den Schneemann gegen eine Vogelscheuche.

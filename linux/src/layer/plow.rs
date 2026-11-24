@@ -22,6 +22,13 @@ pub(super) struct PlowBit {
     kind: usize,
 }
 
+impl PlowBit {
+    /// A chunk of snow thrown up (from the snowman the plow runs down, `build.rs`).
+    pub(super) fn chunk(x: f32, y: f32, vx: f32, vy: f32, size: f32) -> PlowBit {
+        PlowBit { x, y, vx, vy, life: 2.0, max: 2.0, size, smoke: false, kind: 0 }
+    }
+}
+
 /// The plow as this screen sees it: x in screen coordinates.
 struct Here {
     x: f32,

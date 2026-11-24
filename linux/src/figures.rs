@@ -349,14 +349,16 @@ impl Figures {
         }
     }
 
-    /// Sparks rising around the snowman when it grew today (at `pos`, global coordinates, on a screen of scale s).
-    pub fn snowman_celebrate(&mut self, (x, y): (f32, f32), s: f32) {
-        for _ in 0..70 {
+    /// Sparks rising around the snowman when the children have finished it (`small`), or around autumn's
+    /// haystack when it grew today (at `pos`, global coordinates, on a screen of scale s).
+    pub fn snowman_celebrate(&mut self, (x, y): (f32, f32), s: f32, small: bool) {
+        let (wide, high, count) = if small { (60.0, 70.0, 45) } else { (90.0, 120.0, 70) };
+        for _ in 0..count {
             let r = &mut self.rng;
             let life = 1.5 + r.f() * 1.5;
             self.sparks.push(Spark {
-                x: x + (r.f() - 0.5) * 90.0 * s,
-                y: y - r.f() * 120.0 * s,
+                x: x + (r.f() - 0.5) * wide * s,
+                y: y - r.f() * high * s,
                 vx: (r.f() - 0.5) * 60.0 * s,
                 vy: -(20.0 + r.f() * 60.0) * s,
                 life,
@@ -364,6 +366,26 @@ impl Figures {
                 size: (2.0 + r.f() * 3.0) * s,
                 gold: r.f() < 0.6,
                 star: false,
+            });
+        }
+    }
+
+    /// A puff of sparkles where an elf vanishes or reappears by magic (its feet at (x, y), global coordinates;
+    /// `sc` pixels per unit of the elf, on a screen of scale s).
+    pub fn magic_puff(&mut self, (x, y): (f32, f32), sc: f32, s: f32) {
+        for i in 0..26 {
+            let r = &mut self.rng;
+            let life = 0.8 + r.f() * 0.8;
+            self.sparks.push(Spark {
+                x: x + (r.f() - 0.5) * 36.0 * sc,
+                y: y - r.f() * 60.0 * sc,
+                vx: (r.f() - 0.5) * 50.0 * s,
+                vy: -(15.0 + r.f() * 45.0) * s,
+                life,
+                max: life,
+                size: (1.5 + r.f() * 2.5) * s,
+                gold: r.f() < 0.5,
+                star: i % 4 == 0,
             });
         }
     }

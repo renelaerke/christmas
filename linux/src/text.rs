@@ -128,9 +128,9 @@ pub fn menu_version(v: &str) -> String {
     crate::lang::trf("Version {0}", &[v])
 }
 
-pub fn menu_snowman(stage: i32, max: i32) -> String {
-    crate::lang::trf("Snemand (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
-}
+/// (The Christmas snowman has no stage: the children build it while you watch. Autumn's haystack has, see
+/// `menu_scarecrow`.)
+pub const MENU_SNOWMAN: &str = "Snemand";
 
 /// "★ 12 dage til juleaften ★" for the given number of days.
 pub fn countdown(days: i64) -> String {
@@ -145,7 +145,6 @@ pub fn countdown(days: i64) -> String {
 pub const NOTICE_STARTED_TITLE: &str = "Jule-hygge er tændt";
 pub const NOTICE_STARTED: &str =
     "Klik på snefnugget i panelet for julekalenderen. Højreklik for indstillinger og for at kalde på julemanden!";
-pub const NOTICE_SNOWMAN_TITLE: &str = "Snemanden vokser!";
 pub const NOTICE_DOOR_TITLE: &str = "Dagens låge er klar!";
 /// The action on the door notice (shown as a button by some desktops).
 pub const NOTICE_OPEN_CALENDAR: &str = "Åbn kalenderen";
@@ -169,30 +168,9 @@ pub fn notice_install_failed(v: &str, e: &str) -> String {
     format!("Kunne ikke installere version {v}: {e}")
 }
 
-pub fn notice_snowman(step: &str, alfer: bool) -> String {
-    let who = if alfer { "Alferne" } else { "Nisserne" };
-    format!("{who} har bygget videre på snemanden. I dag fik den {step}")
-}
-
 pub fn notice_door(day: u32) -> String {
     format!("Låge {day} i julekalenderen venter på dig. Klik her for at åbne kalenderen.")
 }
-
-/// What the snowman got on each day (stage 1..=12).
-pub const SNOWMAN_STEPS: [&str; 12] = [
-    "en lille snebold",
-    "en stor snebold",
-    "maven",
-    "hovedet",
-    "øjne af kul",
-    "en gulerodsnæse",
-    "knapper",
-    "arme af grene",
-    "et smil",
-    "et rødt halstørklæde",
-    "en høj hat",
-    "en kost - snemanden er færdig!",
-];
 
 // ---------------------------------------------------------------------- calendar
 pub fn calendar_title(year: i32) -> String {

@@ -21,6 +21,7 @@ use cairo::{Context, Format, ImageSurface};
 
 pub(crate) mod draw;
 mod autumn;
+mod build;
 mod elves;
 mod ground;
 mod ledges;
@@ -35,6 +36,7 @@ pub use snowman::MAX_STAGE as SNOWMAN_MAX_STAGE;
 use crate::figures::{PlowRun, Santa, Spark};
 use crate::folk::Folk;
 use crate::rng::Rng;
+use crate::snowman_build::SnowmanBuild;
 use crate::window_snow::{Clump, Ledge};
 use crate::x11::{Rect, Res};
 
@@ -65,8 +67,12 @@ pub struct SceneState<'a> {
     pub elves: bool,
     /// Chosen number of elves per screen (setting `NisseCount`).
     pub elf_count: i32,
-    /// The snowman's stage today (1..=12), or 0 when it is switched off. Only the primary screen has one.
+    /// The stage today (1..=12) of what grows by the day, autumn's haystack; 0 when it is switched off and in the
+    /// Christmas theme. Only the primary screen has one.
     pub snowman_stage: i32,
+    /// The snowman the children build in the Christmas theme (None when it is switched off, and in autumn). Only
+    /// the primary screen shows it.
+    pub build: Option<&'a SnowmanBuild>,
     pub santa: Option<&'a Santa>,
     pub sparks: &'a [Spark],
     pub plow: Option<&'a PlowRun>,
@@ -343,6 +349,9 @@ pub struct Layer {
     next_elf_id: u64,
     elf_offset: i32,
     elf_change_timer: f32,
+    /// Where an elf vanished or reappeared by magic this frame (global x and y of its feet, its size in
+    /// pixels per unit): the controller lets sparkles fly there.
+    magic_puffs: Vec<(f32, f32, f32)>,
     /// Flakes that landed on a window's edge this frame (ledge index, global x, radius without the screen
     /// scale), and clumps that reached this screen's pile; the controller applies them.
     ledge_hits: Vec<(usize, f32, f32)>,
@@ -414,6 +423,7 @@ impl Layer {
             next_elf_id: seed << 20,
             elf_offset: 0,
             elf_change_timer: 90.0,
+            magic_puffs: Vec::new(),
             ledge_hits: Vec::new(),
             clumps_landed: Vec::new(),
             leaf_sprites: make_leaf_sprites()?,
@@ -460,6 +470,10 @@ impl Layer {
     }
     pub fn snowman_pos(&self) -> Option<(f32, f32)> {
         self.snowman_pos
+    }
+    /// Where elves vanished or reappeared by magic since the last call: (global x, global y, pixels per unit).
+    pub fn take_magic_puffs(&mut self) -> Vec<(f32, f32, f32)> {
+        std::mem::take(&mut self.magic_puffs)
     }
     /// The top of a bottom panel in local y (None: no panel, the snow lies on the screen bottom).
     pub fn set_panel_top(&mut self, y: Option<i32>) {
@@ -509,6 +523,7 @@ impl Layer {
         self.update_snow(dt, st);
         self.update_plow(dt, st);
         self.update_elves(dt, st);
+        self.update_build(st);
         self.update_rain(dt, st);
 
         // Clear what was drawn last frame (Cairo must finish before the buffer is touched directly).
@@ -524,6 +539,7 @@ impl Layer {
         // everything that moves is drawn over it, as on Windows
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
+        self.draw_build(st);
         self.draw_santa_and_sparks(st);
         self.draw_kite(dt, st);
         self.draw_elves(st.autumn, st.folk);
@@ -984,6 +1000,7 @@ mod tests {
             elves: false,
             elf_count: 3,
             snowman_stage: 0,
+            build: None,
             santa: None,
             sparks: &[],
             plow: None,
@@ -1138,7 +1155,8 @@ mod tests {
     #[test]
     fn figures_leave_no_trails() {
         use crate::figures::{Figures, ScreenInfo};
-        // one 1280x720 screen with every figure: lights, elves, the finished snowman, Santa and the plow
+        // one 1280x720 screen with every figure: lights, elves, the children building their snowman, Santa and
+        // the plow (which runs the snowman down on its way)
         let rect = Rect::new(0, 0, 1280, 720);
         let mut l = Layer::new(rect, true, 1.0, 11).unwrap();
         l.heap.fill(18.0 * l.s);
@@ -1146,16 +1164,21 @@ mod tests {
         let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
         f.launch_santa(&info(&l));
         f.send_plow(&info(&l));
+        let mut build = SnowmanBuild::new(5);
+        let mut ran_down = false;
         let mut t = 0.0;
         let mut drew_elves = false;
         for _ in 0..1200 {
             t += 0.05;
             f.update(0.05, t, &info(&l), true, true);
+            let truck = f.plow.active.then(|| (f.plow.gx / l.s, f.plow.dir));
+            build.update(0.05, rect.w as f32 / l.s, truck);
+            ran_down |= !build.run_down.is_empty();
             let st = SceneState {
                 time: t,
                 lights: true,
                 elves: true,
-                snowman_stage: 12,
+                build: Some(&build),
                 santa: f.santa.as_ref(),
                 sparks: &f.sparks,
                 plow: Some(&f.plow),
@@ -1166,6 +1189,7 @@ mod tests {
             drew_elves |= !l.elves.is_empty();
         }
         assert!(drew_elves);
+        assert!(ran_down, "the plow did not reach the snowman");
         assert!(f.plow.pushed > 0.0, "the plow scraped nothing");
         // Everything off: once the last flakes have landed (up to ~40 s on this screen) and the pile has melted,
         // the screen must be completely empty again.
@@ -1179,6 +1203,56 @@ mod tests {
         if let Some(i) = l.pixels().iter().position(|p| *p != 0) {
             panic!("trail at {},{}", i as i32 % w, i as i32 / w);
         }
+    }
+
+    #[test]
+    fn the_children_and_their_snowman_leave_no_trails() {
+        use crate::snowman_build::State;
+        // Only the pile and the children's snowman, at every point of its story: whatever is lit and is not
+        // what clearing restores (the cached pile) must lie inside something registered with mark() this frame.
+        let rect = Rect::new(0, 0, 960, 540);
+        let mut l = Layer::new(rect, true, 1.0, 13).unwrap();
+        l.heap.fill(8.0 * l.s);
+        let width_u = rect.w as f32 / l.s;
+        let mut build = SnowmanBuild::new(9);
+        build.update(0.05, width_u, None);
+        let mut t = 5.0;
+        let mut drawn = false;
+        // rolling the bottom ball, two balls, lifting the middle, rolling and lifting the head, dressing, and
+        // the last second before it is finished (then cheering and the snowball fight)
+        for (start, frames) in [(20.0, 100), (300.0, 100), (556.0, 100), (700.0, 100), (752.0, 100), (850.0, 100), (899.0, 400)] {
+            build.state = State::Building;
+            build.t = start;
+            for frame in 0..frames {
+                t += 0.05;
+                build.update(0.05, width_u, None);
+                let st = SceneState { time: t, snow_intensity: 0.0, build: Some(&build), ..state() };
+                l.frame(0.05, &st);
+                if frame % 10 != 9 {
+                    continue;
+                }
+                let background = l.background();
+                let w = l.width();
+                for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+                    if p == b {
+                        continue;
+                    }
+                    drawn = true;
+                    let (x, y) = (i as i32 % w, i as i32 / w);
+                    assert!(
+                        l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom()),
+                        "{start} s into the build: something drawn outside its box at {x},{y}"
+                    );
+                }
+            }
+        }
+        assert!(drawn, "the children and the snowman were never drawn");
+        // switched off, they are gone without a trace: only the pile is left
+        let off = SceneState { time: t, snow_intensity: 0.0, ..state() };
+        l.frame(0.05, &off);
+        l.frame(0.05, &off);
+        let background = l.background();
+        assert!(l.pixels().iter().zip(&background).all(|(p, b)| p == b), "something of the snowman is left on screen");
     }
 
     impl Layer {

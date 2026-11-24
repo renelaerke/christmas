@@ -1,6 +1,6 @@
 # JuleHygge til macOS 🎄
 
-Native macOS-udgave (Swift + AppKit + Core Animation) af juleoverlayet. Samme indhold som Windows-versionen: snevejr, sne der lægger sig i bunden af skærmen, julemanden med rensdyr på tværs af skærme, nisser, julelys under menulinjen, snemand der bygges over 12 dage, sneplov og julekalender med 24 låger.
+Native macOS-udgave (Swift + AppKit + Core Animation) af juleoverlayet. Samme indhold som Windows-versionen: snevejr, sne der lægger sig i bunden af skærmen, julemanden med rensdyr på tværs af skærme, nisser, julelys under menulinjen, børn der bygger en snemand (som sneploven kører ned), sneplov og julekalender med 24 låger.
 
 - Bor i **menulinjen** (snefnug-ikonet), ingen Dock-ikon. Klik på ikonet for indstillinger og julekalender.
 - Overlayet ligger over alle vinduer og Docken, men man klikker igennem det. Det følger med til alle Spaces.
@@ -25,7 +25,7 @@ Menuen **Tema** (`Theme`: 0 = jul, 1 = efterår; jul er standard) skifter hele o
 |---|---|
 | Snevejr | Løvfald: færre og større blade, der vender sig i faldet. To former, ovale blade og ahornblade (ca. 80/20), i fem farver og flere størrelser. I efterårsstormen regner det også. |
 | Sne i bunden og på vinduerne | Løvbunker af enkelte blade. De vokser, flytter sig i blæst og falder fra vinduer, præcis som sneen. |
-| Snemand over 12 dage | En høstak (trin 1–3) og derefter et fugleskræmsel ved siden af (trin 4–12). |
+| Snemand, som tre børn bygger på et kvarter | En høstak (trin 1–3) og derefter et fugleskræmsel ved siden af (trin 4–12): ét trin om dagen over 12 dage, med en besked hver dag. |
 | Julemanden i kane | Otte gæs i kile på vej sydpå. Størrelsen varierer fra tur til tur (dybde), uafhængigt af farten. Ingen gnister. |
 | Sneplov | Løvsuger: en grøn vogn med slange og mundstykke, der suger bunken op. |
 | Nisser, der bytter pakker | Pindsvin og egern, der bærer og bytter æbler. |
@@ -107,6 +107,10 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 | `--sneplov` / `--sneplov=N` | sender sneploven ud efter 3 / N sekunder |
 | `--effekt=N` | kalendereffekt: 1 julemand, 2 snestorm, 3 nissefest, 4 stjerneregn, 5 det hele |
 | `--snapshot=MAPPE[,SEK]` | gemmer overlay pr. skærm (og kalenderen) som PNG efter SEK sekunder — kræver ikke skærmoptagelsestilladelse |
+| `JULE_SNAPSHOT_SCALE=3` | `--snapshot` gemmer så mange pixels pr. punkt, så små figurer kan ses tæt på (uden kalenderen) |
+| `JULE_SNOWMAN_SPEED=N` | børnene bygger snemanden N gange hurtigere (30 giver en hel snemand på 30 s og sneploven få sekunder efter) |
+| `JULE_SNOWMAN_START=T[,X]` | snemanden starter T sekunder inde i byggeriet (0–899) og X enheder fra skærmens venstre kant, i stedet for et tilfældigt sted |
+| `tools/snemand-snapshots.sh [MAPPE]` | gemmer et nærbillede af hvert trin i børnenes snemand (rulning, løft, pynt, jubel, sneboldkamp) i `build-test/snemand` |
 | `JULE_DATE=yyyy-MM-dd` | lader som om det er en anden dato |
 | `JULE_SETTINGS=sti` | brug en anden settings-fil (så tests ikke ændrer de rigtige indstillinger) |
 | `JULE_DEBUG=1` | debuglinjer i fejlloggen |
@@ -141,7 +145,9 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 |-----|---------|
 | `Sources/JuleHygge/main.swift` | Opstart, én instans, kommandolinje |
 | `Sources/JuleHygge/Controller.swift` | Menulinje-menu, hovedløkke, julemanden, effekter, daglige notifikationer, strøm, fuldskærm, autostart |
-| `Sources/JuleHygge/Overlay.swift` | Ét klik-igennem vindue pr. skærm: sne, sneplov, nisser, julelys, snemand |
+| `Sources/JuleHygge/Overlay.swift` | Ét klik-igennem vindue pr. skærm: sne, sneplov, nisser, julelys, høstak |
+| `Sources/JuleHygge/SnowmanBuild.swift` | Snemanden, børnene bygger: kugler, løft, pynt, sneboldkamp, ventetid på sneploven, et nyt sted (som `src/SnowmanBuild.cs`) |
+| `Sources/JuleHygge/OverlaySnowman.swift` | Tegner snemanden, børnene og deres snebolde, og lader sneploven køre snemanden ned (som `src/LayerSnowman.cs`) |
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
 | `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger), gåseoptagelsen og delt lydmotor |

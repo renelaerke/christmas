@@ -299,6 +299,7 @@ namespace JuleHygge
             UpdateRain(dt);
             UpdatePlow(dt);
             UpdateNisser(dt);
+            if (IsPrimary && cfg.Snowman && !c.Autumn) UpdateBuild(dt);
 
             // Clear what was drawn last frame. If that touched the lights strip, the strip must be redrawn.
             var cleared = prevDirty;
@@ -324,7 +325,7 @@ namespace JuleHygge
             if (IsPrimary && cfg.Kite && c.Autumn) DrawKite(dt); else kiteSet = false;
             if (IsPrimary && cfg.Snowman) DrawSnowman(); else SnowmanPos = PointF.Empty;
             DrawGround();
-            foreach (var n in nisser) DrawNisse(n);
+            foreach (var n in nisser) if (n.Magic <= 0) DrawNisse(n);
             DrawPlow();
             DrawRain();   // behind the leaves
             DrawSnow();
@@ -1078,9 +1079,12 @@ namespace JuleHygge
             g.DrawLine(p, hx, hy, hx + (float)Math.Sin(a) * 15, hy + (float)Math.Cos(a) * 15);
         }
 
-        // ------------------------------------------------------------------ snemand (bygges lidt mere hver dag)
+        // ------------------------------------------------------------------ snemand
+        // In the Christmas theme the children build it (LayerSnowman.cs). Autumn's haystack and scarecrow still
+        // grow one stage a day (SnowmanStage), here.
         void DrawSnowman()
         {
+            if (!c.Autumn) { DrawBuild(); return; }
             int stage = c.SnowmanStage;
             float x = W * 0.78f, y = groundY - HeapAt(x) + 3 * S;
             SnowmanPos = new PointF(ScreenBounds.X + x, ScreenBounds.Y + y);
@@ -1089,81 +1093,7 @@ namespace JuleHygge
             var st = g.Save();
             g.TranslateTransform(x, y);
             g.ScaleTransform(S, S);
-            if (c.Autumn) { DrawScarecrow(stage); g.Restore(st); return; }
-
-            using (var shadow = new SolidBrush(Color.FromArgb(50, 60, 80, 110))) g.FillEllipse(shadow, -30, -3, 60, 6);
-            using (var wood = new Pen(Color.FromArgb(110, 70, 35), 2.6f))
-            {
-                wood.StartCap = wood.EndCap = LineCap.Round;
-                if (stage >= 12)
-                {
-                    g.DrawLine(wood, 32, -6, 46, -104);
-                    using (var straw = new SolidBrush(Color.FromArgb(215, 175, 90)))
-                        g.FillPolygon(straw, new[] { new PointF(24, 6), new PointF(42, 6), new PointF(37, -14), new PointF(31, -14) });
-                    using (var bind = new Pen(Color.FromArgb(170, 30, 30), 2f)) g.DrawLine(bind, 30, -11, 38, -11);
-                }
-                if (stage >= 8)
-                {
-                    g.DrawLine(wood, -15, -66, -40, -84);
-                    g.DrawLine(wood, -33, -79, -37, -91);
-                    g.DrawLine(wood, -33, -79, -44, -78);
-                    g.DrawLine(wood, 15, -66, 40, -80);
-                    g.DrawLine(wood, 33, -76, 39, -88);
-                }
-            }
-
-            if (stage == 1) Ball(0, -11, 11); else Ball(0, -24, 25);
-            if (stage >= 3) Ball(0, -62, 18);
-            if (stage >= 4) Ball(0, -92, 13);
-
-            using (var coal = new SolidBrush(Color.FromArgb(35, 35, 40)))
-            {
-                if (stage >= 7) for (int i = 0; i < 3; i++) g.FillEllipse(coal, -2.4f, -72.4f + i * 9, 4.8f, 4.8f);
-                if (stage >= 10)
-                {
-                    using (var scarf = new SolidBrush(Color.FromArgb(200, 30, 40)))
-                    {
-                        g.FillRectangle(scarf, -13, -82, 26, 6);
-                        g.FillPolygon(scarf, new[] { new PointF(5, -78), new PointF(12, -78), new PointF(15, -57), new PointF(8, -57) });
-                    }
-                    using (var stripe = new Pen(Color.White, 1.5f))
-                    {
-                        g.DrawLine(stripe, 9, -66, 14, -66);
-                        g.DrawLine(stripe, 10, -61, 15, -61);
-                    }
-                }
-                if (stage >= 5)
-                {
-                    g.FillEllipse(coal, -6.5f, -98, 4, 4);
-                    g.FillEllipse(coal, 2.5f, -98, 4, 4);
-                }
-                if (stage >= 6)
-                    using (var carrot = new SolidBrush(Color.FromArgb(240, 130, 30)))
-                        g.FillPolygon(carrot, new[] { new PointF(0, -93), new PointF(19, -89.5f), new PointF(0, -87) });
-                if (stage >= 9)
-                    for (int i = -2; i <= 2; i++)
-                    {
-                        float sx = i * 3f, sy = -86 + 2 * (1 - (sx / 6) * (sx / 6)) + 1;
-                        g.FillEllipse(coal, sx - 1.1f, sy - 1.1f, 2.2f, 2.2f);
-                    }
-                if (stage >= 11)
-                {
-                    g.FillRectangle(coal, -15, -106, 30, 4);
-                    g.FillRectangle(coal, -10, -127, 20, 22);
-                    using (var band = new SolidBrush(Color.FromArgb(200, 30, 40))) g.FillRectangle(band, -10, -110, 20, 4);
-                }
-            }
-            if (stage >= 12)
-            {
-                using (var gift = new SolidBrush(Color.FromArgb(40, 140, 70))) g.FillRectangle(gift, -50, -13, 15, 13);
-                using (var rib = new Pen(Gold, 1.8f))
-                {
-                    g.DrawLine(rib, -42.5f, -13, -42.5f, 0);
-                    g.DrawLine(rib, -50, -6.5f, -35, -6.5f);
-                    g.DrawEllipse(rib, -46, -17, 3.5f, 3.5f);
-                    g.DrawEllipse(rib, -42.5f, -17, 3.5f, 3.5f);
-                }
-            }
+            DrawScarecrow(stage);
             g.Restore(st);
         }
 
@@ -1483,6 +1413,13 @@ namespace JuleHygge
             foreach (var n in nisser)
             {
                 n.MeetCooldown = Math.Max(0, n.MeetCooldown - dt);
+                if (n.Magic > 0)
+                {
+                    // vanished by magic: it reappears on the other side of the children, walking on
+                    n.Magic -= dt;
+                    if (n.Magic <= 0) { n.X = n.MagicTo; MagicPuff(n); }
+                    continue;
+                }
                 if (n.MeetTimer > 0)
                 {
                     float before = n.MeetTimer;
@@ -1507,6 +1444,33 @@ namespace JuleHygge
                 n.StateTimer -= dt;
                 if (n.State == 0)
                 {
+                    // The nisser keep out of the way where the children build their snowman: they turn before it
+                    // (one that is already inside when they begin just walks on out). One that is trapped behind
+                    // the children (a narrow strip to the screen edge, or back at the children a second time)
+                    // vanishes by magic and reappears on the other side, if there is room there.
+                    float zl, zr;
+                    if (!n.Entering && PlayZone(out zl, out zr))
+                    {
+                        float ahead = n.X + n.Dir * 14 * S;
+                        if ((n.X < zl || n.X > zr) && ahead >= zl && ahead <= zr)
+                        {
+                            float to = n.Dir > 0 ? zr + 20 * S : zl - 20 * S;
+                            float behind = n.Dir > 0 ? zl : W - zr;
+                            bool room = to > 45 * S && to < W - 45 * S;
+                            if (room && (n.ZoneBumps >= 1 || behind < 250 * S))
+                            {
+                                n.ZoneBumps = 0;
+                                n.State = 0;
+                                MagicPuff(n);
+                                n.Magic = 0.8f;
+                                n.MagicTo = to;
+                                ErrorLog.Debug("nisse magic past the children: x=" + (int)n.X + " to " + (int)to);
+                                continue;
+                            }
+                            n.ZoneBumps++;
+                            n.Dir = -n.Dir;
+                        }
+                    }
                     n.X += n.Dir * n.Speed * dt;
                     n.WalkPhase += dt * n.Speed / (4.5f * S);
                     if (n.Entering && n.X > 30 * S && n.X < W - 30 * S) n.Entering = false;
@@ -1557,7 +1521,27 @@ namespace JuleHygge
 
         static bool FreeToMeet(Nisse n)
         {
-            return n.State == 0 && n.MeetTimer <= 0 && n.MeetCooldown <= 0 && !n.Entering && !n.Leaving && !n.Crossing;
+            return n.State == 0 && n.Magic <= 0 && n.MeetTimer <= 0 && n.MeetCooldown <= 0 && !n.Entering && !n.Leaving && !n.Crossing;
+        }
+
+        // A puff of sparkles where a nisse vanishes or reappears by magic.
+        void MagicPuff(Nisse n)
+        {
+            float sc = S * n.Size;
+            float gy = groundY - HeapAt(Math.Max(0, Math.Min(W - 1, n.X))) + 2 * S;
+            for (int i = 0; i < 26; i++)
+            {
+                var sp = new Spark();
+                sp.X = ScreenBounds.X + n.X + (Rnd() - 0.5f) * 36 * sc;
+                sp.Y = ScreenBounds.Y + gy - Rnd() * 60 * sc;
+                sp.VX = (Rnd() - 0.5f) * 50 * S;
+                sp.VY = -(15 + Rnd() * 45) * S;
+                sp.Max = sp.Life = 0.8f + Rnd() * 0.8f;
+                sp.Size = (1.5f + Rnd() * 2.5f) * S;
+                sp.Gold = Rnd() < 0.5f;
+                sp.Star = i % 4 == 0;
+                c.Sparks.Add(sp);
+            }
         }
 
         // Two nisser walking toward each other stop when they meet, if at least one of them carries a gift.
