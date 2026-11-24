@@ -200,7 +200,8 @@ namespace JuleHygge
                 Middle.Vx = (Middle.X - x1) / dt;
                 Head.Vx = (Head.X - x2) / dt;
             }
-            Dressed = t < DressStart ? 0 : Math.Min(Items, (int)((t - DressStart) / ItemTime));
+            // (nothing is worn once the plow has run it down: the build's clock stands still until they begin again)
+            Dressed = !built || t < DressStart ? 0 : Math.Min(Items, (int)((t - DressStart) / ItemTime));
         }
 
         static float Smooth(float a, float b, float x)

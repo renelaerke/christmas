@@ -104,6 +104,8 @@ enum GPU {
 
 final class DotImages {
     let flake, crystal, goldDot, whiteDot, goldGlint, whiteGlint, goldStar, whiteStar, smoke, chunk: CGImage
+    /// A snowball in the children's snowball fight: white with a faint edge, so it shows against the snow.
+    let snowball: CGImage
     /// A raindrop's streak (autumn storm): an upright line, drawn narrow and tall and turned with the wind.
     let rain: CGImage
     /// Autumn leaves in each colour, four ovals for every maple, lying along x (drawn turned as they fall).
@@ -132,6 +134,10 @@ final class DotImages {
         whiteStar = img { $0.fillPoly(C(255, 255, 255), starPoints(m, m, m, m * 0.45)) }
         smoke = img { $0.fillEllipse(C(120, 120, 125), 0, 0, s, s) }
         chunk = img { $0.fillEllipse(C(250, 252, 255), 0, 0, s, s) }
+        snowball = img { g in
+            g.fillEllipse(C(250, 252, 255, 250), 3, 3, s - 6, s - 6)
+            g.strokeEllipse(C(150, 175, 205, 110), 6, 3, 3, s - 6, s - 6)
+        }
         rain = img { $0.line(C(190, 215, 240), 22, m, 6, m, s - 6, round: true) }
         // Two kinds of leaf in every colour, both with the stalk at the left and the tip at the right:
         // a pointed oval (beech) and, one in five, a maple.
@@ -177,17 +183,17 @@ final class ScreenOverlay {
     let window: NSWindow?
     /// True for the offscreen "third screen" behind the user in the virtual camera.
     let isVirtual: Bool
-    private let backingScale: F
+    let backingScale: F
     let root: CALayer
     let isPrimary: Bool
     /// The screen in global coordinates with origin top-left of the primary screen, y down.
     let screenBounds: CGRect
     let S: F
-    private(set) var snowmanPos: CGPoint?
+    var snowmanPos: CGPoint?
     let W: F, H: F
-    private let groundY: F
+    let groundY: F
     private let lightsTop: F
-    private let images: DotImages
+    let images: DotImages
 
     private var flakes: [Flake] = []
     private var heap: [F]
@@ -204,7 +210,8 @@ final class ScreenOverlay {
     private var groundTimer: F = 0
 
     // layers, in drawing order (back to front)
-    private var lightsSprite: Sprite!, santaSprite: Sprite!, snowmanSprite: Sprite!, plowSprite: Sprite!
+    private var lightsSprite: Sprite!, santaSprite: Sprite!, plowSprite: Sprite!
+    var snowmanSprite: Sprite!
     private var sparkPool: DotPool!
     private let groundFill = CAShapeLayer(), groundLine = CAShapeLayer()
     private let nisseLayer = CALayer()
@@ -222,7 +229,18 @@ final class ScreenOverlay {
     private var bulbLayers: [(layer: CALayer, omega: Double, phase: Double)] = []
     private let lightsLayer = CALayer()
     private var bulbsBuilt = false
-    private var snowmanKey = ""
+    var snowmanKey = ""
+    // The children who build the snowman (OverlaySnowman.swift): one image layer per child, their poses drawn
+    // once and kept, and their snowballs.
+    let kidLayer = CALayer()
+    var kidLayers: [CALayer] = []
+    var kidFrames: [Int: CGImage] = [:]
+    var snowballPool: DotPool!
+    /// Where the plow's blade was in the last frame (nan = no plow here): the snowman is run down where it arrives.
+    var lastBlade = F.nan
+    /// The camera's scene has its own children and snowman; on the real screens the story lives in the Controller.
+    private lazy var ownBuild = SnowmanBuild()
+    var build: SnowmanBuild { isVirtual ? ownBuild : c.build }
 
     private var PS: Bool { c.powerSave }
     private var lightsHeight: F { 70 * S }
@@ -315,6 +333,11 @@ final class ScreenOverlay {
         root.addSublayer(kiteString)
         kiteSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawKite(g) }
         snowmanSprite = Sprite(parent: root, screenHeight: h, scale: scale) { [weak self] g in self?.drawSnowman(g) }
+        // the children and their snowballs stand in the snow like the snowman: the pile is drawn over their feet
+        kidLayer.frame = root.bounds
+        kidLayer.isHidden = true
+        root.addSublayer(kidLayer)
+        snowballPool = DotPool(in: root, screenHeight: h)
         for l in [groundFill, groundLine] {
             l.frame = root.bounds
             l.actions = ["path": NSNull(), "hidden": NSNull()]
@@ -339,8 +362,8 @@ final class ScreenOverlay {
     /// Renders the virtual screen to an image (camera background). The layer tree is walked and drawn by hand:
     /// CALayer.render(in:) creates an offscreen buffer for every layer with transparency, which made ~260
     /// snowflakes take ~900 ms per frame. Drawn directly, each flake is one image draw with an alpha value.
-    /// Layers drawn in front of the person in the camera picture: the snow pile, the snowman, the nisser, the plow and its spray.
-    private var foregroundLayers: [CALayer] { [snowmanSprite.layer, groundFill, groundLine, leafPool.container, nisseLayer, plowBitPool.container, plowSprite.layer] }
+    /// Layers drawn in front of the person in the camera picture: the snow pile, the snowman and the children who build it, the nisser, the plow and its spray.
+    private var foregroundLayers: [CALayer] { [snowmanSprite.layer, kidLayer, snowballPool.container, groundFill, groundLine, leafPool.container, nisseLayer, plowBitPool.container, plowSprite.layer] }
 
     /// The camera scene in two images: everything behind the person (sky, lights, snowfall, Santa) and, with a
     /// transparent background, what stands in front of the person (see `foregroundLayers`).
@@ -361,12 +384,15 @@ final class ScreenOverlay {
         return (b.makeImage(), f.makeImage())
     }
 
-    func renderSceneImage() -> CGImage? {
-        let w = Int(W), h = Int(H)
+    /// (`scale` pixels per point and a background colour are for --snapshot with JULE_SNAPSHOT_SCALE.)
+    func renderSceneImage(scale k: F = 1, background: CGColor? = nil) -> CGImage? {
+        let w = Int(W * k), h = Int(H * k)
         guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
         ctx.interpolationQuality = .low
+        if let background { ctx.setFillColor(background); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h)) }
+        ctx.scaleBy(x: k, y: k)
         Self.drawTree(root, into: ctx, alpha: 1)
         return ctx.makeImage()
     }
@@ -437,6 +463,7 @@ final class ScreenOverlay {
         updateRain(dt)
         updatePlow(dt)
         updateNisser(dt)
+        if buildsSnowman { updateBuild(dt) }
 
         renderLightsLayer()
         renderSparks()
@@ -653,7 +680,7 @@ final class ScreenOverlay {
         }
     }
 
-    private func heapAt(_ x: F) -> F {
+    func heapAt(_ x: F) -> F {
         let fx = x / heapStep
         let i = Int(floor(fx))
         if i < 0 { return heap[0] }
@@ -1041,9 +1068,13 @@ final class ScreenOverlay {
         }
     }
 
-    // ------------------------------------------------------------------ snemand (bygges lidt mere hver dag)
+    // ------------------------------------------------------------------ snemand
+    // In the Christmas theme the children build it (OverlaySnowman.swift). Autumn's haystack and scarecrow
+    // still grow one stage a day (Controller.snowmanStage), here.
     private func renderSnowman() {
-        guard isPrimary && cfg.snowman && c.theme.hasSnowman else { snowmanPos = nil; snowmanSprite.hide(); return }
+        guard isPrimary && cfg.snowman && c.theme.hasSnowman else { snowmanPos = nil; snowmanSprite.hide(); hideBuild(); return }
+        if c.theme.childrenBuild { renderBuild(); return }
+        hideBuild()
         let x = W * 0.78, y = groundY - heapAt(W * 0.78) + 3 * S
         snowmanPos = CGPoint(x: screenBounds.minX + x, y: screenBounds.minY + y)
         let key = "\(c.snowmanStage) \(Int(y))"
@@ -1147,83 +1178,26 @@ final class ScreenOverlay {
     }
 
     private func drawSnowman(_ g: CGContext) {
+        if c.theme.childrenBuild { drawBuild(g); return }
         let stage = c.snowmanStage
         let x = W * 0.78, y = groundY - heapAt(x) + 3 * S
         g.translateBy(x: x, y: y)
         g.scaleBy(x: S, y: S)
-        if c.theme == .efteraar { drawScarecrow(g, stage); return }
-
-        g.fillEllipse(C(60, 80, 110, 50), -30, -3, 60, 6)
-        let wood = C(110, 70, 35)
-        if stage >= 12 {
-            g.line(wood, 2.6, 32, -6, 46, -104, round: true)
-            g.fillPoly(C(215, 175, 90), [(24, 6), (42, 6), (37, -14), (31, -14)])
-            g.line(C(170, 30, 30), 2, 30, -11, 38, -11)
-        }
-        if stage >= 8 {
-            g.line(wood, 2.6, -15, -66, -40, -84, round: true)
-            g.line(wood, 2.6, -33, -79, -37, -91, round: true)
-            g.line(wood, 2.6, -33, -79, -44, -78, round: true)
-            g.line(wood, 2.6, 15, -66, 40, -80, round: true)
-            g.line(wood, 2.6, 33, -76, 39, -88, round: true)
-        }
-
-        func ball(_ cx: F, _ cy: F, _ r: F) {
-            let rc = CGRect(x: cx - r, y: cy - r, width: 2 * r, height: 2 * r)
-            let p = CGPath(ellipseIn: rc, transform: nil)
-            g.fillGradient(p, C(255, 255, 255), C(200, 216, 238), from: CGPoint(x: rc.minX + r * 0.4, y: rc.minY), to: CGPoint(x: rc.maxX - r * 0.4, y: rc.maxY))
-            g.stroke(C(140, 165, 200, 70), 1, p)
-        }
-        if stage == 1 { ball(0, -11, 11) } else { ball(0, -24, 25) }
-        if stage >= 3 { ball(0, -62, 18) }
-        if stage >= 4 { ball(0, -92, 13) }
-
-        let coal = C(35, 35, 40)
-        if stage >= 7 { for i in 0..<3 { g.fillEllipse(coal, -2.4, -72.4 + F(i) * 9, 4.8, 4.8) } }
-        if stage >= 10 {
-            let scarf = C(200, 30, 40)
-            g.fillRect(scarf, -13, -82, 26, 6)
-            g.fillPoly(scarf, [(5, -78), (12, -78), (15, -57), (8, -57)])
-            g.line(C(255, 255, 255), 1.5, 9, -66, 14, -66)
-            g.line(C(255, 255, 255), 1.5, 10, -61, 15, -61)
-        }
-        if stage >= 5 {
-            g.fillEllipse(coal, -6.5, -98, 4, 4)
-            g.fillEllipse(coal, 2.5, -98, 4, 4)
-        }
-        if stage >= 6 { g.fillPoly(C(240, 130, 30), [(0, -93), (19, -89.5), (0, -87)]) }
-        if stage >= 9 {
-            for i in -2...2 {
-                let sx = F(i) * 3, sy = -86 + 2 * (1 - (sx / 6) * (sx / 6)) + 1
-                g.fillEllipse(coal, sx - 1.1, sy - 1.1, 2.2, 2.2)
-            }
-        }
-        if stage >= 11 {
-            g.fillRect(coal, -15, -106, 30, 4)
-            g.fillRect(coal, -10, -127, 20, 22)
-            g.fillRect(C(200, 30, 40), -10, -110, 20, 4)
-        }
-        if stage >= 12 {
-            g.fillRect(C(40, 140, 70), -50, -13, 15, 13)
-            g.line(Self.gold, 1.8, -42.5, -13, -42.5, 0)
-            g.line(Self.gold, 1.8, -50, -6.5, -35, -6.5)
-            g.strokeEllipse(Self.gold, 1.8, -46, -17, 3.5, 3.5)
-            g.strokeEllipse(Self.gold, 1.8, -42.5, -17, 3.5, 3.5)
-        }
+        drawScarecrow(g, stage)
     }
 
     // ------------------------------------------------------------------ sneplov
     // An orange plow truck clears the snow when it gets high, alternating direction each run.
     // Snow it scrapes up builds a growing pile in front of the blade and is thrown up as chunks.
-    private var plowBits: [PlowBit] = []
+    var plowBits: [PlowBit] = []
     private var plowSmokeTimer: F = 0, plowChunkAcc: F = 0
-    private let plowScale: F = 1.15
+    let plowScale: F = 1.15
 
     // The truck itself is driven by the Controller in global coordinates, so one plow drives continuously
     // across neighbouring screens. These read its state in this screen's coordinates.
-    private var plowActive: Bool { c.plow.active && c.plow.members.contains(ObjectIdentifier(self)) }
-    private var plowX: F { c.plow.gx - screenBounds.minX }
-    private var plowDir: F { c.plow.dir }
+    var plowActive: Bool { c.plow.active && c.plow.members.contains(ObjectIdentifier(self)) }
+    var plowX: F { c.plow.gx - screenBounds.minX }
+    var plowDir: F { c.plow.dir }
     private var plowWheel: F { c.plow.wheel }
     private var plowOnScreen: Bool { plowActive && plowX > -140 * S * plowScale && plowX < W + 140 * S * plowScale }
     private var plowPileHeight: F { min(34, 4 + sqrt(c.plow.pushed / S) * 0.3) }
@@ -1469,6 +1443,12 @@ final class ScreenOverlay {
         meetNisser()
         for n in nisser {
             n.meetCooldown = max(0, n.meetCooldown - dt)
+            if n.magic > 0 {
+                // vanished by magic: it reappears on the other side of the children, walking on
+                n.magic -= dt
+                if n.magic <= 0 { n.x = n.magicTo; magicPuff(n) }
+                continue
+            }
             if n.meetTimer > 0 {
                 let before = n.meetTimer
                 n.meetTimer -= dt
@@ -1489,6 +1469,29 @@ final class ScreenOverlay {
             if n.t > 200 * .pi { n.t -= 200 * .pi }
             n.stateTimer -= dt
             if n.state == 0 {
+                // The nisser keep out of the way where the children build their snowman: they turn before it
+                // (one that is already inside when they begin just walks on out). One that is trapped behind
+                // the children (a narrow strip to the screen edge, or back at the children a second time)
+                // vanishes by magic and reappears on the other side, if there is room there.
+                if !n.entering, let zone = playZone() {
+                    let ahead = n.x + n.dir * 14 * S
+                    if (n.x < zone.left || n.x > zone.right) && ahead >= zone.left && ahead <= zone.right {
+                        let to = n.dir > 0 ? zone.right + 20 * S : zone.left - 20 * S
+                        let behind = n.dir > 0 ? zone.left : W - zone.right
+                        let room = to > 45 * S && to < W - 45 * S
+                        if room && (n.zoneBumps >= 1 || behind < 250 * S) {
+                            n.zoneBumps = 0
+                            n.state = 0
+                            magicPuff(n)
+                            n.magic = 0.8
+                            n.magicTo = to
+                            ErrorLog.debug("nisse magic past the children: x=\(Int(n.x)) to \(Int(to))")
+                            continue
+                        }
+                        n.zoneBumps += 1
+                        n.dir = -n.dir
+                    }
+                }
                 n.x += n.dir * n.speed * dt
                 n.walkPhase += dt * n.speed / (4.5 * S)
                 if n.entering && n.x > 30 * S && n.x < W - 30 * S { n.entering = false }
@@ -1524,7 +1527,7 @@ final class ScreenOverlay {
     /// Two nisser walking toward each other stop when they meet, if at least one of them carries a gift.
     private func meetNisser() {
         func free(_ n: Nisse) -> Bool {
-            n.state == 0 && n.meetTimer <= 0 && n.meetCooldown <= 0 && !n.entering && !n.leaving && !n.crossing
+            n.state == 0 && n.magic <= 0 && n.meetTimer <= 0 && n.meetCooldown <= 0 && !n.entering && !n.leaving && !n.crossing
         }
         for a in nisser where free(a) {
             for b in nisser where b !== a && free(b) && a.dir != b.dir && (a.carriesGift || b.carriesGift) {
@@ -1629,6 +1632,7 @@ final class ScreenOverlay {
             let key = "\(c.folk.rawValue)-\(n.variant)-\(n.state)-\(frame)"
             let img = nisseFrames[key] ?? renderNisseFrame(n, frame, key)
             let l = nisseLayers[i]
+            if l.isHidden != (n.magic > 0) { l.isHidden = n.magic > 0 }   // gone by magic for a moment
             if l.contents == nil || (l.contents as! CGImage) !== img { l.contents = img }
             l.bounds = CGRect(x: 0, y: 0, width: 64 * sc, height: 80 * sc)
             l.position = CGPoint(x: n.x, y: H - (gy - 32 * sc))

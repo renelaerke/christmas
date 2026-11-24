@@ -16,7 +16,7 @@ Ett litet julöverlägg för Windows, macOS och Linux: snön faller över skrivb
 - Det fungerar på **alla skärmar**. Jultomten flyger över skärmar som står bredvid varandra.
 - **Menyn:** högerklicka på snöflingan vid klockan i Windows och Linux, eller klicka på den i menyraden på macOS, för inställningarna och julkalendern. Där kan allt slås på och av.
 - **Julkalender:** från den 1 december kan du öppna en ny lucka varje dag. Bakom luckorna finns skämt, mystips och julfakta, och vissa luckor sätter igång en effekt: jultomten, snöstorm, fest eller stjärnregn.
-- **Snögubbe:** tre barn bygger en snögubbe på aktivitetsfältet på ungefär en kvart: de rullar snöbollarna, lyfter dem på varandra och ger den ögon, morotsnäsa, knappar, armar, ett leende, halsduk och mössa. När den är klar jublar de och har snöbollskrig, och några minuter senare kommer snöplogen och kör över den. Sedan går barnen till ett annat ställe och börjar om. (Så är det på Windows. På macOS och Linux byggs snögubben fortfarande under 12 dagar.)
+- **Snögubbe:** tre barn bygger en snögubbe på aktivitetsfältet på ungefär en kvart: de rullar snöbollarna, lyfter dem på varandra och ger den ögon, morotsnäsa, knappar, armar, ett leende, halsduk och mössa. När den är klar jublar de och har snöbollskrig, och några minuter senare kommer snöplogen och kör över den. Sedan går barnen till ett annat ställe och börjar om. (Så är det på Windows och macOS. På Linux byggs snögubben fortfarande under 12 dagar.)
 - **Snöplog:** kör ut och röjer snön när drivan blir hög.
 - **Ljudet** är avstängt tills du slår på det i menyn: bjällror och en melodi för jultomten, motor och tuta för snöplogen.
 - **Hösttema:** menyn "Tema" byter snön mot fallande löv, jultomten mot flyttgäss och snögubben mot en fågelskrämma.

@@ -26,9 +26,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
 
     static let snowmanMaxStage = 12
     var snowmanStage = 1
-    static let snowmanSteps = [
-        "en lille snebold", "en stor snebold", "maven", "hovedet", "øjne af kul", "en gulerodsnæse",
-        "knapper", "arme af grene", "et smil", "et rødt halstørklæde", "en høj hat", "en kost - snemanden er færdig!"]
+    /// The Christmas snowman is built by children in real time (SnowmanBuild, drawn in OverlaySnowman.swift);
+    /// only the other themes' form of it still grows by the day (snowmanStage).
+    let build = SnowmanBuild()
 
     private(set) var overlays: [ScreenOverlay] = []
     /// The offscreen "third screen" behind the user in the virtual camera; only exists while the camera is in use.
@@ -319,15 +319,24 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
 
     private func writeSnapshots(to dir: String) {
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        // JULE_SNAPSHOT_SCALE=3 saves the pictures at that many pixels per point, to look at small figures close up.
+        // (Those are drawn layer by layer, as for the camera: CALayer.render takes many seconds at that size.)
+        let k = F(Double(ProcessInfo.processInfo.environment["JULE_SNAPSHOT_SCALE"] ?? "") ?? 0)
         for (i, o) in overlays.enumerated() {
+            let url = URL(fileURLWithPath: dir).appendingPathComponent("screen\(i).png")
+            if k >= 1 {
+                if let img = o.renderSceneImage(scale: min(4, k), background: C(40, 55, 80)) {
+                    try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: url)
+                }
+                continue
+            }
             let w = Int(o.W), h = Int(o.H)
             guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { continue }
             ctx.setFillColor(C(40, 55, 80)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
             (o.root.presentation() ?? o.root).render(in: ctx)
             if let img = ctx.makeImage() {
-                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?
-                    .write(to: URL(fileURLWithPath: dir).appendingPathComponent("screen\(i).png"))
+                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: url)
             }
         }
         if let v = calendarWindow?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) {
@@ -579,6 +588,15 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
     }
 
+    /// A few minutes after the children have finished their snowman on `o`, the plow comes by and runs it down.
+    /// (If it cannot come now, the children ask again a minute later.)
+    func plowWanted(by o: ScreenOverlay) {
+        guard cfg.plow && cfg.snowman && theme.childrenBuild && !plow.active else { return }
+        // while the screens are paused for the camera only the camera picture is plowed (the others are hidden)
+        if o.isVirtual != screensPausedForCamera { return }
+        startPlow(from: o)
+    }
+
     func sendPlowAfter(_ seconds: Double) { plowAt = time + (seconds > 0 ? seconds : 0) }
 
     private func nisseParty() { for o in overlays { o.nisseWave(6) } }
@@ -601,15 +619,19 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
     }
 
-    private func snowmanCelebrate() {
+    /// Sparkles around the snowman (the children's, when finished: on that screen only) or around what grows
+    /// by the day in the other themes (a new stage).
+    func snowmanCelebrate(on screen: ScreenOverlay? = nil) {
         guard cfg.snowman else { return }
-        for o in overlays {
+        let small = theme.childrenBuild
+        let wide: F = small ? 60 : 90, high: F = small ? 70 : 120
+        for o in overlays where screen == nil || o === screen {
             guard o.isPrimary, let p = o.snowmanPos else { continue }
             let s = o.S
-            for _ in 0..<70 {
+            for _ in 0..<(small ? 45 : 70) {
                 let sp = Spark()
-                sp.x = p.x + (R() - 0.5) * 90 * s
-                sp.y = p.y - R() * 120 * s
+                sp.x = p.x + (R() - 0.5) * wide * s
+                sp.y = p.y - R() * high * s
                 sp.vx = (R() - 0.5) * 60 * s
                 sp.vy = -(20 + R() * 60) * s
                 sp.max = 1.5 + R() * 1.5; sp.life = sp.max
@@ -629,14 +651,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
 
         var title: String?, msg: String?, opensCalendar = false
         if snowmanStage > cfg.snowmanSeenStage {
-            if cfg.snowmanSeenStage > 0 && cfg.snowman {
-                if theme == .efteraar {
-                    title = "Høstakken vokser!"
-                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[snowmanStage - 1]
-                } else {
-                    title = "Snemanden vokser!"
-                    msg = "\(folk == .alfer ? "Alferne" : "Nisserne") har bygget videre på snemanden. I dag fik den " + Self.snowmanSteps[snowmanStage - 1]
-                }
+            // (only what grows by the day gets the notice; the Christmas snowman is built while you watch)
+            if cfg.snowmanSeenStage > 0 && cfg.snowman && !theme.childrenBuild {
+                title = "Høstakken vokser!"
+                msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[snowmanStage - 1]
                 celebrateAt = time + 2
             }
             cfg.snowmanSeenStage = snowmanStage
@@ -851,7 +869,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         languageItem.submenu?.items.first?.title = L("Automatisk ({0})", Lang.all[Lang.automatic]?.name ?? Lang.automatic)
         kiteItem.isHidden = !autumn
         countdownItem.title = Self.countdown()
-        snowmanItem.title = L(autumn ? "Høstak med fugleskræmsel (trin {0} af {1})" : "Snemand (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage)
+        // (the Christmas snowman has no stage: the children build it while you watch)
+        if autumn { snowmanItem.title = L("Høstak med fugleskræmsel (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         autostartItem.state = Self.autostart ? .on : .off
     }
 
