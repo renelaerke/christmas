@@ -45,7 +45,7 @@ Temaet **De dødes dag** (Día de los Muertos, `Theme=2`) er påbegyndt. Idéen 
 |---|---|
 | Snevejr | Kronblade af tagetes (cempasúchil) og nu og da et helt lille blomsterhoved, i fem orange og gule nuancer. |
 | Sne i bunden og på vinduerne | Et tæppe af kronblade, der vokser og falder fra vinduer som sneen. På vindueskanterne står små lys med flakkende flammer (ca. ét pr. 150 punkter), når der er landet kronblade; de forsvinder med vinduet. |
-| Snemand over 12 dage | En ofrenda: tre trin med duge, lys, tagetes, sukkerkranie, lys, de dødes brød, et billede, en bue af tagetes, papel picado og til sidst et glas vand, et lille sukkerkranie og en monarksommerfugl. |
+| Snemand, som tre børn bygger på et kvarter | En ofrenda, der får ét trin for hver time, appen kører (12 trin; færdig bliver den stående, til et andet tema vælges): tre trin med duge, lys, tagetes, sukkerkranie, lys, de dødes brød, et billede, en bue af tagetes, papel picado og til sidst et glas vand, et lille sukkerkranie og en monarksommerfugl. |
 | Julemanden i kane | En sværm af monarksommerfugle. Lyd (slået fra som standard): en original lille vals i d-mol med marimba og guitar, syntetiseret (`Synth.muertosSon`). |
 | Sneplov | En æselkærre: en calaca fejer kronbladene op med en kost foran æslet, og de flyver bagud i kærren. Den går i æseltempo (45 % af sneplovens fart). Lyd (punktet "Lyd: hovtramp, hjulknirk og æselbrøl"): hove i takt med æslets ben, et knirk for hver omgang hjulet tager, kosten (højere, jo flere kronblade foran den), og æslet skryder én gang, hvor sneploven dytter. |
 | Nisser, der bytter pakker | Calacas (skeletter) med sombrero og stribet serape eller catrina-hat og lang kjole; de bytter tagetesbuketter og danser med maraca. |

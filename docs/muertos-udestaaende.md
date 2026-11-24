@@ -4,7 +4,7 @@ Status pr. 2026-11-19. Temaet er påbegyndt på macOS på grenen `muertos` (idé
 
 ## Lavet
 
-Kronblade og tagetes-tæppe (bund og vinduer), ofrenda over 12 dage, monarksommerfugle, calacas, papel picado,
+Kronblade og tagetes-tæppe (bund og vinduer), ofrenda i 12 trin (ét pr. time appen kører, se nedenfor), monarksommerfugle, calacas, papel picado,
 menutekster og beskeden, når alteret vokser. Set på `--snapshot`-billeder (fuldt tæppe, færdigt alter og trin 5).
 
 Lavet samme dag, anden runde:
@@ -49,10 +49,11 @@ Oversættelserne er mine og ikke læst af nogen, der har sproget som modersmål.
 
 Status 2026-11-24 (REL): kameraet virker live, animationerne er i orden, og strømmåling springes over.
 
-- **Ofrendaens datoer, udskudt:** alteret skal bygges op til 2. november i stedet for over 12 dage fra første
-  start. Det er skrevet og testet, men taget ud igen her, fordi snemandens 12-dages-opbygning allerede er ændret
-  på main; koden og testresultatet ligger i `docs/muertos-ofrenda-datoer.swift.txt` og lægges ind oven på main's
-  udgave efter sammenfletningen.
+- **Ofrendaens tempo, afgjort 2026-11-24 (REL):** ét trin for hver time appen kører med temaet slået til, og den
+  færdige ofrenda bliver stående, til et andet tema vælges. Det erstatter både de 12 dage og den udskudte plan om
+  at bygge op til 2. november (den parkerede kode er slettet; den ligger i git-historikken som
+  `docs/muertos-ofrenda-datoer.swift.txt`). Set på billeder ved 3600× fart (trin 1, 5 og 12, også hen over en
+  genstart). Ikke set: skiftet af tema i menuen (nulstillingen), og et rigtigt forløb over 11 timer.
 
 ## Uden for selve temaet
 

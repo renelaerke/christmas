@@ -91,8 +91,8 @@ enum Theme: Int {
     /// with candles, marigolds and a sugar skull).
     var hasSnowman: Bool { true }
     /// In the Christmas theme three children build the snowman while you watch, and the plow runs it down
-    /// (SnowmanBuild). Every other theme's form of it grows one stage a day (Controller.snowmanStage) and gets
-    /// the daily notice.
+    /// (SnowmanBuild). Autumn's form of it grows one stage a day and gets the daily notice; the ofrenda grows one
+    /// stage for every hour the app runs (Controller.snowmanStage, updateOfrenda).
     var childrenBuild: Bool { self == .jul }
     /// The walkers exist in every theme; in autumn they are hedgehogs and squirrels (`animals`), for the dead
     /// calacas, small skeletons in sombreros and catrina hats (`skeletons`).

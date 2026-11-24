@@ -25,9 +25,19 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     var sparks: [Spark] = []
 
     static let snowmanMaxStage = 12
-    var snowmanStage = 1
-    /// The Christmas snowman is built by children in real time (SnowmanBuild, drawn in OverlaySnowman.swift);
-    /// only the other themes' form of it still grows by the day (snowmanStage).
+    /// How far what stands in the snowman's place has come. Autumn's haystack grows a stage a day (`dailyStage`);
+    /// the ofrenda of De dødes dag grows a stage for every hour the app runs with that theme (`ofrendaStage`),
+    /// since the theme is only on for a couple of days.
+    var snowmanStage: Int { theme == .muertos ? ofrendaStage : dailyStage }
+    private var dailyStage = 1
+    /// One step of the ofrenda takes this long (seconds the app runs with the theme on).
+    static let ofrendaStepTime: Double = 3600
+    /// Finished, it stands until another theme is chosen; choosing the theme again starts a new altar.
+    var ofrendaStage: Int { max(1, min(Self.snowmanMaxStage, Int(cfg.ofrendaSeconds / Self.ofrendaStepTime) + 1)) }
+    private var ofrendaSaveTimer: F = 0
+    /// JULE_SNOWMAN_SPEED=N builds the ofrenda N times faster too (3600 gives a step a second).
+    private let ofrendaSpeed = max(0.01, Double(ProcessInfo.processInfo.environment["JULE_SNOWMAN_SPEED"] ?? "") ?? 1)
+    /// The Christmas snowman is built by children in real time (SnowmanBuild, drawn in OverlaySnowman.swift).
     let build = SnowmanBuild()
 
     private(set) var overlays: [ScreenOverlay] = []
@@ -302,6 +312,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         updateSparks(dt)
         updatePlow(dt)
         updateWindowSnow(dt)
+        updateOfrenda(dt)
         if celebrateAt > 0 && time >= celebrateAt { celebrateAt = -1; snowmanCelebrate() }
         if plowAt >= 0 && time >= plowAt { plowAt = -1; sendPlow() }
 
@@ -681,22 +692,18 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let today = JuleClock.today
         lastDay = today
         CalendarContent.syncYear(cfg, today)
-        snowmanStage = max(1, min(Self.snowmanMaxStage, JuleClock.days(from: cfg.firstRun ?? today, to: today) + 1))
+        dailyStage = max(1, min(Self.snowmanMaxStage, JuleClock.days(from: cfg.firstRun ?? today, to: today) + 1))
 
         var title: String?, msg: String?, opensCalendar = false
-        if snowmanStage > cfg.snowmanSeenStage {
-            // (only what grows by the day gets the notice; the Christmas snowman is built while you watch)
-            if cfg.snowmanSeenStage > 0 && cfg.snowman && !theme.childrenBuild {
-                if theme == .muertos {
-                    title = "Ofrendaen vokser!"
-                    msg = "Calacas har pyntet alteret. I dag kom der " + Self.ofrendaSteps[snowmanStage - 1]
-                } else {
-                    title = "Høstakken vokser!"
-                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[snowmanStage - 1]
-                }
+        if dailyStage > cfg.snowmanSeenStage {
+            // (only what grows by the day gets the notice: the Christmas snowman is built while you watch, and the
+            // ofrenda by the hour, see updateOfrenda)
+            if cfg.snowmanSeenStage > 0 && cfg.snowman && theme == .efteraar {
+                title = "Høstakken vokser!"
+                msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + Self.scarecrowSteps[dailyStage - 1]
                 celebrateAt = time + 2
             }
-            cfg.snowmanSeenStage = snowmanStage
+            cfg.snowmanSeenStage = dailyStage
             cfg.save()
         }
         let d = JuleClock.parts(today)
@@ -712,6 +719,35 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             msg = "Klik på snefnug-ikonet i menulinjen for indstillinger og julekalender."
         }
         if let title, let msg { notify(title, msg, opensCalendar: opensCalendar) }
+    }
+
+    /// The ofrenda of De dødes dag: a step for every hour the app runs with the theme on (the timer stands still
+    /// while the screens sleep or are locked, so that time does not count). Each new step gets sparkles; the last
+    /// one also a notice. Finished, it stands as it is until another theme is chosen (`themeChanged`).
+    private func updateOfrenda(_ dt: F) {
+        guard theme == .muertos, cfg.snowman, ofrendaStage < Self.snowmanMaxStage else { return }
+        let before = ofrendaStage
+        cfg.ofrendaSeconds += Double(dt) * ofrendaSpeed
+        ofrendaSaveTimer += dt
+        let stage = ofrendaStage
+        if stage != before {
+            ErrorLog.debug("ofrenda: step \(stage) of \(Self.snowmanMaxStage)")
+            celebrateAt = time + 0.5
+            if stage == Self.snowmanMaxStage {
+                notify("Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + Self.ofrendaSteps[stage - 1], opensCalendar: false)
+            }
+        }
+        // (kept across a restart: saved at each step and once a minute)
+        if stage != before || ofrendaSaveTimer >= 60 { ofrendaSaveTimer = 0; cfg.save() }
+    }
+
+    /// Another theme was chosen in the menu: the ofrenda is taken down, so a new one is built from its first step
+    /// the next time De dødes dag is chosen.
+    private func themeChanged() {
+        cfg.ofrendaSeconds = 0
+        ofrendaSaveTimer = 0
+        celebrateAt = -1
+        buildOverlays()
     }
 
     private func notify(_ title: String, _ body: String, opensCalendar: Bool) {
@@ -788,7 +824,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(countdownItem, nil, nil))
         menu.addItem(themed(.separator(), nil, nil))
 
-        menu.addItem(choice("Tema", Theme.names, [0, 1, 2], { $0.theme }, { [unowned self] in $0.theme = $1; buildOverlays() }))
+        menu.addItem(choice("Tema", Theme.names, [0, 1, 2], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
         menu.addItem(themed(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }), "Løvfald", "Kronblade fra tagetes"))
         menu.addItem(themed(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }),
                             "Mængde af blade", "Mængde af kronblade", choices: ["Få blade", nil, "Efterårsstorm", nil], muertosChoices: ["Få kronblade", nil, "Kronbladsstorm", nil]))

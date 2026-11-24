@@ -19,6 +19,7 @@ final class Settings {
     var soundLevel = 1         // 0 = lav, 1 = middel, 2 = høj
     var frameRate = 20         // billeder/s når scenen er rolig (12, 20, 30 eller 60)
     var snowmanSeenStage = 0
+    var ofrendaSeconds = 0.0   // how long the ofrenda (De dødes dag) has been built on: a step for every hour the app runs
     var calendarYear = 0
     var firstRun: Date? = nil, lastDoorNotice: Date? = nil
     var openedDoors = Set<Int>()
@@ -75,6 +76,7 @@ final class Settings {
         s.language = d["Language"] ?? ""
         Lang.setting = s.language
         s.snowmanSeenStage = i("SnowmanSeenStage", 0)
+        s.ofrendaSeconds = max(0, Double(d["OfrendaSeconds"] ?? "") ?? 0)
         s.calendarYear = i("CalendarYear", 0)
         s.firstRun = d["FirstRun"].flatMap(JuleClock.parse)
         s.lastDoorNotice = d["LastDoorNotice"].flatMap(JuleClock.parse)
@@ -94,7 +96,7 @@ final class Settings {
             "Snowman=" + b(snowman), "AllScreens=" + b(allScreens), "Plow=" + b(plow), "WindowSnow=" + b(windowSnow), "CameraHat=" + b(cameraHat), "CameraFront=" + b(cameraFront), "CameraBeard=" + b(cameraBeard), "CameraSuit=" + b(cameraSuit), "Sound=" + b(sound), "CameraPausesScreens=" + b(cameraPausesScreens), "PlowSound=" + b(plowSound), "SoundLevel=\(soundLevel)",
             "SnowLevel=\(snowLevel)", "NisseCount=\(nisseCount)", "PowerSave=\(powerSave)", "FrameRate=\(frameRate)",
             "Theme=\(theme)", "Kite=" + b(kite), "Folk=\(folk)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
-            "SnowmanSeenStage=\(snowmanSeenStage)", "CalendarYear=\(calendarYear)",
+            "SnowmanSeenStage=\(snowmanSeenStage)", "OfrendaSeconds=\(Int(ofrendaSeconds))", "CalendarYear=\(calendarYear)",
             "FirstRun=" + ds(firstRun), "LastDoorNotice=" + ds(lastDoorNotice),
             "OpenedDoors=" + openedDoors.sorted().map(String.init).joined(separator: ","),
         ]
