@@ -24,9 +24,12 @@ over the clock, and midnight with the year in sparks. The paper hat was seen on 
   and sound test run there. **Never seen running**: the drawing is GDI+, which does not run on the Mac. Measure
   CPU there: confetti is twice as many pieces as leaves, a burst is 64 soft dots (three ellipses each), and the
   sparklers on the window edges are drawn every frame.
-- **Linux:** the whole theme without the camera, **never compiled**: there is no Rust on the Mac. It is checked
-  for the first time when it is pushed and CI builds it, runs its tests and saves `screen0-nytaar.png` and
-  `screen0-nytaar-midnat.png`. Expect to fix compile errors there.
+- **Linux:** the whole theme without the camera, written without a Rust compiler (there is none on the Mac) and
+  built by CI. It type-checked on the first run; clippy wanted `TAU` for a hand-written 6.28, and that was all.
+  All 79 tests pass, and the two pictures CI keeps, `screen0-nytaar.png` (the scene with a volley and the
+  sweeper) and `screen0-nytaar-midnat.png` (midnight, with the year in sparks), look as on macOS. **Never seen
+  moving or heard**, and the tray menu is not exercised on CI (it has no D-Bus), so the menu's New Year texts on
+  Linux are unseen.
 - The countdown is in the menu bar on macOS only: Windows has it in the tray icon's tooltip, Linux in the menu's
   countdown line.
 - Not ported: the camera's paper hat (the camera is macOS only).
