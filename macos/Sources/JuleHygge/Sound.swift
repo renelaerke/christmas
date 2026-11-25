@@ -689,6 +689,90 @@ enum Synth {
         }
     }
 
+    // ------------------------------------------------------------------ nytår
+    /// New Year's tune, to the rockets: "Auld Lang Syne", verse and refrain (16 bars of 4/4, about 29 s, looping).
+    /// The melody is traditional (Scottish, 18th century) and free of rights; this arrangement is ours: a soft
+    /// reed voice like an accordion over a slow bass and a held chord.
+    static func auldLangSyne() -> AVAudioPCMBuffer? {
+        let beat = 0.46
+        let C4 = 60, D4 = 62, F4 = 65, G4 = 67, A4 = 69, C5 = 72, D5 = 74
+        // every bar is a dotted quarter, an eighth and two quarters; the long notes take three beats, and the
+        // fourth is the upbeat to the next line
+        let melody: [(Int, Double)] = [
+            (F4, 1.5), (F4, 0.5), (F4, 1), (A4, 1),   (G4, 1.5), (F4, 0.5), (G4, 1), (A4, 1),
+            (F4, 1.5), (F4, 0.5), (A4, 1), (C5, 1),   (D5, 3), (D5, 1),
+            (C5, 1.5), (A4, 0.5), (A4, 1), (F4, 1),   (G4, 1.5), (F4, 0.5), (G4, 1), (A4, 1),
+            (F4, 1.5), (D4, 0.5), (D4, 1), (C4, 1),   (F4, 3), (D5, 1),
+            (C5, 1.5), (A4, 0.5), (A4, 1), (F4, 1),   (G4, 1.5), (F4, 0.5), (G4, 1), (D5, 1),
+            (C5, 1.5), (A4, 0.5), (A4, 1), (C5, 1),   (D5, 3), (D5, 1),
+            (C5, 1.5), (A4, 0.5), (A4, 1), (F4, 1),   (G4, 1.5), (F4, 0.5), (G4, 1), (A4, 1),
+            (F4, 1.5), (D4, 0.5), (D4, 1), (C4, 1),   (F4, 3), (C4, 1),
+        ]
+        // one chord a bar: F, C, F, B flat | F, C, B flat, F, twice (root, third, fifth)
+        let F = [41, 57, 60], Cc = [36, 55, 60], Bb = [34, 58, 62]
+        let chords = [F, Cc, F, Bb, F, Cc, Bb, F, F, Cc, F, Bb, F, Cc, Bb, F]
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        let total = melody.reduce(0) { $0 + $1.1 } * beat
+        return makeBuffer(seconds: total) { out, n in
+            // the melody: two reeds a few cents apart (their slow beating is the accordion's tremolo)
+            var t0 = 0.0
+            for (note, len) in melody {
+                let f = freq(note), dur = len * beat
+                let start = Int(t0 * sampleRate), count = Int(dur * sampleRate)
+                for k in 0..<count where start + k < n {
+                    let t = Double(k) / sampleRate, left = dur - t
+                    let env = min(1, t / 0.035) * min(1, left / 0.07) * (0.85 + 0.15 * exp(-t * 2.5))
+                    var v = 0.0
+                    for (mult, amp) in [(1.0, 1.0), (2.0, 0.42), (3.0, 0.2), (4.0, 0.1), (5.0, 0.05)] {
+                        v += amp * (sin(2 * .pi * f * mult * t) + 0.8 * sin(2 * .pi * f * 1.006 * mult * t))
+                    }
+                    out[start + k] += Float(v * env * 0.085)
+                }
+                t0 += dur
+            }
+            // the left hand: the root on the first beat, the chord on the second and fourth, each bar fading in
+            // and out so the loop has no click
+            for (b, chord) in chords.enumerated() {
+                let barStart = Double(b * 4) * beat
+                func tone(_ at: Double, _ midi: Int, _ len: Double, _ amp: Double) {
+                    let f = freq(midi)
+                    let start = Int((barStart + at * beat) * sampleRate), count = Int(len * beat * sampleRate)
+                    for k in 0..<count where start + k < n {
+                        let t = Double(k) / sampleRate, u = Double(k) / Double(count)
+                        let env = min(1, t / 0.02) * (1 - u) * (1 - u)
+                        out[start + k] += Float(amp * env * (sin(2 * .pi * f * t) + 0.35 * sin(4 * .pi * f * t) + 0.12 * sin(6 * .pi * f * t)))
+                    }
+                }
+                tone(0, chord[0], 2.2, 0.2)
+                tone(2, chord[0] + 7, 1.8, 0.12)
+                for at in [1.0, 3.0] { tone(at, chord[1], 0.9, 0.06); tone(at, chord[2], 0.9, 0.06) }
+            }
+        }
+    }
+
+    /// Midnight: twelve strokes of a tower bell, one every 1.3 s, each ringing on under the next. The partials are
+    /// a bell's (hum, prime, minor third, fifth, octave and above), the low ones ringing longest.
+    static func midnightBell() -> AVAudioPCMBuffer? {
+        let gap = 1.3
+        return makeBuffer(seconds: gap * 12 + 4.5) { out, n in
+            let f = 233.0
+            let partials: [(Double, Double, Double)] = [(0.5, 0.55, 0.55), (1, 1, 0.9), (1.19, 0.6, 1.3), (1.5, 0.35, 1.8), (2, 0.5, 2.2), (2.74, 0.22, 3.2), (4.07, 0.12, 5)]
+            for s in 0..<12 {
+                let start = Int(Double(s) * gap * sampleRate), count = Int(5.5 * sampleRate)
+                for k in 0..<count where start + k < n {
+                    let t = Double(k) / sampleRate
+                    var v = 0.0
+                    for (mult, amp, decay) in partials { v += amp * exp(-t * decay) * sin(2 * .pi * f * mult * t) }
+                    // the clapper's knock
+                    v += 0.5 * exp(-t * 60) * sin(2 * .pi * 1300 * t)
+                    out[start + k] += Float(v * min(1, t / 0.003) * 0.16)
+                }
+            }
+            let fade = Int(0.6 * sampleRate)
+            for i in 0..<fade where n - 1 - i >= 0 { out[n - 1 - i] *= Float(i) / Float(fade) }
+        }
+    }
+
     /// The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under
     /// it two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of
     /// cycles in it, and the air is made a little longer and faded into its own start, so there is no seam.

@@ -92,6 +92,17 @@ struct RainDrop {
 final class Spark {
     var x: F = 0, y: F = 0, vx: F = 0, vy: F = 0, life: F = 0, max: F = 0, size: F = 0
     var gold = false, star = false
+    /// New Year's rockets: a spark of a burst has its burst's colour (1… = Theme.confettiColours, 0 = gold or
+    /// white as above), is slowed by the air (`drag`, per second) and falls with its own weight (`gravity`,
+    /// negative = Santa's sparks' own). `holds`: it stays fully lit and only fades at the very end (the digits).
+    var colour = 0, holds = false
+    var drag: F = 0, gravity: F = -1
+}
+
+/// One of New Year's rockets on its way up, in global coordinates: it bursts when it reaches `burstY`.
+final class Rocket {
+    var x: F = 0, y: F = 0, vy: F = 0, burstY: F = 0, scale: F = 1, sway: F = 0, trail: F = 0
+    var colour = 1
 }
 
 final class Nisse {
@@ -102,6 +113,9 @@ final class Nisse {
     var entering = false, leaving = false, crossing = false
     var tunic = C(115, 120, 130), mitten = C(210, 30, 40), gift = C(40, 140, 70)
     var tunicIndex = 0, giftIndex = 0
+    /// Who this walker is, where a theme's walkers are people who differ in more than their clothes (New Year's
+    /// guests: skin, hair, hat, dress or jacket). It never changes, whatever is handed over at a meeting.
+    let look = Int.random(in: 0..<8)
     /// Meeting another nisse: both stop face to face, and halfway through the gift changes hands
     /// (handed over, or swapped if both carry one). `meetWith` is set on one of the two only.
     var meetTimer: F = 0, meetCooldown: F = 0

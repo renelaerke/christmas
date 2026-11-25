@@ -14,6 +14,12 @@ import AppKit
 /// trick or treat walk in the nisser's, a garland of small pumpkin lanterns and hanging bats is in the lights',
 /// and black cats sit and spiders hang on the window edges. A witch sweeps the leaves up or ghosts blow them
 /// away (one or the other each time), and in the camera the person wears a witch's hat and nose or a pumpkin head.
+/// New Year (`nytaar`, OverlayNytaar.swift): confetti and paper streamers fall all the time, a large clock on a
+/// stand shows the real time in the snowman's place and is decorated hour by hour, volleys of rockets burst in a
+/// band across the top in Santa's, party guests in paper hats walk in the nisser's, pennants and paper lanterns
+/// hang in the lights', sparklers and party poppers are on the window edges, and a small street sweeper takes the
+/// confetti. The theme has a moment: the countdown to midnight and a burst at the stroke (Controller.updateNewYear).
+/// Nothing in the theme shows or suggests drinking (REL 2026-11-25).
 /// What the camera dresses the person in. Set from the theme before each camera frame (the hat and the costume
 /// are drawn on the camera's queue and do not see the controller): autumn's sou'wester and yellow raincoat
 /// instead of the nisse hat and the red suit. Autumn has nothing in the beard's place.
@@ -33,7 +39,10 @@ enum CameraCostume {
     /// the hat.
     nonisolated(unsafe) static var witchHat = ProcessInfo.processInfo.environment["HUE_GRAESKAR"] == nil
     nonisolated(unsafe) static var pumpkinHead = ProcessInfo.processInfo.environment["HUE_GRAESKAR"] != nil
-    static var look: CameraLook { halloween ? CameraLook.witch : CameraLook.of(folk) }
+    /// New Year: a paper party hat in the hat's place (a stiff cone with a pompom); nothing in the beard's or the
+    /// suit's. `HUE_NYTAAR=1` sets it in the tests.
+    nonisolated(unsafe) static var nytaar = ProcessInfo.processInfo.environment["HUE_NYTAAR"] != nil
+    static var look: CameraLook { halloween ? CameraLook.witch : nytaar ? CameraLook.party : CameraLook.of(folk) }
 }
 
 /// What tells one folk's hat, beard and suit from another's in the camera. The hat is always the same cloth on the
@@ -54,6 +63,10 @@ struct CameraLook {
     var beard = 1.0
     /// The suit: the clothes' own light and shade times `suit`, plus `suitFloor` (so dark clothes get colour too).
     var suit: RGB = (0.9, 0.10, 0.12), suitFloor: RGB = (0.38, 0.01, 0.03)
+    /// Bands round the hat in a second colour, from brim to tip (nil = plain cloth): New Year's paper hat.
+    var stripe: RGB?
+    /// A stiff paper cone standing on the band's ring and pointing along its axis, not cloth laid on the head.
+    var cone = false
 
     /// Halloween's witch hat: the same cloth on the measured head, black, half as long again and bent only a little,
     /// with a purple band; its brim is added in NisseHat.parts. No beard; the clothes are turned black and the skin
@@ -63,6 +76,24 @@ struct CameraLook {
         l.cloth = (0.13, 0.12, 0.17); l.free = 1.5; l.bend = 0.45; l.band = .plain((0.48, 0.17, 0.75)); l.tip = .bare; l.beard = 0
         return l
     }
+
+    /// New Year's paper party hat: a stiff straight cone in a bright colour with bands of a second colour round it, a gold
+    /// band and a pompom on the tip. No beard and no suit.
+    static var party: CameraLook {
+        var l = CameraLook()
+        l.free = 0.8; l.bend = 0; l.tip = .pompom; l.beard = 0; l.cone = true
+        // (its colour is one of the guests' hats', drawn anew each time the camera is taken into use; the bands and
+        // the brim are gold, or silver on a gold or orange hat)
+        let p = Theme.confettiColours[partyHat % Theme.confettiColours.count].components ?? [0.14, 0.52, 0.86, 1]
+        l.cloth = (Double(p[0]), Double(p[1]), Double(p[2]))
+        let warm = p[0] > 0.85 && p[1] > 0.5 && p[2] < 0.4
+        l.stripe = warm ? (0.88, 0.90, 0.94) : (0.96, 0.80, 0.26)
+        l.band = .plain(warm ? (0.80, 0.82, 0.87) : (0.95, 0.76, 0.22))
+        return l
+    }
+    /// Which of the guests' hat colours the camera's paper hat has (Theme.confettiColours). HUE_NYTAAR=N picks it in
+    /// the tests (1 = the first).
+    nonisolated(unsafe) static var partyHat = (Int(ProcessInfo.processInfo.environment["HUE_NYTAAR"] ?? "") ?? Int.random(in: 1...Theme.confettiColours.count)) - 1
 
     static func of(_ folk: Folk) -> CameraLook {
         var l = CameraLook()
@@ -85,9 +116,9 @@ struct CameraLook {
 }
 
 enum Theme: Int {
-    case jul = 0, efteraar = 1, muertos = 2, halloween = 3
+    case jul = 0, efteraar = 1, muertos = 2, halloween = 3, nytaar = 4
 
-    static let names = ["Jul", "Efterår", "De dødes dag", "Halloween"]
+    static let names = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår"]
 
     /// Leaves (or petals) instead of snow: fewer and bigger pictures, turning as they fall, in several colours.
     /// Which pictures is `ScreenOverlay.fallImages` (leaves in autumn, marigold petals for the dead).
@@ -101,6 +132,7 @@ enum Theme: Int {
         case .efteraar: return C(122, 62, 24, 245)
         case .muertos: return C(168, 72, 8, 245)
         case .halloween: return C(96, 46, 20, 245)
+        case .nytaar: return C(92, 70, 120, 245)
         }
     }
     var pileEdge: CGColor { self == .jul ? C(170, 200, 230, 110) : withAlpha(pile, 0) }
@@ -121,7 +153,9 @@ enum Theme: Int {
     /// A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
     /// runs, and keeps it finished until another theme is chosen (Controller.updateOfrenda): the ofrenda, and
     /// Halloween's jack-o'-lanterns.
-    var growsByHour: Bool { self == .muertos || self == .halloween }
+    var growsByHour: Bool { self == .muertos || self == .halloween || self == .nytaar }
+    /// New Year's walkers: party guests in paper hats, with party horns and crackers.
+    var guests: Bool { self == .nytaar }
     /// Halloween's walkers: ghosts, and children dressed up for trick or treat.
     var spooks: Bool { self == .halloween }
     /// The walkers exist in every theme; in autumn they are hedgehogs and squirrels (`animals`), for the dead
@@ -138,6 +172,9 @@ enum Theme: Int {
     /// On Halloween it is one of two, picked for each run with even odds (Controller.ghostsBlow): a small witch
     /// sweeps the leaves into a cauldron on a cart her cat pulls, or three ghosts float along and blow them away.
     var hasPlow: Bool { true }
+
+    /// New Year's confetti and streamers: gold and silver, and a few strong colours.
+    static let confettiColours: [CGColor] = [C(240, 196, 64), C(214, 220, 230), C(233, 50, 90), C(40, 160, 220), C(120, 200, 80), C(160, 90, 220), C(255, 140, 40)]
 
     /// The leaves' colours (the snow has none).
     static let leafColours: [CGColor] = [C(217, 84, 30), C(232, 160, 32), C(168, 67, 26), C(201, 162, 39), C(138, 59, 18)]

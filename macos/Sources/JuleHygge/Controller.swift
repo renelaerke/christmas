@@ -84,6 +84,28 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         "Sneplov rydder sneen": "Heks eller spøgelser rydder bladene", "Send sneploven ud nu!": "Send dem ud nu!",
         "Lyd: motor, skraben og horn fra sneploven": "Lyd: kost eller spøgelsessus når bladene ryddes",
         "Send sneploven ind i kameraet": "Send dem ind i kameraet"]
+    /// New Year: the clock is there from the first step (its hands are the countdown) and is decorated from then on.
+    static let clockSteps = [
+        "et stort ur på en stander", "en guldkant med små pærer", "en rød sløjfe", "serpentiner om standeren", "en række vimpler til venstre",
+        "en række vimpler til højre", "en papirlanterne", "en papirlanterne til", "to balloner", "to balloner til", "en guldstjerne på toppen",
+        "to stjernekastere - uret er pyntet færdigt!"]
+    /// What the menu items are called at New Year, by their Christmas title (one not here keeps its title).
+    static let nytaarTitles: [String: String] = [
+        "Snevejr": "Konfetti", "Snemængde": "Mængde af konfetti", "Let sne": "Lidt konfetti", "Snestorm": "Konfettistorm",
+        "Sne i bunden af skærmen": "Konfetti i bunden af skærmen", "Sne på vinduerne": "Konfetti, stjernekastere og bordbomber på vinduerne",
+        "Snemand": "Ur med pynt", "Julemanden": "Raketter", "Send julemanden afsted nu!": "Send raketter op nu!",
+        "Lyd: bjælder og jingle når julemanden flyver": "Lyd: melodi til raketterne og klokkeslag ved midnat",
+        "Nisser": "Festgæster", "Antal nisser pr. skærm": "Antal gæster pr. skærm",
+        "Fra - fuld sne på hele skærmen": "Fra - konfetti på hele skærmen", "Til - sne kun nederst, stille blæser": "Til - konfetti kun nederst, stille blæser",
+        "30 billeder/s - glattere sne": "30 billeder/s - glattere konfetti", "Send julemanden ind i kameraet": "Send raketter op i kameraet",
+        "Nisser og sne foran mig i kameraet": "Gæster og konfetti foran mig i kameraet", "Julelys": "Vimpler og papirlanterner",
+        "Sneplov rydder sneen": "Fejemaskine rydder konfettien", "Send sneploven ud nu!": "Send fejemaskinen ud nu!",
+        "Lyd: motor, skraben og horn fra sneploven": "Lyd: motor og sug fra fejemaskinen",
+        "Send sneploven ind i kameraet": "Send fejemaskinen ind i kameraet", "Nissehue på i kameraet": "Festhat på i kameraet"]
+    /// What New Year does not have: the advent calendar, the choice of folk, and anything in the beard's or the
+    /// suit's place in the camera. (The countdown line stays: here it counts down to midnight.)
+    static let nytaarHidden: Set<String> = [
+        "Julekalender…", "Nisser eller alfer", "Nisseskæg i kameraet", "Nissedragt i kameraet"]
     /// What Halloween has its own item for: in the camera one choice of costume
     /// (`halloweenCameraItem`: a witch's hat or a pumpkin head) in place of hat, beard and suit.
     static let halloweenHidden: Set<String> = [
@@ -156,7 +178,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             return moving ? 30 : 20
         }
         // Santa (and his sparks/star showers) moves fast and needs 60 fps to look fluent.
-        if santaActive || !sparks.isEmpty { return max(calm, powerSave ? 30 : 60) }
+        if santaActive || !sparks.isEmpty || !rockets.isEmpty { return max(calm, powerSave ? 30 : 60) }
         // The plow is slow (~175 pt/s), so 30 fps is smooth enough and costs about half as much.
         if plow.active || !clumps.isEmpty || overlays.contains(where: { $0.isBusy }) { return max(calm, powerSave ? 20 : 30) }
         return calm
@@ -179,6 +201,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if santaActive || plow.active { ErrorLog.debug("finish runs: santa=\(santaActive) plow=\(plow.active)") }
         if santaActive { santaActive = false; santaNext = 60 + R() * 120 }
         sparks.removeAll()
+        rockets.removeAll()
+        midnightUntil = -1
         clumps.removeAll()
         if plow.active { plow.active = false; plow.cooldown = 30 }
         audio.stopAll()
@@ -297,6 +321,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
         if let v = virtualScene { overlays.append(v) }
         santaActive = false
+        rockets.removeAll()
+        volleyScreens = []
         plow.active = false
     }
 
@@ -335,6 +361,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         updatePlow(dt)
         updateWindowSnow(dt)
         updateOfrenda(dt)
+        updateNewYear(dt)
         if celebrateAt > 0 && time >= celebrateAt { celebrateAt = -1; snowmanCelebrate() }
         if plowAt >= 0 && time >= plowAt { plowAt = -1; sendPlow() }
 
@@ -397,6 +424,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// Sends Santa over a random screen, or over `screen` only (e.g. the camera scene).
     func launchSanta(on screen: ScreenOverlay? = nil) {
         if santaActive || overlays.isEmpty { return }
+        // (New Year's flyer is a volley of rockets)
+        if theme == .nytaar { launchVolley(on: screen, seconds: 12 + Double(R()) * 6); return }
         // ordinary trips go over the real screens; the camera scene only gets Santa when sent there
         guard let target = screen ?? overlays.filter({ !$0.isVirtual }).randomElement() else { return }
         let b = target.screenBounds
@@ -448,6 +477,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             }
             return
         }
+        if theme == .nytaar { updateVolley(dt); return }
         santaX += santaDir * santaSpeed * dt
         santaPhase += dt
         if theme.santaSparkles { sparkAcc += dt * 45 }
@@ -469,6 +499,246 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
     }
 
+    // ------------------------------------------------------------------ raketter (nytår)
+    // New Year's flyer in Santa's place: a volley of rockets. Each rises from the bottom of a screen with a tail
+    // of sparks and bursts in a band across the top into one soft bloom of coloured sparks, which fades over a
+    // second or two (never a flash, and nothing below the top band). The volley keeps Santa's schedule, his menu
+    // items and his switch, and counts as "Santa is flying" for the frame rate and the tune.
+    var rockets: [Rocket] = []
+    private var volleyScreens: [ScreenOverlay] = []
+    private var volleyLength: Double = 0, volleyNext: F = 0, volleyGap: F = 0.85
+
+    /// Starts a volley over `screen` only (the camera's scene) or over every real screen, lasting `seconds`;
+    /// `gap` is the average time between two rockets on one screen.
+    private func launchVolley(on screen: ScreenOverlay?, seconds: Double, gap: F = 0.85) {
+        let screens = screen.map { [$0] } ?? overlays.filter { !$0.isVirtual }
+        guard !screens.isEmpty else { return }
+        volleyScreens = screens
+        volleyLength = seconds
+        volleyGap = gap
+        volleyNext = 0.3
+        santaMinX = screens.map { $0.screenBounds.minX }.min()!
+        santaMaxX = screens.map { $0.screenBounds.maxX }.max()!
+        santaX = (santaMinX + santaMaxX) / 2
+        santaY0 = screens[0].screenBounds.minY + screens[0].screenBounds.height * 0.2
+        santaScale = screens[0].isVirtual ? 0.85 : screens[0].S
+        santaDir = 1
+        flyerDepth = 1
+        auldTune.rate = Float(0.95 + R() * 0.1)
+        santaPhase = 0
+        santaActive = true
+        ErrorLog.debug("volley: \(Int(seconds)) s over \(screens.count) screen(s)")
+    }
+
+    private func updateVolley(_ dt: F) {
+        santaPhase += dt
+        if Double(santaPhase) < volleyLength {
+            volleyNext -= dt
+            while volleyNext <= 0 {
+                volleyNext += volleyGap * (0.45 + R() * 1.1) / F(volleyScreens.count)
+                guard let o = volleyScreens.randomElement() else { break }
+                let b = o.screenBounds
+                let r = Rocket()
+                r.scale = o.isVirtual ? 1 : o.S
+                r.x = b.minX + b.width * (0.07 + R() * 0.86)
+                r.y = b.maxY - 4 * r.scale
+                r.burstY = b.minY + b.height * (0.10 + R() * 0.22)
+                r.vy = -(r.y - r.burstY) / (0.9 + R() * 0.45)
+                r.sway = R() * 6.28
+                r.colour = 1 + Int(R() * F(Theme.confettiColours.count)) % Theme.confettiColours.count
+                rockets.append(r)
+            }
+        } else if rockets.isEmpty && Double(santaPhase) > volleyLength + 2.5 {
+            santaActive = false
+            santaNext = 60 + R() * 120
+            volleyScreens = []
+        }
+    }
+
+    /// The rockets rise, each leaving a short tail of gold sparks, and burst where they were aimed.
+    private func updateRockets(_ dt: F) {
+        guard !rockets.isEmpty else { return }
+        rockets.removeAll { r in
+            r.y += r.vy * dt
+            r.x += sin(r.sway + r.y * 0.012) * 14 * r.scale * dt
+            r.trail += dt * 48
+            while r.trail >= 1 {
+                r.trail -= 1
+                let sp = Spark()
+                sp.x = r.x + (R() - 0.5) * 3 * r.scale; sp.y = r.y + R() * 8 * r.scale
+                sp.vx = (R() - 0.5) * 16 * r.scale; sp.vy = (20 + R() * 30) * r.scale
+                sp.max = 0.3 + R() * 0.35; sp.life = sp.max
+                sp.size = (1.6 + R() * 1.6) * r.scale
+                sp.gold = true
+                sp.gravity = 60 * r.scale
+                sparks.append(sp)
+            }
+            guard r.y <= r.burstY else { return false }
+            burst(r)
+            return true
+        }
+    }
+
+    /// One burst: a round bloom of sparks in the rocket's colour, slowed by the air and sinking a little as they
+    /// fade. Most are thrown out at nearly the same speed and make the shell; the rest fill it, and a few are white.
+    private func burst(_ r: Rocket) {
+        let n = 64
+        for k in 0..<n {
+            let a = 2 * F.pi * (F(k) + R()) / F(n)
+            let shell = k % 3 != 0
+            let v = 195 * (shell ? 0.86 + R() * 0.2 : 0.25 + R() * 0.55) * r.scale
+            let sp = Spark()
+            sp.x = r.x; sp.y = r.y
+            sp.vx = cos(a) * v; sp.vy = sin(a) * v
+            sp.drag = 1.9; sp.gravity = 30 * r.scale
+            sp.max = (shell ? 1.35 : 1.0) + R() * 0.85; sp.life = sp.max
+            sp.size = (shell ? 3.4 + R() * 2.4 : 2.4 + R() * 1.6) * r.scale
+            sp.colour = k % 8 == 4 ? 2 : r.colour
+            sparks.append(sp)
+        }
+    }
+
+    // ------------------------------------------------------------------ midnat (nytår)
+    // New Year is the one theme with a moment. The clock it goes by is the Mac's own, moved by the test aids:
+    // JULE_DATE=2026-12-31 keeps the time of day on that date, and JULE_NYTAAR_OM=N puts midnight N seconds
+    // after the app started.
+    private let clockShift: TimeInterval = {
+        let env = ProcessInfo.processInfo.environment
+        if let n = Double(env["JULE_NYTAAR_OM"] ?? "") { return Controller.nextNewYear(after: Date()).timeIntervalSinceNow - n }
+        if env["JULE_DATE"] != nil { return JuleClock.today.timeIntervalSince(Calendar.current.startOfDay(for: Date())) }
+        return 0
+    }()
+    /// The time the New Year theme goes by (the clock's hands show it).
+    var clockNow: Date { Date().addingTimeInterval(clockShift) }
+    static func nextNewYear(after d: Date) -> Date { JuleClock.make(JuleClock.parts(d).year + 1, 1, 1) }
+    /// The midnight that is counted down to. It stays for an hour after it has passed, then it is next year's.
+    private lazy var newYearAt = Controller.nextNewYear(after: clockNow)
+    /// Seconds to midnight (negative for the hour after it).
+    var newYearLeft: Double { newYearAt.timeIntervalSince(clockNow) }
+    /// The last minute: the clock gets its second hand.
+    var newYearClose: Bool { theme == .nytaar && newYearLeft > 0 && newYearLeft <= 60 }
+    /// The last ten minutes, and the minute of the burst: the guests stand round the clock.
+    var gatherAtClock: Bool { theme == .nytaar && ((newYearLeft > 0 && newYearLeft <= 600) || time < midnightUntil) }
+    private var lastLeft = Double.infinity, midnightUntil: Double = -1, yearAgainAt: Double = -1, jumpAt: Double = -1, tuneHoldUntil: Double = -1
+    private var countedSecond = 0
+    private var statusText = ""
+
+    /// What stands beside the snowflake in the menu bar on New Year's Eve: the time left as hours:minutes, the
+    /// seconds alone in the last minute, and the new year's number for the ten minutes after. Digits only, so it
+    /// needs no translation. Empty on every other day.
+    static func menuBarCountdown(left: Double, year: Int) -> String {
+        if left > 86400 || left < -600 { return "" }
+        if left <= 0 { return "\(year)" }
+        if left <= 60 { return "\(Int(left.rounded(.up)))" }
+        let minutes = Int((left / 60).rounded(.up))
+        return "\(minutes / 60):" + String(format: "%02d", minutes % 60)
+    }
+
+    private func setStatusText(_ text: String) {
+        guard text != statusText else { return }
+        statusText = text
+        statusItem.length = text.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        statusItem.button?.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
+        statusItem.button?.imagePosition = text.isEmpty ? .imageOnly : .imageLeft
+        statusItem.button?.title = text.isEmpty ? "" : " " + text
+        ErrorLog.debug("menu bar: '\(text)'")
+    }
+
+    private func updateNewYear(_ dt: F) {
+        guard theme == .nytaar else {
+            setStatusText("")
+            lastLeft = .infinity
+            return
+        }
+        var left = newYearLeft
+        if left < -3600 { newYearAt = Self.nextNewYear(after: clockNow); left = newYearLeft }
+        setStatusText(Self.menuBarCountdown(left: left, year: JuleClock.parts(newYearAt).year))
+        // (after the screens have slept the time left has jumped: nothing is played late)
+        let running = lastLeft - left < 2
+        // the last ten seconds, written in sparks over the clock, one number at a time
+        let second = Int(left.rounded(.up))
+        if running && left > 0 && second <= 10 && second != countedSecond {
+            countedSecond = second
+            countDown(second)
+        }
+        if running && lastLeft > 0 && left <= 0 { midnight() }
+        lastLeft = left
+
+        guard time < midnightUntil else { return }
+        if jumpAt >= 0 && time >= jumpAt { jumpAt = time + 9; nisseParty() }
+        if yearAgainAt >= 0 && time >= yearAgainAt { yearAgainAt = -1; writeYear() }
+    }
+
+    /// The stroke of midnight: about a minute of the big effect. Rockets one after the other over every screen
+    /// (unless they are switched off), a burst of confetti, the guests jump, and the new year's number in sparks.
+    /// With the sound on, twelve strokes of a bell first, and the tune after them.
+    private func midnight() {
+        ErrorLog.debug("midnight: \(JuleClock.parts(newYearAt).year)")
+        midnightUntil = time + 60
+        stormUntil = time + 35
+        jumpAt = time
+        writeYear()
+        yearAgainAt = time + 24
+        if cfg.sound && !soundMuted {
+            midnightBell.playOnce(level: volume, pan: 0)
+            tuneHoldUntil = time + 16.5
+        }
+        if cfg.santa {
+            santaActive = false
+            launchVolley(on: screensPausedForCamera ? virtualScene : nil, seconds: 46, gap: 0.5)
+        }
+    }
+
+    // The digits are written as dots on a grid of five by seven.
+    private static let digitDots: [[String]] = [
+        ["01110", "10001", "10011", "10101", "11001", "10001", "01110"], ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+        ["01110", "10001", "00001", "00010", "00100", "01000", "11111"], ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+        ["00010", "00110", "01010", "10010", "11111", "00010", "00010"], ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+        ["00110", "01000", "10000", "11110", "10001", "10001", "01110"], ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+        ["01110", "10001", "10001", "01110", "10001", "10001", "01110"], ["01110", "10001", "10001", "01111", "00001", "00010", "01100"]]
+
+    /// Writes a number in sparks, centred on (x, y) in global coordinates and `height` tall. The sparks stay lit
+    /// for `life` seconds, sinking slowly, and go out at the end.
+    private func writeInSparks(_ number: Int, x: F, y: F, height: F, life: F, scale: F) {
+        let digits = String(number).compactMap { $0.wholeNumberValue }
+        let pitch = height / 7, wide = 5 * pitch, gap = pitch * 1.7
+        let total = F(digits.count) * wide + F(digits.count - 1) * gap
+        for (i, d) in digits.enumerated() {
+            let x0 = x - total / 2 + F(i) * (wide + gap) + pitch / 2
+            for (row, line) in Self.digitDots[d].enumerated() {
+                for (col, ch) in line.enumerated() where ch == "1" {
+                    let sp = Spark()
+                    sp.x = x0 + F(col) * pitch; sp.y = y - height / 2 + (F(row) + 0.5) * pitch
+                    // (they hardly move: a number that drifts apart cannot be read)
+                    sp.vx = (R() - 0.5) * 1.6 * scale; sp.vy = (R() - 0.5) * 1.6 * scale
+                    sp.gravity = 1.5 * scale
+                    sp.max = life * (0.85 + R() * 0.15); sp.life = sp.max
+                    sp.size = pitch * 0.42
+                    sp.colour = 1; sp.holds = true
+                    sparks.append(sp)
+                }
+            }
+        }
+    }
+
+    /// One of the last ten seconds: its number over the clock (or over the middle of the screen, if the clock is
+    /// switched off).
+    private func countDown(_ second: Int) {
+        guard let o = overlays.first(where: { $0.isPrimary && !$0.isVirtual }) else { return }
+        let b = o.screenBounds
+        if let p = o.snowmanPos { writeInSparks(second, x: p.x, y: p.y - 178 * o.S, height: 60 * o.S, life: 0.95, scale: o.S) }
+        else { writeInSparks(second, x: b.midX, y: b.minY + b.height * 0.45, height: 60 * o.S, life: 0.95, scale: o.S) }
+    }
+
+    /// The new year's number, large, in the top third of every screen.
+    private func writeYear() {
+        let year = JuleClock.parts(newYearAt).year
+        for o in overlays {
+            let b = o.screenBounds, s = o.isVirtual ? 1 : o.S
+            writeInSparks(year, x: b.midX, y: b.minY + b.height * 0.3, height: min(150 * s, b.width / 7), life: 9, scale: s)
+        }
+    }
+
     // ------------------------------------------------------------------ lyd
     private let audio = AudioHub()
     /// Three tunes; each of Santa's trips picks one at random.
@@ -479,6 +749,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     private lazy var butterflyTune = audio.voice(Synth.muertosSon, loops: true, varispeed: true)
     /// Halloween's witch has hers too (a thin wavering voice over a low organ).
     private lazy var witchTune = audio.voice(Synth.witchTune, loops: true, varispeed: true)
+    /// New Year's rockets go up to "Auld Lang Syne" (a traditional melody, free of rights; the arrangement is ours),
+    /// and midnight has twelve strokes of a bell.
+    private lazy var auldTune = audio.voice(Synth.auldLangSyne, loops: true, varispeed: true)
+    private lazy var midnightBell = audio.voice(Synth.midnightBell, loops: false)
     private var jingleIndex = 0
     /// This trip's size (1 = the ordinary size); for the geese also how loud they are.
     private var flyerDepth: F = 1
@@ -518,6 +792,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if (cfg.sound && halloween) || witchTune.playing {
             witchTune.update(level: on && halloween ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
+        let nytaar = theme == .nytaar
+        if (cfg.sound && nytaar) || auldTune.playing {
+            // (at midnight the tune waits for the bell's twelve strokes)
+            auldTune.update(level: on && nytaar && time >= tuneHoldUntil ? Float(presence) * volume : 0, pan: 0, dt: d)
+        }
         for (i, v) in gooseVoices.enumerated() where (cfg.sound && autumn && i == jingleIndex) || v.playing {
             v.update(level: on && autumn && i == jingleIndex ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
@@ -527,7 +806,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             let presence = max(0, min(1, min(plow.gx - (plow.minX - margin), (plow.maxX + margin) - plow.gx) / margin))
             let pan = Float((plow.gx - plow.minX) / span * 2 - 1)
             let on = plow.active && cfg.plowSound && !soundMuted
-            plowEngine.update(level: on && !muertos && !halloween ? Float(presence) * volume * 0.8 : 0, pan: pan, dt: d)
+            // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
+            plowEngine.update(level: on && !muertos && !halloween ? Float(presence) * volume * (nytaar ? 0.4 : 0.8) : 0, pan: pan, dt: d)
             // scraping gets louder with the amount of snow in front of the blade
             let load = Float(min(1, sqrt(plow.pushed / 2000)))
             plowScrape.update(level: on && christmas ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
@@ -542,13 +822,14 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
                 ghostWind.update(level: on && halloween && ghostsBlow ? Float(presence) * volume * (0.5 + 0.5 * load) : 0, pan: pan, dt: d)
             }
             // the leaf collector sucks instead of scraping: the fan runs all the time, a little harder with a full nozzle
-            if autumn || leafSuction.playing {
-                leafSuction.update(level: on && autumn ? Float(presence) * volume * (0.55 + 0.45 * load) : 0, pan: pan, dt: d)
+            if autumn || nytaar || leafSuction.playing {
+                leafSuction.update(level: on && (autumn || nytaar) ? Float(presence) * volume * (0.55 + 0.45 * load) : 0, pan: pan, dt: d)
             }
             if on && !hornedThisRun && presence > 0.6 {
                 hornedThisRun = true
                 // (Halloween's witch and ghosts have nothing in the horn's place: a truck's honk does not belong there)
-                if !halloween { (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan) }
+                // (nor has New Year's sweeper: it comes the morning after)
+                if !halloween && !nytaar { (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan) }
             }
         }
         if !plow.active { hornedThisRun = false }
@@ -562,9 +843,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             if sp.life <= 0 { return true }
             sp.x += sp.vx * dt
             sp.y += sp.vy * dt
-            sp.vy += 12 * santaScale * dt
+            if sp.drag > 0 { let k = exp(-sp.drag * dt); sp.vx *= k; sp.vy *= k }
+            sp.vy += (sp.gravity >= 0 ? sp.gravity : 12 * santaScale) * dt
             return false
         }
+        updateRockets(dt)
     }
 
     // ------------------------------------------------------------------ effekter (bruges af julekalenderen)
@@ -678,7 +961,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let s = here?.S ?? 1
         // the donkey cart walks at a donkey's pace
         // (so does Halloween's witch; the ghosts float a little faster)
-        let pace: F = theme == .muertos ? Controller.cartPace : theme == .halloween ? (ghostsBlow ? 0.6 : Controller.cartPace) : 1
+        // (New Year's street sweeper trundles)
+        let pace: F = theme == .muertos ? Controller.cartPace : theme == .halloween ? (ghostsBlow ? 0.6 : Controller.cartPace) : theme == .nytaar ? 0.6 : 1
         plow.gx += plow.dir * plowSpeed * pace * s * dt
         plow.wheel += plowSpeed * pace * s * dt / (10 * s * plowScale)
         if (plow.dir > 0 && plow.gx > plow.maxX + 260 * s * plowScale) || (plow.dir < 0 && plow.gx < plow.minX - 260 * s * plowScale) {
@@ -789,7 +1073,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             ErrorLog.debug("ofrenda: step \(stage) of \(Self.snowmanMaxStage)")
             celebrateAt = time + 0.5
             if stage == Self.snowmanMaxStage {
-                if theme == .halloween {
+                if theme == .nytaar {
+                    notify("Uret er pyntet færdigt!", "Gæsterne har pyntet det. Til sidst kom der " + Self.clockSteps[stage - 1], opensCalendar: false)
+                } else if theme == .halloween {
                     notify("Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + Self.pumpkinSteps[stage - 1], opensCalendar: false)
                 } else {
                     notify("Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + Self.ofrendaSteps[stage - 1], opensCalendar: false)
@@ -883,7 +1169,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(countdownItem, nil, nil))
         menu.addItem(themed(.separator(), nil, nil))
 
-        menu.addItem(choice("Tema", Theme.names, [0, 1, 2, 3], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
+        menu.addItem(choice("Tema", Theme.names, [0, 1, 2, 3, 4], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
         menu.addItem(themed(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }), "Løvfald", "Kronblade fra tagetes"))
         menu.addItem(themed(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }),
                             "Mængde af blade", "Mængde af kronblade", choices: ["Få blade", nil, "Efterårsstorm", nil], muertosChoices: ["Få kronblade", nil, "Kronbladsstorm", nil]))
@@ -999,7 +1285,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for t in titledItems { t.item.title = L(t.da) }
         for t in themedItems {
             let own = t.folk[folk]
-            if theme == .halloween {
+            if theme == .nytaar {
+                t.item.isHidden = Self.nytaarHidden.contains(t.jul)
+                if !t.item.isSeparatorItem { t.item.title = L(Self.nytaarTitles[t.jul] ?? t.jul) }
+            } else if theme == .halloween {
                 // (hidden where the Day of the Dead hides it too: the calendar, the countdown, the choice of folk)
                 t.item.isHidden = t.muertos == nil || Self.halloweenHidden.contains(t.jul)
                 if !t.item.isSeparatorItem { t.item.title = L(Self.halloweenTitles[t.jul] ?? t.jul) }
@@ -1021,9 +1310,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         languageItem.submenu?.items.first?.title = L("Automatisk ({0})", Lang.all[Lang.automatic]?.name ?? Lang.automatic)
         kiteItem.isHidden = !autumn
         halloweenCameraItem.isHidden = theme != .halloween
-        countdownItem.title = Self.countdown()
+        countdownItem.title = theme == .nytaar ? newYearCountdown() : Self.countdown()
         // (the Christmas snowman has no stage: the children build it while you watch)
-        if theme == .halloween { snowmanItem.title = L("Græskarlygter (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
+        if theme == .nytaar { snowmanItem.title = L("Ur med pynt (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
+        else if theme == .halloween { snowmanItem.title = L("Græskarlygter (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if muertos { snowmanItem.title = L("Ofrenda (alter) (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if autumn { snowmanItem.title = L("Høstak med fugleskræmsel (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         autostartItem.state = Self.autostart ? .on : .off
@@ -1174,6 +1464,19 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if d == 0 { return L("★ Glædelig jul! ★") }
         if d == 1 { return L("★ 1 dag til juleaften ★") }
         return L("★ {0} dage til juleaften ★", d)
+    }
+
+    /// New Year's countdown line: the days to New Year's Eve, on the day itself the hours and minutes to midnight,
+    /// and a greeting for the first hour of the new year.
+    private func newYearCountdown() -> String {
+        let left = newYearLeft
+        if left <= 0 { return L("★ Godt nytår! ★") }
+        let cal = Calendar.current
+        let days = JuleClock.days(from: cal.startOfDay(for: clockNow), to: cal.startOfDay(for: newYearAt)) - 1
+        if days >= 2 { return L("★ {0} dage til nytårsaften ★", days) }
+        if days == 1 { return L("★ 1 dag til nytårsaften ★") }
+        let minutes = Int((left / 60).rounded(.up))
+        return L("★ {0}:{1} til midnat ★", minutes / 60, String(format: "%02d", minutes % 60))
     }
 
     /// Start at login is a plain login item. (Restart after a crash is handled by the supervisor in main.swift:
