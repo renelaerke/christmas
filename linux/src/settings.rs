@@ -36,13 +36,17 @@ pub struct Settings {
     pub sound_level: i32,
     /// Frames per second while the scene is calm: 12, 20, 30 or 60.
     pub frame_rate: i32,
-    /// 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween, 4 = nytår (as in the macOS and Windows versions). Key `Theme`.
+    /// 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween, 4 = nytår, 5 = karneval (as in the macOS and Windows
+    /// versions). Key `Theme`.
     pub theme: i32,
     /// Autumn's kite over the primary screen. Key `Kite`.
     pub kite: bool,
     /// Who the walkers are: 0 = automatic by language and region, else 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters,
     /// 5 päkapikud (see `folk.rs`). Key `Folk`.
     pub folk: i32,
+    /// Which carnival the Karneval theme shows: 0 = automatic by language and region, 1 = Rio, 2 = the Rhineland
+    /// (see `folk::carnival_chosen`). Key `Carnival`.
+    pub carnival: i32,
     pub auto_update: bool,
     /// The version that ran last time, to announce an update.
     pub last_version: String,
@@ -83,6 +87,7 @@ impl Default for Settings {
             theme: 0,
             kite: true,
             folk: 0,
+            carnival: 0,
             auto_update: true,
             last_version: String::new(),
             language: String::new(),
@@ -156,9 +161,10 @@ impl Settings {
             sound_level: i("SoundLevel", def.sound_level).clamp(0, 2),
             frame_rate,
             // (a theme this version does not have shows as Christmas)
-            theme: Some(i("Theme", def.theme)).filter(|t| (0..=4).contains(t)).unwrap_or(0),
+            theme: Some(i("Theme", def.theme)).filter(|t| (0..=5).contains(t)).unwrap_or(0),
             kite: b("Kite", def.kite),
             folk: i("Folk", def.folk).clamp(0, 5),
+            carnival: i("Carnival", def.carnival).clamp(0, 2),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),
             elf_count: i("NisseCount", def.elf_count).clamp(1, 12),
             power_save: i("PowerSave", def.power_save).clamp(0, 2),
@@ -205,6 +211,7 @@ impl Settings {
             format!("Theme={}", self.theme),
             format!("Kite={}", b(self.kite)),
             format!("Folk={}", self.folk),
+            format!("Carnival={}", self.carnival),
             format!("AutoUpdate={}", b(self.auto_update)),
             format!("LastVersion={}", self.last_version),
             format!("Language={}", self.language),
@@ -241,6 +248,7 @@ impl Settings {
         self.theme = m.theme;
         self.kite = m.kite;
         self.folk = m.folk;
+        self.carnival = m.carnival;
         self.language = m.language.clone();
         self.lights = m.lights;
         self.all_screens = m.all_screens;
@@ -288,6 +296,7 @@ mod tests {
             theme: 1,
             kite: false,
             folk: 2,
+            carnival: 2,
             sound: true,
             last_version: "1.5.0".into(),
             language: "de".into(),
@@ -318,5 +327,13 @@ mod tests {
         assert_eq!(s.elf_count, 1);
         assert_eq!(s.opened_doors.iter().copied().collect::<Vec<_>>(), vec![1, 3]);
         assert_eq!(s.first_run, NaiveDate::from_ymd_opt(2026, 11, 1));
+    }
+
+    #[test]
+    fn a_theme_this_version_does_not_have_shows_as_christmas() {
+        assert_eq!(Settings::parse("Theme=5\nCarnival=2\n").theme, 5);
+        assert_eq!(Settings::parse("Theme=5\nCarnival=7\n").carnival, 2);
+        assert_eq!(Settings::parse("Theme=6\n").theme, 0);
+        assert_eq!(Settings::parse("Theme=-1\n").theme, 0);
     }
 }

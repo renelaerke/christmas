@@ -144,6 +144,29 @@ pub fn system() -> Folk {
     })
 }
 
+/// Which carnival the Karneval theme shows (setting `Carnival`): Rio's samba parade is the first and the default;
+/// the Rhineland's street carnival (Cologne, Düsseldorf, Mainz) is its German form.
+pub const CARNIVAL_RIO: i32 = 1;
+pub const CARNIVAL_RHEIN: i32 = 2;
+
+/// The automatic carnival on this machine: the Rhineland's where German is the language or the country, by the
+/// rule that gives the Wichtel, so the two always agree; Rio's everywhere else.
+pub fn carnival_system() -> i32 {
+    if system() == Folk::Wichtel {
+        CARNIVAL_RHEIN
+    } else {
+        CARNIVAL_RIO
+    }
+}
+
+/// The setting's value as the carnival to show (0 or anything unknown = automatic).
+pub fn carnival_chosen(setting: i32) -> i32 {
+    match setting {
+        CARNIVAL_RIO | CARNIVAL_RHEIN => setting,
+        _ => carnival_system(),
+    }
+}
+
 /// The setting's value as the folk to draw (0 or anything unknown = automatic).
 pub fn chosen(setting: i32) -> Folk {
     match setting {

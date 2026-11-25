@@ -46,6 +46,9 @@ pub(super) struct LightsImage {
     halloween: bool,
     /// New Year's form: pennants on the string, and gold bulbs and paper lanterns where the bulbs are.
     nytaar: bool,
+    /// Carnival's form (0 when it is not carnival, else which carnival, `SceneState::carnival`): the Christmas
+    /// bulbs on a dark string, and behind them a fringe with masks, or pennants and jester caps.
+    carnival: i32,
 }
 
 /// Which form the strip has (the theme's).
@@ -55,13 +58,18 @@ pub(super) struct LightsForm {
     pub muertos: bool,
     pub halloween: bool,
     pub nytaar: bool,
+    pub carnival: i32,
 }
 
 impl LightsImage {
     fn new(w: i32, h: i32, s: f64, form: LightsForm, leaves: &[Vec<u32>]) -> Res<LightsImage> {
-        let LightsForm { autumn, muertos, halloween, nytaar } = form;
+        let LightsForm { autumn, muertos, halloween, nytaar, carnival } = form;
         let (span, sag, top) = (230.0 * s, 22.0 * s, 1.0);
         let mut wire = Image::new(w, h)?;
+        if carnival != 0 {
+            // carnival's garland hangs behind the string and its bulbs, so it is drawn first
+            super::karneval::carnival_garland(&wire.cr, w as f64, s, carnival == crate::folk::CARNIVAL_RHEIN);
+        }
         let mut bulbs = Vec::new();
         let mut x0 = -span * 0.3;
         while x0 < w as f64 {
@@ -75,6 +83,9 @@ impl LightsImage {
             curve_path(&wire.cr, &pts);
             if muertos || halloween || nytaar {
                 stroke(&wire.cr, (200, 40, 30, 36), 2.0 * s, LineCap::Round);
+            } else if carnival != 0 {
+                // (the Christmas lights' own string, in carnival's dark colour)
+                stroke(&wire.cr, (200, 40, 30, 36), 2.0 * s, LineCap::Butt);
             } else if autumn {
                 stroke(&wire.cr, (235, 104, 68, 34), 2.0 * s, LineCap::Round);
             } else {
@@ -157,7 +168,8 @@ impl LightsImage {
             wire.surface.flush();
         }
         let current = Image::new(w, h)?;
-        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn, muertos, halloween, nytaar };
+        let mut l =
+            LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn, muertos, halloween, nytaar, carnival };
         l.current.pixels.copy_from_slice(&l.wire.pixels);
         Ok(l)
     }
@@ -270,9 +282,20 @@ impl Layer {
             }
             return;
         }
-        let form = LightsForm { autumn: st.autumn, muertos: st.muertos, halloween: st.halloween, nytaar: st.nytaar };
-        let shown =
-            |l: &LightsImage| LightsForm { autumn: l.autumn, muertos: l.muertos, halloween: l.halloween, nytaar: l.nytaar };
+        let form = LightsForm {
+            autumn: st.autumn,
+            muertos: st.muertos,
+            halloween: st.halloween,
+            nytaar: st.nytaar,
+            carnival: st.carnival,
+        };
+        let shown = |l: &LightsImage| LightsForm {
+            autumn: l.autumn,
+            muertos: l.muertos,
+            halloween: l.halloween,
+            nytaar: l.nytaar,
+            carnival: l.carnival,
+        };
         if self.lights.as_ref().is_none_or(|l| l.h != lh || shown(l) != form) {
             match LightsImage::new(self.w, lh, self.s as f64, form, &self.leaf_sprites) {
                 Ok(l) => self.lights = Some(l),

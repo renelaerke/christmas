@@ -63,6 +63,9 @@ struct Sounds {
     /// New Year: "Auld Lang Syne" to the rockets, and twelve strokes of a bell at midnight.
     auld_tune: Voice,
     midnight_bell: Voice,
+    /// Carnival: the band truck's samba drums, and the Rhineland wagon's brass band (a recording).
+    drum_tune: Voice,
+    march_tune: Voice,
     /// This trip's tune (in autumn: the geese's mood).
     jingle: usize,
     horned_this_run: bool,
@@ -106,6 +109,9 @@ pub struct Controller {
     storm_until: f64,
     /// New Year's clock: the countdown to midnight and what is due when (`new_year.rs`).
     new_year: crate::new_year::NewYear,
+    /// How many beats of carnival's drums have gone (`BEAT` seconds each): the walkers step in time with it on
+    /// every screen, and the band on the truck plays to it, whether the sound is on or not (`advance_beat`).
+    beat_count: f64,
     /// The snowman grew today: celebrate with sparks at this time.
     celebrate_at: Option<f64>,
     /// The weather is a storm now (in autumn the geese then always call over wind).
@@ -190,6 +196,7 @@ impl Controller {
             scan_timer: 0.0,
             storm_until: -1.0,
             new_year: crate::new_year::NewYear::new(),
+            beat_count: 0.0,
             celebrate_at: None,
             storm_now: false,
             // JULE_UPDATE_DELAY=N: the first check after N seconds (testing)
@@ -224,6 +231,8 @@ impl Controller {
         c.figures.muertos = c.cfg.theme == 2;
         c.figures.halloween = c.cfg.theme == 3;
         c.figures.nytaar = c.cfg.theme == 4;
+        c.figures.karneval = c.cfg.theme == 5;
+        c.figures.rhein = c.rhein();
         if opts.santa {
             let screens = c.screen_infos();
             c.figures.launch_santa(&screens);
@@ -375,8 +384,33 @@ impl Controller {
     /// A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
     /// runs: the ofrenda of De dødes dag (2), and Halloween's jack-o'-lanterns (3), which share its clock.
     fn grows_by_hour(&self) -> bool {
-        // (and New Year's clock, 4, is decorated the same way)
-        self.cfg.theme == 2 || self.cfg.theme == 3 || self.cfg.theme == 4
+        // (and New Year's clock, 4, is decorated the same way, and carnival's float, 5, built)
+        (2..=5).contains(&self.cfg.theme)
+    }
+
+    /// The Karneval theme in its Rhineland form (setting `Carnival`, or by language and region).
+    fn rhein(&self) -> bool {
+        self.cfg.theme == 5 && folk::carnival_chosen(self.cfg.carnival) == folk::CARNIVAL_RHEIN
+    }
+
+    /// Moves carnival's beat on. With no music it is a clock's. While the Rhineland wagon's band is heard, the beat
+    /// is the band's own: where the recording is right now, looked up among its measured beats (a real band's
+    /// tempo wanders, so a clock would be half a step off within half a minute). The walkers are eased over to it,
+    /// never jumped: the difference (counted in pairs of beats, so nobody changes foot) is closed over a second.
+    fn advance_beat(&mut self, dt: f32) {
+        let dt = dt as f64;
+        let mut step = dt / BEAT;
+        if self.rhein() {
+            let s = &self.sounds;
+            if let Some(music) = s.hub.position(s.march_tune).and_then(crate::sound::rhein_beat) {
+                let mut off = (music - self.beat_count).rem_euclid(2.0);
+                if off >= 1.0 {
+                    off -= 2.0;
+                }
+                step += off * (dt * 4.0).min(1.0);
+            }
+        }
+        self.beat_count += step;
     }
 
     fn update_ofrenda(&mut self, dt: f32) {
@@ -390,7 +424,14 @@ impl Controller {
         if stage != before {
             crate::log::debug(&format!("ofrenda: step {stage} of {max}"));
             self.celebrate_at = Some(self.time + 0.5);
-            if stage == max && self.cfg.theme == 4 {
+            if stage == max && self.cfg.theme == 5 {
+                if self.rhein() {
+                    self.session.notify(text::NOTICE_PRUNKWAGEN_TITLE, text::NOTICE_PRUNKWAGEN, false);
+                } else {
+                    let last = text::FLOAT_STEPS[text::FLOAT_STEPS.len() - 1];
+                    self.session.notify(text::NOTICE_FLOAT_TITLE, &text::notice_float(last), false);
+                }
+            } else if stage == max && self.cfg.theme == 4 {
                 self.session.notify(text::NOTICE_CLOCK_TITLE, &text::notice_clock(), false);
             } else if stage == max && self.cfg.theme == 3 {
                 self.session.notify(text::NOTICE_PUMPKINS_TITLE, &text::notice_pumpkins(), false);
@@ -433,12 +474,15 @@ impl Controller {
                 self.figures.muertos = self.cfg.theme == 2;
                 self.figures.halloween = self.cfg.theme == 3;
                 self.figures.nytaar = self.cfg.theme == 4;
+                self.figures.karneval = self.cfg.theme == 5;
+                self.figures.rhein = self.rhein();
                 self.figures.launch_santa(&screens);
             }
             TrayMsg::Plow => {
                 let screens = self.screen_infos();
                 self.figures.halloween = self.cfg.theme == 3;
                 self.figures.nytaar = self.cfg.theme == 4;
+                self.figures.karneval = self.cfg.theme == 5;
                 self.figures.send_plow(&screens);
             }
             TrayMsg::Settings(m) => {
@@ -450,7 +494,10 @@ impl Controller {
                     self.update_tray();
                 }
                 crate::log::debug("settings changed in the menu");
-                if old.all_screens != self.cfg.all_screens || old.theme != self.cfg.theme {
+                // (another carnival is as much of a change as another theme: the float, the garland and what falls
+                // are all kept as pictures, so the screens are built anew)
+                let carnival = self.cfg.theme == 5 && old.carnival != self.cfg.carnival;
+                if old.all_screens != self.cfg.all_screens || old.theme != self.cfg.theme || carnival {
                     // (a new theme starts from empty screens: nothing of the old one is left falling or lying)
                     if old.theme != self.cfg.theme {
                         self.finish_runs();
@@ -461,6 +508,9 @@ impl Controller {
                         self.cfg.save();
                         self.warm_sounds();
                         self.update_tray();
+                    }
+                    if carnival {
+                        self.warm_sounds();
                     }
                     self.build_screens();
                 }
@@ -665,6 +715,8 @@ impl Controller {
         if self.cfg.sound {
             if muertos {
                 s.hub.warm(s.butterfly_tune);
+            } else if self.cfg.theme == 5 {
+                s.hub.warm(if self.rhein() { s.march_tune } else { s.drum_tune });
             } else if self.cfg.theme == 4 {
                 s.hub.warm(s.auld_tune);
                 s.hub.warm(s.midnight_bell);
@@ -685,6 +737,8 @@ impl Controller {
                 for v in [s.broom_sweep, s.ghost_wind] {
                     s.hub.warm(v);
                 }
+            } else if self.cfg.theme == 5 {
+                s.hub.warm(s.broom_sweep);
             } else if self.cfg.theme == 4 {
                 for v in [s.plow_engine, s.leaf_suction] {
                     s.hub.warm(v);
@@ -706,8 +760,10 @@ impl Controller {
         let muertos = self.cfg.theme == 2;
         let halloween = self.cfg.theme == 3;
         let nytaar = self.cfg.theme == 4;
+        let karneval = self.cfg.theme == 5;
+        let rhein = self.rhein();
         let ghosts_blow = self.figures.ghosts_blow;
-        let christmas = !autumn && !muertos && !halloween && !nytaar;
+        let christmas = !autumn && !muertos && !halloween && !nytaar && !karneval;
         let tune_held = self.time < self.new_year.tune_hold_until;
         let storm = self.storm_now;
         let s = &mut self.sounds;
@@ -721,6 +777,11 @@ impl Controller {
             } else if nytaar {
                 // "Auld Lang Syne" to the rockets
                 s.hub.set_rate(s.auld_tune, self.figures.santa_pace);
+            } else if karneval {
+                // carnival's music keeps its own tempo, which is the beat the walkers step to: never faster or
+                // slower
+                s.hub.set_rate(s.drum_tune, 1.0);
+                s.hub.set_rate(s.march_tune, 1.0);
             } else if autumn {
                 // the geese: alone two trips out of three, otherwise in wind; in a storm always the one with wind
                 s.jingle = usize::from(storm || self.rng.f() < 1.0 / 3.0);
@@ -772,6 +833,15 @@ impl Controller {
                 let level = if on && nytaar && !tune_held { presence * volume } else { 0.0 };
                 s.hub.update(s.auld_tune, level, 0.0, dt);
             }
+            // carnival's truck has its drums, and the Rhineland's wagon a brass band (a recording)
+            if (self.cfg.sound && karneval && !rhein) || s.hub.playing(s.drum_tune) {
+                let level = if on && karneval && !rhein { presence * volume } else { 0.0 };
+                s.hub.update(s.drum_tune, level, pan, dt);
+            }
+            if (self.cfg.sound && rhein) || s.hub.playing(s.march_tune) {
+                let level = if on && rhein { presence * volume } else { 0.0 };
+                s.hub.update(s.march_tune, level, pan, dt);
+            }
         }
         let plow = &self.figures.plow;
         if self.cfg.plow_sound
@@ -789,7 +859,7 @@ impl Controller {
             let on = plow.active && self.cfg.plow_sound && !muted;
             // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
             let engine =
-                if on && !muertos && !halloween { presence * volume * if nytaar { 0.4 } else { 0.8 } } else { 0.0 };
+                if on && !muertos && !halloween && !karneval { presence * volume * if nytaar { 0.4 } else { 0.8 } } else { 0.0 };
             s.hub.update(s.plow_engine, engine, pan, dt);
             // scraping gets louder with the amount of snow in front of the blade
             let load = (plow.pushed / 2000.0).sqrt().min(1.0);
@@ -802,7 +872,8 @@ impl Controller {
             }
             // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
             // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
-            let sweeps = muertos || (halloween && !ghosts_blow);
+            // (carnival's street sweepers have brooms too)
+            let sweeps = muertos || (halloween && !ghosts_blow) || karneval;
             if sweeps || s.hub.playing(s.cart_roll) || s.hub.playing(s.broom_sweep) {
                 let roll = if on && muertos { presence * volume * 0.9 } else { 0.0 };
                 s.hub.update(s.cart_roll, roll, pan, dt);
@@ -817,8 +888,8 @@ impl Controller {
                 s.horned_this_run = true;
                 // (the donkey brays where the plow honks; Halloween has nothing there: a truck's honk does not
                 // belong with a witch or ghosts)
-                // (nor has New Year's sweeper: it comes the morning after)
-                if !halloween && !nytaar {
+                // (nor has New Year's sweeper: it comes the morning after; nor have carnival's)
+                if !halloween && !nytaar && !karneval {
                     let horn = if muertos { s.donkey_bray } else { s.plow_horn };
                     s.hub.play_once(horn, volume, pan);
                 }
@@ -1016,6 +1087,7 @@ impl Controller {
             let dt = gap.min(0.1);
             last = now;
             self.time += dt as f64;
+            self.advance_beat(dt);
             self.timers(dt);
             self.update_ofrenda(dt);
             self.update_new_year();
@@ -1026,13 +1098,16 @@ impl Controller {
             let muertos = self.cfg.theme == 2;
             let halloween = self.cfg.theme == 3;
             let nytaar = self.cfg.theme == 4;
+            let karneval = self.cfg.theme == 5;
             self.figures.autumn = autumn;
             self.figures.muertos = muertos;
             self.figures.halloween = halloween;
             self.figures.nytaar = nytaar;
+            self.figures.karneval = karneval;
+            self.figures.rhein = self.rhein();
             self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
             // In the Christmas theme children build the snowman; autumn's haystack grows by the day.
-            let children = self.cfg.snowman && !autumn && !muertos && !halloween && !nytaar;
+            let children = self.cfg.snowman && !autumn && !muertos && !halloween && !nytaar && !karneval;
             let (clock, clock_key) = if nytaar { self.new_year.hands(self.time) } else { ((0.0, 0.0, None), 0) };
             let gather = nytaar && self.new_year.gather(self.time);
             if children {
@@ -1068,7 +1143,7 @@ impl Controller {
                 elf_count: self.cfg.elf_count,
                 snowman_stage: if !self.cfg.snowman {
                     0
-                } else if muertos || halloween || nytaar {
+                } else if muertos || halloween || nytaar || karneval {
                     self.ofrenda_stage()
                 } else if autumn {
                     self.snowman_stage
@@ -1096,6 +1171,8 @@ impl Controller {
                 clock,
                 clock_key,
                 gather,
+                carnival: if karneval { folk::carnival_chosen(self.cfg.carnival) } else { 0 },
+                beat_count: self.beat_count,
             };
             let busy = Instant::now();
             frame_all(&mut self.display, &mut self.screens, dt, &st);
@@ -1377,8 +1454,12 @@ impl Sounds {
         let ghost_wind = hub.create_voice(crate::sound::ghost_wind, true);
         let auld_tune = hub.create_voice(crate::sound::auld_lang_syne, true);
         let midnight_bell = hub.create_voice(crate::sound::midnight_bell, false);
+        let drum_tune = hub.create_voice(crate::sound::batucada, true);
+        let march_tune = hub.create_voice(crate::sound::rhein_band, true);
         Sounds {
             hub,
+            drum_tune,
+            march_tune,
             witch_tune,
             ghost_wind,
             auld_tune,
@@ -1399,6 +1480,9 @@ impl Sounds {
         }
     }
 }
+
+/// The beat of carnival's drums, in seconds (120 to the minute).
+const BEAT: f64 = 0.5;
 
 /// One step of the ofrenda (De dødes dag) takes this long: seconds the app runs with the theme on.
 const OFRENDA_STEP_TIME: f64 = 3600.0;

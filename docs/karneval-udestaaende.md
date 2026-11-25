@@ -70,3 +70,30 @@ country is German. Built on macOS only. What it is, slot by slot, is in `macos/R
 - Open: the licence was given by the band's leader, and the Commons page does not show the composer's (Hans
   Kummerer) own permission. The loop joins after 128 beats, chosen by count, not by ear. The piece is Austrian,
   not Rhenish. Not installed: the installed app still has the second synthesized march.
+
+## Windows (written 2026-11-25, on REL's "Start looking at the windows and linux animations")
+
+Ported from the macOS code on a Mac: `src/LayerKarneval.cs`, `src/LayerKarnevalRhein.cs` and the hooks in
+`Controller.cs`, `Layer.cs`, `Settings.cs`, `Sound.cs`, `build.ps1`. Both forms, without the camera.
+
+- **Checked:** it compiles with mono at C# 5 (no errors), and `--lyd-test` under mono writes the drums (4.0 s) and
+  the band recording (63.3 s, read from the exe's resources) at the same lengths and levels as macOS.
+- **Never seen:** every drawing (GDI+ cannot run on the Mac), the menu, the beat-following. The walkers' phases
+  come straight from the beat, so they should move more smoothly than the macOS frames, but nobody has looked.
+- **To check first on Windows:** that nothing leaves marks (the walkers' cleared box was widened for the flag,
+  the float's for the feather fans); that the walkers hit the band's beat (the delay taken off is only the queued
+  buffers, 186 ms); CPU with the band truck out (it crosses slowly, with the frame rate boosted all the way).
+
+## Linux (written 2026-11-25 by a sub-agent, reviewed in part)
+
+`linux/src/layer/karneval.rs`, `karneval_rhein.rs` and hooks in 13 files, ported from the Windows C# (not from
+the Swift). **Never compiled**: there is no Rust on the Mac, so the first compile is CI after a push. The CI
+workflow now saves `screen0-karneval.png` and `screen0-karneval-rhein.png` and checks the two sounds' lengths.
+
+- Reviewed by me: the sound code (drums, recording, playback position) and the truck and sweets in `figures.rs`.
+  Not read line by line: the 1600 lines of drawing.
+- Likeliest to fail first in CI, by the port's own list: `output_delay` (cpal's timestamp API, written from
+  memory), the new test `carnival_leaves_no_trails` (stricter than its model, so a mark box that is too small
+  shows there), and two tests with pixel positions worked out by hand (the masks' eye holes, the garland's height).
+- Differs from Windows: two of the leaves' ten confetti pictures become a feather or a sweet (about one in five,
+  in two colours, against one in six in seven colours).

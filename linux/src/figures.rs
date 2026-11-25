@@ -21,6 +21,7 @@ pub struct Spark {
 /// A spark of New Year's rockets: of a burst (in the burst's colour, an index into the confetti's colours), of a
 /// rocket's tail (no colour: gold), or one dot of a number written in sparks (`holds`: it stays fully lit and only
 /// fades at the very end). It is slowed by the air (`drag`, per second) and sinks with its own weight.
+/// (The sweets thrown from the Rhineland carnival's wagon are these too: coloured, heavy, and not slowed.)
 pub struct Ember {
     pub x: f32,
     pub y: f32,
@@ -166,6 +167,14 @@ pub struct Figures {
     volley_length: f32,
     volley_next: f32,
     volley_gap: f32,
+    /// Carnival (set by the controller): nothing flies. In Santa's place a truck with a band on it drives along
+    /// the ground at a walking pace (each screen sets it down on its own pile, `layer/santa.rs`), and the plow is
+    /// a group of street sweepers at the donkey cart's pace. The two share the ground and are never out together:
+    /// the truck does not start while the sweepers are out, and the sweepers wait until the truck has gone by.
+    pub karneval: bool,
+    /// The Rhineland's carnival (set by the controller, with `karneval`): sweets are thrown from the wagon.
+    pub rhein: bool,
+    kamelle_acc: f32,
 }
 
 /// The screen directly to the left (dir < 0) or right (dir > 0) of screen `i`: edge to edge and overlapping
@@ -213,6 +222,9 @@ impl Figures {
             volley_length: 0.0,
             volley_next: 0.0,
             volley_gap: 0.85,
+            karneval: false,
+            rhein: false,
+            kamelle_acc: 0.0,
         }
     }
 
@@ -252,6 +264,10 @@ impl Figures {
         if self.santa.is_some() || screens.is_empty() {
             return;
         }
+        // (carnival's truck and its street sweepers share the ground: never both at once)
+        if self.karneval && self.plow.active {
+            return;
+        }
         // (New Year's flyer is a volley of rockets)
         if self.nytaar {
             let seconds = 12.0 + self.rng.f() * 6.0;
@@ -277,7 +293,14 @@ impl Figures {
         // ±10% speed per trip (phase 4 plays the tune at the same pace)
         let pace = 0.9 + self.rng.f() * 0.2;
         let wide = if max_x - min_x > b.w as f32 * 1.5 { 1.6 } else { 1.0 };
-        let speed = 230.0 * pace * scale * wide;
+        let (mut x, mut speed, mut pace) = (x, 230.0 * pace * scale * wide, pace);
+        if self.karneval {
+            // the band truck: on the ground, at the ordinary size and at a walking pace; the music keeps its own
+            // tempo, which is the beat the walkers step to
+            x = if dir > 0.0 { min_x - 260.0 * scale } else { max_x + 260.0 * scale };
+            speed = 70.0 * target.s;
+            pace = 1.0;
+        }
         self.santa_pace = pace;
         crate::log::debug(&format!("santa: dir {dir} from {min_x} to {max_x} at y {y0:.0}"));
         self.santa = Some(Santa { x, y0, dir, speed, phase: 0.0, scale, min_x, max_x });
@@ -326,8 +349,36 @@ impl Figures {
         }
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
-        if !self.autumn && !self.muertos && !self.halloween {
+        // (Santa leaves a trail of sparks; the geese, the butterflies, the witch and carnival's truck do not)
+        if !self.autumn && !self.muertos && !self.halloween && !self.karneval {
             self.spark_acc += dt * 45.0;
+        }
+        // The Rhineland's wagon: sweets (Kamelle) are thrown from it in handfuls, up and out to both sides
+        if self.rhein {
+            self.kamelle_acc += dt * 7.0;
+            let bottom = screens
+                .iter()
+                .find(|o| s.x >= o.rect.x as f32 && s.x < o.rect.right() as f32)
+                .map(|o| o.rect.bottom() as f32);
+            while self.kamelle_acc >= 1.0 {
+                self.kamelle_acc -= 1.0;
+                let Some(bottom) = bottom else { continue };
+                let (r, k) = (&mut self.rng, s.scale);
+                let life = 1.5 + r.f() * 0.5;
+                self.embers.push(Ember {
+                    x: s.x + (r.f() - 0.5) * 120.0 * k,
+                    y: bottom - (70.0 + r.f() * 20.0) * k,
+                    vx: (r.f() - 0.5) * 220.0 * k,
+                    vy: -(150.0 + r.f() * 130.0) * k,
+                    life,
+                    max: life,
+                    size: (2.6 + r.f() * 1.2) * k,
+                    colour: Some(r.range(0, BURST_COLOURS) as usize),
+                    holds: false,
+                    drag: 0.0,
+                    gravity: 300.0 * k,
+                });
+            }
         }
         let r = &mut self.rng;
         while self.spark_acc >= 1.0 {
@@ -345,7 +396,9 @@ impl Figures {
                 star: false,
             });
         }
-        if (s.dir > 0.0 && s.x > s.max_x + 450.0 * s.scale) || (s.dir < 0.0 && s.x < s.min_x - 450.0 * s.scale) {
+        // (the truck starts and ends nearer the screens than the flyers do: it is slow)
+        let reach = s.scale * if self.karneval { 260.0 } else { 450.0 };
+        if (s.dir > 0.0 && s.x > s.max_x + reach) || (s.dir < 0.0 && s.x < s.min_x - reach) {
             self.santa = None;
             self.santa_next = 60.0 + self.rng.f() * 120.0;
         }
@@ -532,6 +585,11 @@ impl Figures {
         if self.plow.active {
             return;
         }
+        // (carnival's sweepers wait until the band truck has gone by)
+        if self.karneval && self.santa.is_some() {
+            self.plow.cooldown = 15.0;
+            return;
+        }
         if self.halloween {
             self.pick_halloween_plow();
         }
@@ -575,7 +633,8 @@ impl Figures {
             return;
         }
         // (so does Halloween's witch; the ghosts float a little faster, and New Year's street sweeper trundles)
-        let pace = if self.muertos || (self.halloween && !self.ghosts_blow) {
+        // (carnival's sweepers walk too)
+        let pace = if self.muertos || self.karneval || (self.halloween && !self.ghosts_blow) {
             CART_PACE
         } else if self.halloween || self.nytaar {
             0.6

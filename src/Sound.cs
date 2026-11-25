@@ -16,6 +16,9 @@ namespace JuleHygge
     {
         public const int SampleRate = 44100;
         const int BufferFrames = 2048;   // ~46 ms per buffer
+        // How long after it is mixed a sound is heard: the buffers queued ahead of it (the device's own delay is
+        // not known and not counted).
+        public const double Latency = (double)BufferCount * BufferFrames / SampleRate;
         const int BufferCount = 4;       // ~186 ms queued, so a busy UI thread never causes gaps
 
         internal readonly object Gate = new object();
@@ -172,6 +175,23 @@ namespace JuleHygge
         volatile float rate = 1;
 
         public bool Playing { get; private set; }
+
+        // How far into its buffer the voice is, in seconds (-1 while it is silent). What comes out of the speakers
+        // lags the mixing by AudioHub.Latency, which is taken off here.
+        public double Position
+        {
+            get
+            {
+                lock (hub.Gate)
+                {
+                    if (!Playing || samples == null || samples.Length == 0) return -1;
+                    // (what is heard is what was mixed a few buffers ago)
+                    double at = pos - AudioHub.Latency * AudioHub.SampleRate;
+                    if (at < 0) at = loops ? at + samples.Length : 0;
+                    return at / AudioHub.SampleRate;
+                }
+            }
+        }
 
         // Playback speed, tempo and pitch together (like a tape): Santa's tune follows his pace.
         public float Rate { get { return rate; } set { rate = Math.Max(0.5f, Math.Min(2f, value)); } }
@@ -810,20 +830,23 @@ namespace JuleHygge
         // The flock itself is a recording (assets/lyd/gaes-flok.wav, see KILDER.md there): synthesized calls
         // sounded far too artificial. build.ps1 puts the file into the exe as a resource. Mixed to mono at the
         // synth's sample rate, peak 0.6. Null if it is missing or not 16-bit PCM: no goose sound then.
-        static float[] gooseRecording;
-        static bool gooseLoaded;
+        static readonly Dictionary<string, float[]> recordings = new Dictionary<string, float[]>();
         static readonly object gooseGate = new object();
 
-        static float[] GooseRecording()
+        static float[] GooseRecording() { return Recording("gaes-flok.wav"); }
+
+        // A recording built into the exe as a resource (assets/lyd), read once.
+        static float[] Recording(string name)
         {
             lock (gooseGate)
             {
-                if (gooseLoaded) return gooseRecording;
-                gooseLoaded = true;
+                float[] gooseRecording;
+                if (recordings.TryGetValue(name, out gooseRecording)) return gooseRecording;
+                recordings[name] = null;
                 try
                 {
                     byte[] d;
-                    using (var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("gaes-flok.wav"))
+                    using (var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
                     {
                         if (s == null) return null;
                         d = new byte[s.Length];
@@ -863,11 +886,113 @@ namespace JuleHygge
                         peak = Math.Max(peak, Math.Abs(rec[i]));
                     }
                     if (peak > 0) { float k = 0.6f / peak; for (int i = 0; i < outN; i++) rec[i] *= k; }
-                    gooseRecording = rec;
+                    recordings[name] = gooseRecording = rec;
                 }
                 catch (Exception ex) { ErrorLog.Write(ex); }
                 return gooseRecording;
             }
+        }
+
+        // ------------------------------------------------------------------ karneval
+        // What the Rhineland carnival's wagon plays: a recording of a real village brass band (an excerpt of the
+        // Hannerl Polka played by Blaskapelle Franz Stremnitzer, CC BY 3.0; source, licence and how it was cut in
+        // assets/lyd/KILDER.md), because synthesized marches never came to sound like brass on macOS. build.ps1
+        // puts it into the exe with the times of its beats. Null if it is missing: the wagon is silent then.
+        public static float[] RheinBand() { return Recording("hannerl-polka.wav"); }
+
+        // Where every beat of that excerpt falls, in seconds from its start (found by tools/takt.py: a band never
+        // keeps one tempo exactly, and the walkers step on the band's beats, not on a clock's). The last number is
+        // the excerpt's length, where the first beat comes round again. Null without it.
+        static double[] rheinBeats;
+        static bool rheinBeatsRead;
+        public static double[] RheinBeats()
+        {
+            lock (gooseGate)
+            {
+                if (rheinBeatsRead) return rheinBeats;
+                rheinBeatsRead = true;
+                try
+                {
+                    using (var s = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("hannerl-polka.takt"))
+                    {
+                        if (s == null) return null;
+                        var t = new List<double>();
+                        using (var reader = new System.IO.StreamReader(s))
+                            for (string line; (line = reader.ReadLine()) != null; )
+                            {
+                                double v;
+                                if (double.TryParse(line.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out v)) t.Add(v);
+                            }
+                        bool rising = t.Count > 8;
+                        for (int i = 1; i < t.Count; i++) if (t[i] <= t[i - 1]) rising = false;
+                        if (rising) rheinBeats = t.ToArray();
+                    }
+                }
+                catch (Exception ex) { ErrorLog.Write(ex); }
+                return rheinBeats;
+            }
+        }
+
+        // The beat number (whole numbers on the beats) at `position` seconds into the excerpt; -1 without the beats.
+        public static double RheinBeat(double position)
+        {
+            var t = RheinBeats();
+            if (t == null) return -1;
+            double p = Math.Max(t[0], Math.Min(t[t.Length - 1], position));
+            int lo = 0, hi = t.Length - 1;
+            while (hi - lo > 1) { int m = (lo + hi) / 2; if (t[m] <= p) lo = m; else hi = m; }
+            return lo + (p - t[lo]) / (t[hi] - t[lo]);
+        }
+
+        // The band truck's drums at Rio's carnival: a samba batucada, two bars of 2/4 at 120 beats a minute (4 s,
+        // looping; the beat the walkers step to, Controller.Beat). An original pattern for the instruments of a
+        // bateria, the same as the macOS version's (Synth.batucada): the low surdo on the second beat of each bar
+        // with a softer answer on the first, the snare (caixa) running in sixteenths with accents, the small
+        // tamborim in its off-beat figure, two bells (agogô), a shaker throughout, and a whistle at the start.
+        public static float[] Batucada()
+        {
+            const double step = 0.125;
+            const int steps = 32;
+            return MakeBuffer(step * steps, (output, n) =>
+            {
+                var rng = new Random(2027);
+                Action<double, double, Func<double, double>> add = (t0, len, f) =>
+                {
+                    int start = (int)(t0 * Rate), count = (int)(len * Rate);
+                    // (a hit near the end rings on into the start: the loop has no seam)
+                    for (int k = 0; k < count; k++) output[(start + k) % n] += (float)f(k / Rate);
+                };
+                double[] accents = { 1.0, 0.35, 0.5, 0.8 };
+                for (int s = 0; s < steps; s++)
+                {
+                    double t = s * step;
+                    int inBar = s % 16, sixteenth = s;
+                    // surdo: a deep drum, its pitch dropping a little as it rings
+                    if (inBar == 4 || inBar == 12) add(t, 0.5, x => 0.55 * Math.Exp(-x * 6) * Math.Sin(2 * Math.PI * (62 + 18 * Math.Exp(-x * 30)) * x));
+                    if (inBar == 0 || inBar == 8) add(t, 0.3, x => 0.28 * Math.Exp(-x * 14) * Math.Sin(2 * Math.PI * (78 + 14 * Math.Exp(-x * 30)) * x));
+                    // caixa: sixteenths of filtered noise, accented on the off-beats
+                    double accent = accents[s % 4], last = 0;
+                    add(t, 0.07, x => { double v = Noise(rng), hp = v - last; last = v; return 0.16 * accent * Math.Exp(-x * 60) * hp; });
+                    // tamborim: a dry high tap in the figure of a telecoteco
+                    if (inBar == 0 || inBar == 3 || inBar == 6 || inBar == 10 || inBar == 12 || inBar == 15)
+                        add(t, 0.06, x => 0.2 * Math.Exp(-x * 70) * (Math.Sin(2 * Math.PI * 1900 * x) + 0.5 * Math.Sin(2 * Math.PI * 2850 * x)));
+                    // agogô: two bells, high and low
+                    if (inBar == 2 || inBar == 6 || inBar == 9 || inBar == 14)
+                    {
+                        double f = inBar == 2 || inBar == 9 ? 880.0 : 660.0;
+                        add(t, 0.25, x => 0.12 * Math.Exp(-x * 12) * (Math.Sin(2 * Math.PI * f * x) + 0.4 * Math.Sin(2 * Math.PI * f * 2.76 * x)));
+                    }
+                    // shaker: soft hiss on every sixteenth
+                    add(t, 0.05, x => 0.05 * (sixteenth % 2 == 0 ? 1 : 0.6) * Math.Sin(Math.PI * Math.Min(1, x / 0.05)) * Noise(rng));
+                }
+                // the whistle at the start: three short calls, each with the pea's trill
+                double[,] calls = { { 0.0, 0.12 }, { 0.25, 0.12 }, { 0.5, 0.3 } };
+                for (int k = 0; k < 3; k++)
+                {
+                    double len = calls[k, 1];
+                    add(calls[k, 0], len, x => 0.1 * Math.Min(1, x / 0.01) * Math.Min(1, (len - x) / 0.02) * Math.Sin(2 * Math.PI * 2700 * x + 2.5 * Math.Sin(2 * Math.PI * 38 * x)));
+                }
+            });
         }
 
         // One seamless loop of geese calling, as long as the recording: 0 = the flock alone, 1 = farther off
@@ -1122,6 +1247,8 @@ namespace JuleHygge
             sounds.Add("spoegelser-sus", GhostWind);
             sounds.Add("nytaar-melodi", AuldLangSyne);
             sounds.Add("nytaar-klokke", MidnightBell);
+            sounds.Add("karneval-trommer", Batucada);
+            sounds.Add("karneval-rhein", RheinBand);
             for (int m = 0; m < GooseMoods.Length; m++) { int mood = m; sounds.Add("gaes-" + GooseMoods[m], () => Geese(mood)); }
             foreach (var kv in sounds)
             {

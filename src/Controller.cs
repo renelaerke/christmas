@@ -106,7 +106,7 @@ namespace JuleHygge
         public bool Halloween { get { return Cfg.Theme == 3; } }
         // A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
         // runs and keeps it finished until another theme is chosen (UpdateOfrenda): the ofrenda, and the lanterns.
-        public bool GrowsByHour { get { return Muertos || Halloween || Nytaar; } }
+        public bool GrowsByHour { get { return Muertos || Halloween || Nytaar || Karneval; } }
         // New Year (Cfg.Theme 4), as the macOS version (OverlayNytaar.swift): confetti and streamers fall all the time,
         // a large clock shows the time in the snowman's place and is decorated hour by hour, volleys of rockets burst
         // in a band across the top in Santa's, party guests in paper hats walk in the nisser's, pennants and paper
@@ -114,6 +114,67 @@ namespace JuleHygge
         // sweeper takes the confetti (LayerNytaar.cs). The theme has a moment: the countdown to midnight and a burst
         // at the stroke (UpdateNewYear). Nothing in the theme shows or suggests drinking (REL 2026-11-25).
         public bool Nytaar { get { return Cfg.Theme == 4; } }
+        // Carnival (Cfg.Theme 5), as the macOS version (OverlayKarneval.swift): confetti and feathers fall, a carnival
+        // float is built hour by hour in the snowman's place, a truck with a band drives along the ground in Santa's
+        // (nothing flies in this theme), the people of a samba parade walk in the nisser's, all in time with one
+        // beat, a fringe garland with masks hangs in the lights', toucans sit on the window edges, and street
+        // sweepers take the confetti (LayerKarneval.cs). No calendar and no countdown, and nothing that shows or
+        // suggests drinking (REL 2026-11-25).
+        public bool Karneval { get { return Cfg.Theme == 5; } }
+        // Which carnival (Cfg.Carnival; 0 = by language and region): Rio's samba parade is the first and the
+        // default; where German is the language or the country it is the Rhineland's street carnival (Cologne,
+        // Düsseldorf, Mainz), drawn in LayerKarnevalRhein.cs. The rule for "German" is the one that gives the
+        // Wichtel (Folk), so the two always agree. Another form is another number and its own file.
+        public const int CarnivalRio = 1, CarnivalRhein = 2;
+        public static readonly string[] CarnivalNames = { "Rio (Brasilien)", "Rhinlandet (Tyskland)" };
+        public static int CarnivalAuto { get { return Folk.Auto == Folk.Wichtel ? CarnivalRhein : CarnivalRio; } }
+        public int Carnival { get { return Cfg.Carnival == CarnivalRio || Cfg.Carnival == CarnivalRhein ? Cfg.Carnival : CarnivalAuto; } }
+        bool Rhein { get { return Karneval && Carnival == CarnivalRhein; } }
+        // The float is built from the wheels up.
+        static readonly string[] FloatSteps = {
+            "et chassis på hjul", "et nederste dæk", "et skørt med frynser", "et øverste dæk og en trappe", "guldkanter", "to søjler",
+            "en stor sol", "solens stråler", "solens ansigt", "vifter af fjer", "kulørte pærer", "serpentiner og vimpler - vognen er færdig!" };
+        // What the menu items are called at carnival, by their Christmas text (one not here keeps its text). An item
+        // that is hidden on De dødes dag is hidden here too.
+        static readonly Dictionary<string, string> KarnevalTexts = new Dictionary<string, string> {
+            { "Snevejr", "Konfetti og fjer" }, { "Snemængde", "Mængde af konfetti" }, { "Let sne", "Lidt konfetti" }, { "Snestorm", "Konfettistorm" },
+            { "Sne på proceslinjen", "Konfetti på proceslinjen" }, { "Sne på vinduerne", "Konfetti og tukaner på vinduerne" },
+            { "Snemand", "Karnevalsvogn" }, { "Julemanden", "Orkesterbil" }, { "Send julemanden afsted nu!", "Send orkesterbilen afsted nu!" },
+            { "Sneplov rydder proceslinjen", "Gadefejere rydder konfettien" }, { "Send sneploven ud nu!", "Send gadefejerne ud nu!" },
+            { "Lyd: bjælder og jingle når julemanden flyver", "Lyd: sambatrommer når orkesterbilen kører" },
+            { "Lyd: motor, skraben og horn fra sneploven", "Lyd: koste når gadefejerne fejer" },
+            { "Nisser", "Sambaoptog" }, { "Antal nisser pr. skærm", "Antal dansere pr. skærm" },
+            { "30 billeder/s - glattere sne", "30 billeder/s - glattere konfetti" }, { "Julelys", "Frynseguirlande med masker" } };
+        // What the Rhineland's carnival calls differently from Rio's (laid over KarnevalTexts).
+        static readonly Dictionary<string, string> RheinTexts = new Dictionary<string, string> {
+            { "Snevejr", "Konfetti og karameller" }, { "Sne på vinduerne", "Konfetti, narrehuer og berlinere på vinduerne" },
+            { "Snemand", "Pragtvogn" }, { "Julemanden", "Festvogn" }, { "Send julemanden afsted nu!", "Send festvognen afsted nu!" },
+            { "Lyd: bjælder og jingle når julemanden flyver", "Lyd: hornorkester når festvognen kører" },
+            { "Nisser", "Karnevalsoptog" }, { "Antal nisser pr. skærm", "Antal narre pr. skærm" }, { "Julelys", "Vimpler og narrehuer" } };
+        // The drums' beat, in seconds (120 to the minute), and how many beats have gone: carnival's walkers step in
+        // time with it on every screen, and the band on the truck plays to it, whether the sound is on or not.
+        public const double Beat = 0.5;
+        public double BeatCount;
+
+        // Moves the beat on. With no music it is a clock's. While the Rhineland wagon's band is heard, the beat is
+        // the band's own: where the recording is right now, looked up among its measured beats (a real band's tempo
+        // wanders, so a clock would be half a step off within half a minute). The walkers are eased over to it,
+        // never jumped: the difference (counted in pairs of beats, so nobody changes foot) is closed over a second.
+        void AdvanceBeat(double dt)
+        {
+            double step = dt / Beat;
+            if (Rhein)
+            {
+                double at = marchTune.Position, music = at >= 0 ? Synth.RheinBeat(at) : -1;
+                if (music >= 0)
+                {
+                    double off = (music - BeatCount) % 2;
+                    if (off >= 1) off -= 2; else if (off < -1) off += 2;
+                    step += off * Math.Min(1, dt * 4);
+                }
+            }
+            BeatCount += step;
+        }
         // The clock is there from the first step (its hands are the countdown) and is decorated from then on.
         static readonly string[] ClockSteps = {
             "et stort ur på en stander", "en guldkant med små pærer", "en rød sløjfe", "serpentiner om standeren", "en række vimpler til venstre",
@@ -332,6 +393,9 @@ namespace JuleHygge
             // New Year: "Auld Lang Syne" to the rockets, and twelve strokes of a bell at midnight
             auldTune = audio.CreateVoice(Synth.AuldLangSyne, true);
             midnightBell = audio.CreateVoice(Synth.MidnightBell, false);
+            // Carnival: the band truck's samba drums, and the Rhineland wagon's brass band (a recording)
+            drumTune = audio.CreateVoice(Synth.Batucada, true);
+            marchTune = audio.CreateVoice(Synth.RheinBand, true);
             // De dødes dag: the butterflies' tune, and the donkey cart's hooves and wheel, broom and bray
             butterflyTune = audio.CreateVoice(Synth.MuertosSon, true);
             cartRoll = audio.CreateVoice(() => Synth.DonkeyCart(DonkeyStepCycle), true);
@@ -406,6 +470,7 @@ namespace JuleHygge
             float dt = (float)Math.Min(0.1, now - lastT);
             lastT = now;
             Time += dt;
+            AdvanceBeat(dt);
 
             dayTimer -= dt;
             if (dayTimer <= 0)
@@ -502,6 +567,8 @@ namespace JuleHygge
         void StartPlow(Layer start)
         {
             if (Plow.Active) return;
+            // (carnival's sweepers wait until the band truck has gone by)
+            if (Karneval && SantaActive) { Plow.Cooldown = 15; return; }
             if (Halloween) PickHalloweenPlow();
             // all screens joined edge to edge with the starting screen, left and right
             var row = new List<Layer> { start };
@@ -560,7 +627,7 @@ namespace JuleHygge
             // the donkey cart walks at a donkey's pace
             // (so does Halloween's witch; the ghosts float a little faster)
             // (New Year's street sweeper trundles)
-            float pace = Muertos ? CartPace : Halloween ? (GhostsBlow ? 0.6f : CartPace) : Nytaar ? 0.6f : 1;
+            float pace = Muertos || Karneval ? CartPace : Halloween ? (GhostsBlow ? 0.6f : CartPace) : Nytaar ? 0.6f : 1;   // (carnival's sweepers walk too)
             Plow.GX += Plow.Dir * PlowSpeed * pace * s * dt;
             Plow.Wheel += PlowSpeed * pace * s * dt / (10 * s * PlowScale);
             if ((Plow.Dir > 0 && Plow.GX > Plow.MaxX + 260 * s * PlowScale) || (Plow.Dir < 0 && Plow.GX < Plow.MinX - 260 * s * PlowScale))
@@ -575,7 +642,8 @@ namespace JuleHygge
         readonly AudioHub audio = new AudioHub();
         readonly Voice[] jingles, gooseVoices;
         readonly Voice plowEngine, plowScrape, plowHorn, leafSuction;
-        readonly Voice butterflyTune, cartRoll, broomSweep, donkeyBray, witchTune, ghostWind, auldTune, midnightBell;
+        readonly Voice butterflyTune, cartRoll, broomSweep, donkeyBray, witchTune, ghostWind, auldTune, midnightBell, drumTune, marchTune;
+        float kamelleAcc;
         int jingleIndex;
         // How near this trip's flyer passes (its size against the ordinary one): far geese are quieter too.
         float flyerDepth = 1;
@@ -593,6 +661,7 @@ namespace JuleHygge
                 if (Muertos) butterflyTune.Warm();
                 else if (Halloween) witchTune.Warm();
                 else if (Nytaar) { auldTune.Warm(); midnightBell.Warm(); }
+                else if (Karneval) (Rhein ? marchTune : drumTune).Warm();
                 else foreach (var j in Autumn ? gooseVoices : jingles) j.Warm();
             }
             if (Cfg.PlowSound)
@@ -600,6 +669,7 @@ namespace JuleHygge
                 if (Muertos) { cartRoll.Warm(); broomSweep.Warm(); donkeyBray.Warm(); }
                 else if (Halloween) { broomSweep.Warm(); ghostWind.Warm(); }
                 else if (Nytaar) { plowEngine.Warm(); leafSuction.Warm(); }
+                else if (Karneval) broomSweep.Warm();
                 else { plowEngine.Warm(); (Autumn ? leafSuction : plowScrape).Warm(); plowHorn.Warm(); }
             }
         }
@@ -633,6 +703,12 @@ namespace JuleHygge
                 bool nytaar = Nytaar;
                 if ((Cfg.Sound && nytaar) || auldTune.Playing)
                     auldTune.Update(on && nytaar && Time >= tuneHoldUntil ? presence * Volume : 0, 0, dt);
+                // carnival's truck has its drums, and the Rhineland's wagon a brass band (a recording)
+                bool karneval = Karneval, rhein = Rhein;
+                if ((Cfg.Sound && karneval && !rhein) || drumTune.Playing)
+                    drumTune.Update(on && karneval && !rhein ? presence * Volume : 0, pan, dt);
+                if ((Cfg.Sound && rhein) || marchTune.Playing)
+                    marchTune.Update(on && rhein ? presence * Volume : 0, pan, dt);
             }
             if (Cfg.PlowSound || plowEngine.Playing || plowScrape.Playing || leafSuction.Playing || cartRoll.Playing || broomSweep.Playing || ghostWind.Playing)
             {
@@ -641,9 +717,9 @@ namespace JuleHygge
                 float presence = Math.Max(0, Math.Min(1, Math.Min(Plow.GX - (Plow.MinX - margin), (Plow.MaxX + margin) - Plow.GX) / margin));
                 float pan = (Plow.GX - Plow.MinX) / span * 2 - 1;
                 bool on = Plow.Active && Cfg.PlowSound && !SoundMuted;
-                bool muertos = Muertos, halloween = Halloween, nytaar = Nytaar;
+                bool muertos = Muertos, halloween = Halloween, nytaar = Nytaar, karneval = Karneval;
                 // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
-                plowEngine.Update(on && !muertos && !halloween ? presence * Volume * (nytaar ? 0.4f : 0.8f) : 0, pan, dt);
+                plowEngine.Update(on && !muertos && !halloween && !karneval ? presence * Volume * (nytaar ? 0.4f : 0.8f) : 0, pan, dt);
                 // scraping gets louder with the amount of snow in front of the blade
                 float load = (float)Math.Min(1, Math.Sqrt(Plow.Pushed / 2000));
                 // (the leaf collector does not scrape: it has the rush of its suction, which never goes quite quiet)
@@ -652,7 +728,7 @@ namespace JuleHygge
                     leafSuction.Update(on && (Autumn || nytaar) ? presence * Volume * (0.55f + 0.45f * load) : 0, pan, dt);
                 // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
                 // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
-                bool sweeps = muertos || (halloween && !GhostsBlow);
+                bool sweeps = muertos || (halloween && !GhostsBlow) || karneval;   // (carnival's street sweepers have brooms too)
                 if (sweeps || cartRoll.Playing || broomSweep.Playing)
                 {
                     cartRoll.Update(on && muertos ? presence * Volume * 0.9f : 0, pan, dt);
@@ -662,7 +738,7 @@ namespace JuleHygge
                     ghostWind.Update(on && halloween && GhostsBlow ? presence * Volume * (0.5f + 0.5f * load) : 0, pan, dt);
                 // (the donkey brays where the plow honks)
                 // (and Halloween has nothing in the horn's place: a truck's honk does not belong there)
-                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; if (!halloween && !nytaar) (muertos ? donkeyBray : plowHorn).PlayOnce(Volume, pan); }   // (nor has New Year's sweeper)
+                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; if (!halloween && !nytaar && !karneval) (muertos ? donkeyBray : plowHorn).PlayOnce(Volume, pan); }   // (nor has New Year's sweeper, nor carnival's)
             }
             if (!Plow.Active) hornedThisRun = false;
             audio.IdleCheck(Time);
@@ -697,6 +773,8 @@ namespace JuleHygge
         public void LaunchSanta()
         {
             if (SantaActive || layers.Count == 0) return;
+            // (carnival's truck and its street sweepers share the ground: never both at once)
+            if (Karneval && Plow.Active) return;
             // (New Year's flyer is a volley of rockets)
             if (Nytaar) { LaunchVolley(12 + R() * 6, 0.85f); return; }
             var target = layers[Rnd.Next(layers.Count)];
@@ -733,6 +811,17 @@ namespace JuleHygge
             if (Muertos) butterflyTune.Rate = pace;
             if (Halloween) witchTune.Rate = pace;
             SantaSpeed = 230 * pace * target.S * (santaMaxX - santaMinX > b.Width * 1.5f ? 1.6f : 1f);
+            if (Karneval)
+            {
+                // the band truck: on the ground, at the ordinary size and at a walking pace; the music keeps its own
+                // tempo, which is the beat the walkers step to
+                flyerDepth = 1;
+                SantaScale = target.S;
+                SantaX = SantaDir > 0 ? santaMinX - 260 * SantaScale : santaMaxX + 260 * SantaScale;
+                SantaSpeed = 70 * target.S;
+                drumTune.Rate = 1;
+                marchTune.Rate = 1;
+            }
             SantaPhase = 0;
             SantaActive = true;
         }
@@ -748,6 +837,27 @@ namespace JuleHygge
             SantaX += SantaDir * SantaSpeed * dt;
             SantaPhase += dt;
             if (Christmas) sparkAcc += dt * 45;   // Santa leaves a trail of sparks; the geese and the butterflies do not
+            // The Rhineland's wagon: sweets (Kamelle) are thrown from it in handfuls, up and out to both sides
+            if (Rhein)
+            {
+                kamelleAcc += dt * 7;
+                Layer ground = null;
+                foreach (var l in layers) if (SantaX >= l.ScreenBounds.Left && SantaX < l.ScreenBounds.Right) { ground = l; break; }
+                while (kamelleAcc >= 1)
+                {
+                    kamelleAcc -= 1;
+                    if (ground == null) continue;
+                    float s = SantaScale;
+                    var sp = new Spark();
+                    sp.X = SantaX + (R() - 0.5f) * 120 * s; sp.Y = ground.ScreenBounds.Bottom - (70 + R() * 20) * s;
+                    sp.VX = (R() - 0.5f) * 220 * s; sp.VY = -(150 + R() * 130) * s;
+                    sp.Gravity = 300 * s;
+                    sp.Max = sp.Life = 1.5f + R() * 0.5f;
+                    sp.Size = (2.6f + R() * 1.2f) * s;
+                    sp.Colour = 1 + Rnd.Next(7);
+                    Sparks.Add(sp);
+                }
+            }
             while (sparkAcc >= 1)
             {
                 sparkAcc -= 1;
@@ -761,7 +871,8 @@ namespace JuleHygge
                 sp.Gold = R() < 0.6f;
                 Sparks.Add(sp);
             }
-            if ((SantaDir > 0 && SantaX > santaMaxX + 450 * SantaScale) || (SantaDir < 0 && SantaX < santaMinX - 450 * SantaScale))
+            float reach = Karneval ? 260 : 450;
+            if ((SantaDir > 0 && SantaX > santaMaxX + reach * SantaScale) || (SantaDir < 0 && SantaX < santaMinX - reach * SantaScale))
             {
                 SantaActive = false;
                 santaNext = 60 + R() * 120;
@@ -1178,7 +1289,10 @@ namespace JuleHygge
             {
                 ErrorLog.Debug("ofrenda: step " + stage + " of " + SnowmanMaxStage);
                 celebrateAt = Time + 0.5;
-                if (stage == SnowmanMaxStage && Nytaar)
+                if (stage == SnowmanMaxStage && Karneval)
+                    tray.ShowBalloonTip(6000, Rhein ? "Pragtvognen er færdig!" : "Karnevalsvognen er færdig!",
+                        Rhein ? "Narrene har bygget den." : "Sambaskolen har bygget den. Til sidst kom der " + FloatSteps[stage - 1], ToolTipIcon.None);
+                else if (stage == SnowmanMaxStage && Nytaar)
                     tray.ShowBalloonTip(6000, "Uret er pyntet færdigt!", "Gæsterne har pyntet det. Til sidst kom der " + ClockSteps[stage - 1], ToolTipIcon.None);
                 else if (stage == SnowmanMaxStage && Halloween)
                     tray.ShowBalloonTip(6000, "Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + PumpkinSteps[stage - 1], ToolTipIcon.None);
@@ -1231,7 +1345,7 @@ namespace JuleHygge
             menu.Items.Add(Themed(countdownItem, null, null));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår", "De dødes dag", "Halloween", "Nytår" }, new[] { 0, 1, 2, 3, 4 }, () => Cfg.Theme,
+            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår", "De dødes dag", "Halloween", "Nytår", "Karneval" }, new[] { 0, 1, 2, 3, 4, 5 }, () => Cfg.Theme,
                 v => { if (Cfg.Theme != v) { Cfg.Theme = v; ThemeChanged(); } }));
             menu.Items.Add(Themed(Toggle("Snevejr", () => Cfg.Snow, v => Cfg.Snow = v), "Løvfald", "Kronblade fra tagetes"));
             var level = new ToolStripMenuItem("Snemængde");
@@ -1306,6 +1420,12 @@ namespace JuleHygge
             folkAutoItem = folkChoice.DropDownItems[0];   // its text says what automatic came to (see ApplyTheme)
             dynamicItems.Add(folkAutoItem);
             menu.Items.Add(Themed(folkChoice, null, null));
+            // which carnival: only shown in the Karneval theme (the walkers and all the rest change at once)
+            carnivalChoice = Choice("Karneval fra", new[] { "", CarnivalNames[0], CarnivalNames[1] }, new[] { 0, CarnivalRio, CarnivalRhein },
+                () => Cfg.Carnival, v => { Cfg.Carnival = v; BuildLayers(); ApplyTheme(); WarmSounds(); });
+            carnivalAutoItem = carnivalChoice.DropDownItems[0];
+            dynamicItems.Add(carnivalAutoItem);
+            menu.Items.Add(carnivalChoice);
             menu.Items.Add(new ToolStripSeparator());
 
             var power = new ToolStripMenuItem("Strømspare");
@@ -1409,7 +1529,8 @@ namespace JuleHygge
         // The items in dynamicItems have a number or a name in them and get their text in ApplyTheme.
         readonly Dictionary<ToolStripItem, string> danish = new Dictionary<ToolStripItem, string>();
         readonly HashSet<ToolStripItem> dynamicItems = new HashSet<ToolStripItem>();
-        ToolStripItem folkAutoItem;
+        ToolStripItem folkAutoItem, carnivalAutoItem;
+        ToolStripMenuItem carnivalChoice;
         ToolStripMenuItem languageItem, versionItem;
 
         void RememberTexts(ToolStripItemCollection items)
@@ -1439,18 +1560,22 @@ namespace JuleHygge
             foreach (var kv in danish) kv.Key.Text = Lang.T(kv.Value);
             foreach (var t in themedItems)
             {
-                t.Item.Available = Autumn ? t.Efteraar != null : (Muertos || Halloween) ? t.Muertos != null : Nytaar ? !NytaarHidden.Contains(t.Jul) : true;
+                t.Item.Available = Autumn ? t.Efteraar != null : (Muertos || Halloween || Karneval) ? t.Muertos != null : Nytaar ? !NytaarHidden.Contains(t.Jul) : true;
                 string own = t.Folk != null ? t.Folk[WalkerFolk - 1] : null;
                 string spooky;
                 if (!Halloween || !HalloweenTexts.TryGetValue(t.Jul, out spooky)) spooky = t.Jul;
                 string party;
                 if (!Nytaar || !NytaarTexts.TryGetValue(t.Jul, out party)) party = t.Jul;
+                string parade;
+                if (!Karneval || !((Rhein && RheinTexts.TryGetValue(t.Jul, out parade)) || KarnevalTexts.TryGetValue(t.Jul, out parade))) parade = t.Jul;
                 if (t.Item == countdownItem) continue;   // (its text is the countdown itself, set below)
-                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : Muertos ? (t.Muertos ?? t.Jul) : Halloween ? spooky : Nytaar ? party : (own ?? t.Jul));
+                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : Muertos ? (t.Muertos ?? t.Jul) : Halloween ? spooky : Nytaar ? party : Karneval ? parade : (own ?? t.Jul));
             }
             kiteItem.Available = Autumn;
             countdownItem.Text = Nytaar ? NewYearCountdown() : Countdown();
-            snowmanItem.Text = Nytaar ? Lang.T("Ur med pynt (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
+            carnivalChoice.Available = Karneval;
+            carnivalAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(CarnivalNames[CarnivalAuto - 1]));
+            snowmanItem.Text = Karneval ? Lang.T(Rhein ? "Pragtvogn (trin {0} af {1})" : "Karnevalsvogn (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Nytaar ? Lang.T("Ur med pynt (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
                 : Muertos ? Lang.T("Ofrenda (alter) (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
                 : Halloween ? Lang.T("Græskarlygter (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Lang.T("Snemand");
             folkAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(Folk.Name(Folk.Auto)));

@@ -76,7 +76,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
 // Windows versions).
 pub const MENU_THEME: &str = "Tema";
-pub const THEMES: [&str; 5] = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår"];
+pub const THEMES: [&str; 6] = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår", "Karneval"];
 pub const MENU_LEAVES: &str = "Løvfald";
 pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
@@ -182,6 +182,58 @@ pub fn new_year_days(days: i64) -> String {
 pub fn new_year_midnight(hours: i64, minutes: i64) -> String {
     crate::lang::trf("★ {0}:{1} til midnat ★", &[hours.to_string().as_str(), format!("{minutes:02}").as_str()])
 }
+
+// ---------------------------------------------------------------------- Carnival (menu "Tema")
+// The same menu at carnival (as in the macOS and Windows versions): confetti and feathers for the snow, a carnival
+// float for the snowman, a band truck for Santa, a samba parade for the nisser, a fringe garland with masks behind
+// the lights, and street sweepers for the plow. The amount of confetti, the confetti on the panel and the frame
+// rates keep New Year's texts. No calendar, no countdown and no choice of folk; instead the choice of which
+// carnival: each text is first Rio's, then the Rhineland's (indexed by the carnival's number less one).
+pub const MENU_CARNIVAL: &str = "Karneval fra";
+pub const CARNIVALS: [&str; 2] = ["Rio (Brasilien)", "Rhinlandet (Tyskland)"];
+pub const MENU_CARNIVAL_FALL: [&str; 2] = ["Konfetti og fjer", "Konfetti og karameller"];
+pub const MENU_WINDOW_CARNIVAL: [&str; 2] =
+    ["Konfetti og tukaner på vinduerne", "Konfetti, narrehuer og berlinere på vinduerne"];
+pub const MENU_BAND_TRUCK: [&str; 2] = ["Orkesterbil", "Festvogn"];
+pub const MENU_SEND_BAND_TRUCK: [&str; 2] = ["Send orkesterbilen afsted nu!", "Send festvognen afsted nu!"];
+pub const MENU_BAND_SOUND: [&str; 2] =
+    ["Lyd: sambatrommer når orkesterbilen kører", "Lyd: hornorkester når festvognen kører"];
+pub const MENU_STREET_SWEEPERS: &str = "Gadefejere rydder konfettien";
+pub const MENU_SEND_STREET_SWEEPERS: &str = "Send gadefejerne ud nu!";
+pub const MENU_BROOM_SOUND: &str = "Lyd: koste når gadefejerne fejer";
+pub const MENU_PARADE: [&str; 2] = ["Sambaoptog", "Karnevalsoptog"];
+pub const MENU_PARADE_COUNT: [&str; 2] = ["Antal dansere pr. skærm", "Antal narre pr. skærm"];
+pub const MENU_CARNIVAL_GARLAND: [&str; 2] = ["Frynseguirlande med masker", "Vimpler og narrehuer"];
+pub const NOTICE_FLOAT_TITLE: &str = "Karnevalsvognen er færdig!";
+pub const NOTICE_PRUNKWAGEN_TITLE: &str = "Pragtvognen er færdig!";
+pub const NOTICE_PRUNKWAGEN: &str = "Narrene har bygget den.";
+
+/// The float's item, with how far it has come (`rhein`: the Rhineland's float).
+pub fn menu_float(rhein: bool, stage: i32, max: i32) -> String {
+    let text = if rhein { "Pragtvogn (trin {0} af {1})" } else { "Karnevalsvogn (trin {0} af {1})" };
+    crate::lang::trf(text, &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the last of the float's steps is in place (a step for every hour the app runs).
+pub fn notice_float(step: &str) -> String {
+    format!("Sambaskolen har bygget den. Til sidst kom der {step}")
+}
+
+/// What the float got at each step (1..=12): it is built from the wheels up.
+pub const FLOAT_STEPS: [&str; 12] = [
+    "et chassis på hjul",
+    "et nederste dæk",
+    "et skørt med frynser",
+    "et øverste dæk og en trappe",
+    "guldkanter",
+    "to søjler",
+    "en stor sol",
+    "solens stråler",
+    "solens ansigt",
+    "vifter af fjer",
+    "kulørte pærer",
+    "serpentiner og vimpler - vognen er færdig!",
+];
 
 // ---------------------------------------------------------------------- Halloween (menu "Tema")
 // The same menu on Halloween (as in the macOS and Windows versions). The leaves are autumn's and keep autumn's

@@ -4,7 +4,7 @@
 use cairo::{Context, LineCap};
 
 use super::draw::*;
-use super::{Layer, SceneState};
+use super::{heap_at, Layer, SceneState};
 
 const DEER: Argb = rgb(145, 95, 55);
 const DEER_DARK: Argb = rgb(100, 62, 32);
@@ -37,7 +37,12 @@ impl Layer {
 
         let Some(santa) = st.santa else { return };
         let sc = santa.scale * 1.1;
-        let (sx, sy) = (santa.x - ox, santa.y() - oy);
+        let (sx, mut sy) = (santa.x - ox, santa.y() - oy);
+        // (carnival's is a truck that drives along the ground: it stands on this screen's own pile, wherever
+        // Santa's height would have put it)
+        if st.karneval() {
+            sy = self.ground_y - heap_at(&self.heap, sx.clamp(0.0, w - 1.0)) + self.s;
+        }
         if sx < -330.0 * sc || sx > w + 330.0 * sc || sy < -150.0 * sc || sy > h + 150.0 * sc {
             return;
         }
@@ -57,6 +62,13 @@ impl Layer {
         if st.halloween {
             // Halloween: a witch on her broom, with bats after her
             super::halloween::witch(cr, santa.phase as f64);
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.karneval() {
+            // carnival: a truck with a band on it (the Rhineland: a tractor with a wagon), on the ground
+            let rhein = st.carnival == crate::folk::CARNIVAL_RHEIN;
+            super::karneval::band_truck(cr, santa.phase as f64, st.beat_count, rhein);
             cr.set_matrix(saved);
             return;
         }

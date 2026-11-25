@@ -129,6 +129,7 @@ namespace JuleHygge
             DisposeMuertos();
             DisposeHalloween();
             DisposeNytaar();
+            DisposeKarneval();
             foreach (var p in flakePens) p.Dispose();
             base.OnFormClosed(e);
         }
@@ -299,7 +300,8 @@ namespace JuleHygge
 
 
             Petals = c.Muertos;
-            Confetti = c.Nytaar;
+            Confetti = c.Nytaar || c.Karneval;
+            CarnivalForm = c.Karneval ? c.Carnival : 0;
             UpdateSnow(dt);
             UpdateRain(dt);
             UpdatePlow(dt);
@@ -350,7 +352,7 @@ namespace JuleHygge
             int lower = Math.Min(1, (int)amount);
             float flakesWanted = baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - lower);
             // (leaves are much bigger than flakes, so far fewer are needed)
-            if (c.Leaves) flakesWanted *= c.Nytaar ? 0.4f : 0.2f;   // (confetti is smaller than a leaf: twice as many)
+            if (c.Leaves) flakesWanted *= c.Nytaar || c.Karneval ? 0.4f : 0.2f;   // (confetti is smaller than a leaf: twice as many)
             float logicalArea = W * (float)H / (dpiScale * dpiScale);
             // Snow covers the whole screen also in power-save mode (like macOS); power-save only lowers the frame rate.
             // SnowIntensity makes the amount drift slowly between ~60% and ~140% of the chosen level.
@@ -473,13 +475,13 @@ namespace JuleHygge
                 f.Crystal = false;
                 f.RotSpd = (Rnd() - 0.5f) * 5;
                 f.Kind = rnd.Next(LeafKinds);
-                if (c.Nytaar)
+                if (c.Nytaar || c.Karneval)
                 {
                     // confetti: smaller and lighter than a leaf, fluttering down slowly and turning fast
                     f.R = (3.5f + depth * 4.5f) * S;
                     f.Vy = (24 + depth * 30 + Rnd() * 16) * S * (c.EffectiveSnowLevel == 2 ? 1.4f : 1f);
                     f.RotSpd = (Rnd() - 0.5f) * 9;
-                    f.Kind = rnd.Next(ConfettiKinds);
+                    f.Kind = rnd.Next(c.Karneval ? CarnivalKinds : ConfettiKinds);
                 }
             }
             return f;
@@ -506,9 +508,23 @@ namespace JuleHygge
 
         // New Year's confetti (LayerNytaar.cs), set the same way.
         static bool Confetti;
+        // Carnival's (LayerKarneval.cs): 0 = none, else Controller.CarnivalRio or CarnivalRhein, whose confetti has a
+        // feather or a wrapped sweet for every six.
+        static int CarnivalForm;
 
         static int[] LeafSprite(int kind)
         {
+            if (Confetti && CarnivalForm != 0)
+            {
+                kind = ((kind % CarnivalKinds) + CarnivalKinds) % CarnivalKinds;
+                if (CarnivalForm == Controller.CarnivalRhein)
+                {
+                    if (kamelleSprites == null) kamelleSprites = MakeCarnivalSprites(true);
+                    return kamelleSprites[kind];
+                }
+                if (carnivalSprites == null) carnivalSprites = MakeCarnivalSprites(false);
+                return carnivalSprites[kind];
+            }
             if (Confetti)
             {
                 if (confettiSprites == null) confettiSprites = MakeConfettiSprites();
@@ -526,7 +542,7 @@ namespace JuleHygge
         }
 
         // The dark between the leaves (or petals) of a pile.
-        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : c.Halloween ? Color.FromArgb(245, 96, 46, 20) : c.Nytaar ? Color.FromArgb(245, 92, 70, 120) : PileFill; } }
+        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : c.Halloween ? Color.FromArgb(245, 96, 46, 20) : c.Nytaar ? Color.FromArgb(245, 92, 70, 120) : c.Karneval ? Color.FromArgb(245, 150, 60, 110) : PileFill; } }
 
         static int[][] MakeLeafSprites()
         {
@@ -908,6 +924,7 @@ namespace JuleHygge
             if (c.Muertos) DrawLedgeCandles();
             if (c.Halloween) DrawLedgeSpooks();
             if (c.Nytaar) DrawLedgeParty();
+            if (c.Karneval) DrawLedgeCarnival();
         }
 
         // One stretch: the pile's top from left to right, then back along the drape hanging below the edge.
@@ -1015,6 +1032,9 @@ namespace JuleHygge
 
             float sc = c.SantaScale * 1.1f;
             float sx = c.SantaX - ox, sy = c.SantaY - oy;
+            // (carnival's is a truck that drives along the ground: it stands on this screen's own pile, wherever
+            // Santa's height would have put it)
+            if (c.Karneval) sy = groundY - HeapAt(Math.Max(0, Math.Min(W - 1, sx))) + S;
             if (sx < -330 * sc || sx > W + 330 * sc || sy < -150 * sc || sy > H + 150 * sc) return;
             Mark(sx - 330 * sc, sy - 135 * sc, 660 * sc, 195 * sc);
 
@@ -1025,6 +1045,7 @@ namespace JuleHygge
             if (c.Autumn) { DrawGeese(t); g.Restore(st); return; }
             if (c.Muertos) { DrawMonarchs(t); g.Restore(st); return; }
             if (c.Halloween) { DrawWitch(t); g.Restore(st); return; }
+            if (c.Karneval) { DrawBandTruck(t); g.Restore(st); return; }
             g.RotateTransform((float)Math.Cos(c.SantaPhase * 0.9) * -4f * c.SantaDir);
 
             float[] rx = { 80, 140, 200, 260 };
@@ -1159,14 +1180,15 @@ namespace JuleHygge
             float x = W * 0.78f, y = groundY - HeapAt(x) + 3 * S;
             SnowmanPos = new PointF(ScreenBounds.X + x, ScreenBounds.Y + y);
             // (the glow of the lanterns on New Year's clock reaches a little wider than the other themes' figures)
-            float half = c.Nytaar ? 72 : 62;
+            // (and the feather fans of carnival's float wider still)
+            float half = c.Karneval ? 80 : c.Nytaar ? 72 : 62;
             Mark(x - half * S, y - 135 * S, 2 * half * S, 142 * S);
 
             var st = g.Save();
             g.TranslateTransform(x, y);
             g.ScaleTransform(S, S);
             if (c.Muertos) DrawOfrenda(stage); else if (c.Halloween) DrawPumpkins(stage);
-            else if (c.Nytaar) DrawPartyClock(stage); else DrawScarecrow(stage);
+            else if (c.Nytaar) DrawPartyClock(stage); else if (c.Karneval) DrawFloat(stage); else DrawScarecrow(stage);
             g.Restore(st);
         }
 
@@ -1258,9 +1280,10 @@ namespace JuleHygge
                         }
                     }
                 }
-                else if (c.Muertos)
+                else if (c.Muertos || c.Karneval)
                 {
                     // the broom: petals are swept up and fly back over the donkey into the cart
+                    // (and carnival's street sweepers do the same with the confetti)
                     if (ph > 5)
                     {
                         plowChunkAcc += dt * 10;
@@ -1317,7 +1340,7 @@ namespace JuleHygge
                     }
                 }
                 plowSmokeTimer -= dt;
-                if (plowSmokeTimer <= 0 && !c.Muertos && !c.Halloween && !c.Nytaar)   // (a donkey makes no smoke, nor do a witch or ghosts)
+                if (plowSmokeTimer <= 0 && !c.Muertos && !c.Halloween && !c.Nytaar && !c.Karneval)   // (a donkey makes no smoke, nor do a witch or ghosts)
                 {
                     plowSmokeTimer = 0.2f;
                     var b = new PlowBit();
@@ -1390,6 +1413,7 @@ namespace JuleHygge
             if (c.Muertos) { DrawPetalCart(ph); g.Restore(st); return; }
             if (c.Halloween) { if (c.GhostsBlow) DrawGhostBlowers(ph); else DrawWitchSweeper(ph); g.Restore(st); return; }
             if (c.Nytaar) { DrawSweeper(ph); g.Restore(st); return; }
+            if (c.Karneval) { DrawStreetSweepers(ph); g.Restore(st); return; }
             if (autumn) { DrawLeafCollector(ph); g.Restore(st); return; }
 
             Color orange = Color.FromArgb(235, 130, 20), orangeDark = Color.FromArgb(185, 95, 10);
@@ -1781,7 +1805,9 @@ namespace JuleHygge
         {
             float sc = S * n.Size;
             float gy = groundY - HeapAt(n.X) + 2 * S;
-            Mark(n.X - 32 * sc, gy - 72 * sc, 64 * sc, 80 * sc);
+            // (carnival's flag bearer holds her flag higher and farther out than a nisse reaches)
+            if (c.Karneval) Mark(n.X - 38 * sc, gy - 84 * sc, 76 * sc, 92 * sc);
+            else Mark(n.X - 32 * sc, gy - 72 * sc, 64 * sc, 80 * sc);
 
             var st = g.Save();
             g.TranslateTransform(n.X, gy);
@@ -1790,6 +1816,7 @@ namespace JuleHygge
             if (c.Muertos) { DrawCalaca(n); g.Restore(st); return; }
             if (c.Halloween) { DrawSpook(n); g.Restore(st); return; }
             if (c.Nytaar) { DrawGuest(n); g.Restore(st); return; }
+            if (c.Karneval) { DrawReveller(n); g.Restore(st); return; }
             switch (c.WalkerFolk)
             {
                 case Folk.Alfer: DrawElf(n); g.Restore(st); return;
@@ -1931,9 +1958,11 @@ namespace JuleHygge
             if (c.Muertos) { RenderPapelPicado(lg); return; }
             if (c.Halloween) { RenderSpookGarland(lg); return; }
             if (c.Nytaar) { RenderPartyGarland(lg); return; }
+            // carnival: a fringe with masks (or pennants and jester caps) behind the Christmas lights' own bulbs
+            if (c.Karneval) RenderCarnivalGarland(lg);
             float span = 230 * S, sag = 22 * S, top = 1;
             int perSpan = 4, idx = 0;
-            using (var wire = new Pen(Color.FromArgb(220, 25, 60, 35), 2f * S))
+            using (var wire = new Pen(c.Karneval ? Color.FromArgb(200, 40, 30, 36) : Color.FromArgb(220, 25, 60, 35), 2f * S))
             using (var socket = new SolidBrush(Color.FromArgb(255, 30, 70, 40)))
             {
                 for (float x0 = -span * 0.3f; x0 < W; x0 += span)
