@@ -313,7 +313,7 @@ impl Figures {
                         vy: -(y - burst_y) / (0.9 + r.f() * 0.45),
                         burst_y,
                         scale: o.s,
-                        sway: r.f() * 6.28,
+                        sway: r.f() * std::f32::consts::TAU,
                         trail: 0.0,
                         colour: r.range(0, BURST_COLOURS) as usize,
                     });
