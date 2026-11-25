@@ -79,7 +79,11 @@ quick crashes; `pkill -x JuleHygge` stops both. Test flags and `JULE_NO_SUPERVIS
 | `--santa` (`--julemand`) | sends Santa right away |
 | `--plow[=N]` (`--sneplov[=N]`) | sends the snow plow after N seconds (default 3) |
 | `JULE_SETTINGS=path` | uses another settings file, so tests never change the real one |
-| `JULE_DATE=yyyy-MM-dd` | pretends it is another date (weather, calendar doors, snowman, notices) |
+| `JULE_DATE=yyyy-MM-dd` | pretends it is another date (weather, calendar doors, autumn's haystack, notices) |
+| `JULE_HALLOWEEN_PLOV=heks` or `=spoegelser` | Halloween (`Theme=3`): fixes whether the witch sweeps or the ghosts blow when the leaves are cleared (otherwise drawn by lot) |
+| `JULE_SNOWMAN_SPEED=N` with `Theme=2` or `3` | builds the ofrenda of De dødes dag (or Halloween's jack-o'-lanterns) N times faster (3600: a step a second); `OfrendaSeconds=N` in the settings file starts it N seconds in (39600 is the finished altar) |
+| `JULE_SNOWMAN_SPEED=N` | the children build the snowman N times faster (30 gives a whole snowman in 30 s and the plow a few seconds later) |
+| `JULE_SNOWMAN_START=T[,X]` | the snowman starts T seconds into the build (0–899), X units from the primary screen's left edge, instead of somewhere at random |
 | `JULE_WEATHER_TIME=HH:MM` | starts the day's weather at that time of day, to watch a change without waiting (the macOS name `JULE_VEJR_TID` works too) |
 | `JULE_DEBUG=1` | debug lines in `$XDG_RUNTIME_DIR/julehygge-debug.log`, including fps, ms per frame and CPU % every 5 s |
 | `JULE_FPS=N` | fixed frame rate (for measurements) |
@@ -116,7 +120,8 @@ The sound noise uses .NET's `Random` with the Windows seeds, so `--sound-test` s
 | `src/main.rs` | arguments, single instance | `Program.cs` |
 | `src/controller.rs` | main loop, frame timer, wind, weather, screens, test aids | `Controller.cs` |
 | `src/layer.rs` | one screen's scene and pixel buffer: snow, snow pile, fullscreen pause, dirty rectangles | `Layer.cs` |
-| `src/layer/*.rs` | the figures on a screen: lights, Santa and sparks, snowman, snow plow, elves, snow on window edges; Cairo helpers | `Layer.cs` |
+| `src/layer/*.rs` | the figures on a screen: lights, Santa and sparks, the haystack, snow plow, elves, snow on window edges; Cairo helpers | `Layer.cs` |
+| `src/snowman_build.rs`, `src/layer/build.rs` | the snowman the children build: the story, and its drawing on the primary screen | `SnowmanBuild.cs`, `LayerSnowman.cs` |
 | `src/window_snow.rs` | snow on windows: the piles on window edges, the window scan, clumps falling off | `WindowSnow.cs` |
 | `src/figures.rs` | Santa, sparks and the plow run in global coordinates, across screens | `Controller.cs` |
 | `src/x11.rs` | X11: monitors, overlay windows, click-through, MIT-SHM, panels, fullscreen window, DPMS | Win32 parts of `Layer.cs` |

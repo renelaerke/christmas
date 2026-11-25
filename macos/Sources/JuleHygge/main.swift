@@ -13,8 +13,16 @@ if let i = args.firstIndex(of: "--icon"), i + 1 < args.count {
 if let a = args.first(where: { $0.hasPrefix("--lyd-test=") }) {
     let dir = String(a.dropFirst(11))
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-    for (name, make) in Synth.Tune.all.map({ t in ("julemand-" + t.name, { Synth.jingle(t) }) }) + [("sneplov-motor", Synth.plowEngine), ("sneplov-skraben", Synth.plowScrape), ("sneplov-horn", Synth.plowHorn), ("loevsuger-sug", Synth.leafSuction)]
-        + Synth.gooseMoods.enumerated().map({ m in ("gaes-" + m.element, { Synth.geese(mood: m.offset) }) }) {
+    typealias Maker = (String, () -> AVAudioPCMBuffer?)
+    let cycle = Controller.donkeyStepCycle
+    var sounds: [Maker] = Synth.Tune.all.map { t in ("julemand-" + t.name, { Synth.jingle(t) }) }
+    sounds += [("sneplov-motor", Synth.plowEngine), ("sneplov-skraben", Synth.plowScrape), ("sneplov-horn", Synth.plowHorn),
+               ("loevsuger-sug", Synth.leafSuction), ("sommerfugle-son", Synth.muertosSon), ("heks-melodi", Synth.witchTune), ("spoegelser-sus", Synth.ghostWind)]
+    sounds += [("aeselkaerre-hove", { Synth.donkeyCart(cycle: cycle) }), ("aeselkaerre-kost", { Synth.broomSweep(cycle: cycle) }),
+               ("aesel-broel", Synth.donkeyBray)]
+    sounds += Synth.gooseMoods.enumerated().map { m in ("gaes-" + m.element, { Synth.geese(mood: m.offset) }) }
+    print(String(format: "aeselkaerre: skridt-cyklus %.3f s", cycle))
+    for (name, make) in sounds {
         guard let buf = make() else { continue }
         let url = URL(fileURLWithPath: dir).appendingPathComponent(name + ".wav")
         if let f = try? AVAudioFile(forWriting: url, settings: buf.format.settings) { try? f.write(from: buf) }

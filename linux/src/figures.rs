@@ -57,6 +57,17 @@ pub struct PlowRun {
 
 pub const PLOW_SPEED: f32 = 170.0;
 pub const PLOW_SCALE: f32 = 1.15;
+/// The Day of the Dead's donkey cart walks at a donkey's pace (a share of the plow's speed).
+pub const CART_PACE: f32 = 0.45;
+/// How fast the donkey's legs swing against the cart's wheel (radians of leg swing per radian of wheel turn).
+pub const DONKEY_STRIDE: f32 = 1.6;
+
+/// Seconds per step cycle of the donkey's legs (each leg lands once), worked out from how the drawing moves them:
+/// the legs swing with sin(wheel x DONKEY_STRIDE), and the wheel turns PLOW_SPEED x CART_PACE / (10 x PLOW_SCALE)
+/// radians a second. The hooves' sound is timed from it (`sound::donkey_cart`).
+pub fn donkey_step_cycle() -> f64 {
+    (std::f32::consts::TAU / DONKEY_STRIDE / (PLOW_SPEED * CART_PACE / (10.0 * PLOW_SCALE))) as f64
+}
 
 /// A screen as the figures see it.
 pub struct ScreenInfo {
@@ -83,6 +94,17 @@ pub struct Figures {
     /// The autumn theme (set by the controller): geese fly in Santa's place, at varying distance and with no
     /// trail of sparks.
     pub autumn: bool,
+    /// De dødes dag (set by the controller): monarch butterflies fly in Santa's place, also at varying distance
+    /// and with no sparks, and the plow is a donkey cart at a donkey's pace.
+    pub muertos: bool,
+    /// Halloween (set by the controller): a witch on her broom flies in Santa's place, and the plow is one of two
+    /// each run (`ghosts_blow`).
+    pub halloween: bool,
+    /// Halloween's plow this run: three ghosts that blow the leaves away (true), or a witch who sweeps them up
+    /// (false). Random, but drawn two at a time (one of each, in random order: `plow_forms`), so over time each
+    /// comes exactly half the times. `JULE_HALLOWEEN_PLOV=heks` or `=spoegelser` fixes it for tests.
+    pub ghosts_blow: bool,
+    plow_forms: Vec<bool>,
     /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
     pub flyer_depth: f32,
 }
@@ -121,6 +143,10 @@ impl Figures {
             santa_pace: 1.0,
             new_trip: false,
             autumn: false,
+            muertos: false,
+            halloween: false,
+            ghosts_blow: false,
+            plow_forms: Vec::new(),
             flyer_depth: 1.0,
         }
     }
@@ -161,7 +187,7 @@ impl Figures {
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
         let b = target.rect;
         // the geese pass at very different distances (as `flyerDepth` on Windows)
-        self.flyer_depth = if self.autumn { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
+        self.flyer_depth = if self.autumn || self.muertos || self.halloween { 0.5 + self.rng.f() * 0.7 } else { 1.0 };
         let scale = target.s * self.flyer_depth;
         let y0 = b.y as f32 + b.h as f32 * (0.12 + self.rng.f() * 0.25);
         // fly over every screen at the same height
@@ -197,7 +223,7 @@ impl Figures {
         };
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
-        if !self.autumn {
+        if !self.autumn && !self.muertos && !self.halloween {
             self.spark_acc += dt * 45.0;
         }
         let r = &mut self.rng;
@@ -249,9 +275,26 @@ impl Figures {
         self.plow_at = Some(now + seconds.max(0.0) as f64);
     }
 
+    fn pick_halloween_plow(&mut self) {
+        if self.plow_forms.is_empty() {
+            let first = self.rng.f() < 0.5;
+            self.plow_forms = vec![first, !first];
+        }
+        self.ghosts_blow = self.plow_forms.pop().unwrap_or(false);
+        match std::env::var("JULE_HALLOWEEN_PLOV").as_deref() {
+            Ok("heks") => self.ghosts_blow = false,
+            Ok("spoegelser") => self.ghosts_blow = true,
+            _ => {}
+        }
+        crate::log::debug(if self.ghosts_blow { "halloween plow: ghosts blow" } else { "halloween plow: witch sweeps" });
+    }
+
     fn start_plow(&mut self, screens: &[ScreenInfo], start: usize) {
         if self.plow.active {
             return;
+        }
+        if self.halloween {
+            self.pick_halloween_plow();
         }
         // all screens joined edge to edge with the starting screen, left and right
         let rects: Vec<Rect> = screens.iter().map(|s| s.rect).collect();
@@ -292,6 +335,14 @@ impl Figures {
             }
             return;
         }
+        // (so does Halloween's witch; the ghosts float a little faster)
+        let pace = if self.muertos || (self.halloween && !self.ghosts_blow) {
+            CART_PACE
+        } else if self.halloween {
+            0.6
+        } else {
+            1.0
+        };
         let p = &mut self.plow;
         // speed and size follow the screen the truck is on
         let here = p
@@ -300,8 +351,8 @@ impl Figures {
             .find(|&&i| p.gx >= screens[i].rect.x as f32 && p.gx < screens[i].rect.right() as f32)
             .or(p.members.first());
         let s = here.map_or(1.0, |&i| screens[i].s);
-        p.gx += p.dir * PLOW_SPEED * s * dt;
-        p.wheel += PLOW_SPEED * s * dt / (10.0 * s * PLOW_SCALE);
+        p.gx += p.dir * PLOW_SPEED * pace * s * dt;
+        p.wheel += PLOW_SPEED * pace * s * dt / (10.0 * s * PLOW_SCALE);
         let margin = 260.0 * s * PLOW_SCALE;
         if (p.dir > 0.0 && p.gx > p.max_x + margin) || (p.dir < 0.0 && p.gx < p.min_x - margin) {
             p.active = false;
@@ -349,14 +400,16 @@ impl Figures {
         }
     }
 
-    /// Sparks rising around the snowman when it grew today (at `pos`, global coordinates, on a screen of scale s).
-    pub fn snowman_celebrate(&mut self, (x, y): (f32, f32), s: f32) {
-        for _ in 0..70 {
+    /// Sparks rising around the snowman when the children have finished it (`small`), or around autumn's
+    /// haystack when it grew today (at `pos`, global coordinates, on a screen of scale s).
+    pub fn snowman_celebrate(&mut self, (x, y): (f32, f32), s: f32, small: bool) {
+        let (wide, high, count) = if small { (60.0, 70.0, 45) } else { (90.0, 120.0, 70) };
+        for _ in 0..count {
             let r = &mut self.rng;
             let life = 1.5 + r.f() * 1.5;
             self.sparks.push(Spark {
-                x: x + (r.f() - 0.5) * 90.0 * s,
-                y: y - r.f() * 120.0 * s,
+                x: x + (r.f() - 0.5) * wide * s,
+                y: y - r.f() * high * s,
                 vx: (r.f() - 0.5) * 60.0 * s,
                 vy: -(20.0 + r.f() * 60.0) * s,
                 life,
@@ -364,6 +417,26 @@ impl Figures {
                 size: (2.0 + r.f() * 3.0) * s,
                 gold: r.f() < 0.6,
                 star: false,
+            });
+        }
+    }
+
+    /// A puff of sparkles where an elf vanishes or reappears by magic (its feet at (x, y), global coordinates;
+    /// `sc` pixels per unit of the elf, on a screen of scale s).
+    pub fn magic_puff(&mut self, (x, y): (f32, f32), sc: f32, s: f32) {
+        for i in 0..26 {
+            let r = &mut self.rng;
+            let life = 0.8 + r.f() * 0.8;
+            self.sparks.push(Spark {
+                x: x + (r.f() - 0.5) * 36.0 * sc,
+                y: y - r.f() * 60.0 * sc,
+                vx: (r.f() - 0.5) * 50.0 * s,
+                vy: -(15.0 + r.f() * 45.0) * s,
+                life,
+                max: life,
+                size: (1.5 + r.f() * 2.5) * s,
+                gold: r.f() < 0.5,
+                star: i % 4 == 0,
             });
         }
     }

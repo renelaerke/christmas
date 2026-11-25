@@ -36,7 +36,28 @@ namespace JuleHygge
         public readonly List<Spark> Sparks = new List<Spark>();
 
         public const int SnowmanMaxStage = 12;
-        public int SnowmanStage = 1;
+        // How far what stands in the snowman's place has come. Autumn's haystack grows a stage a day (dailyStage);
+        // the ofrenda of De dødes dag grows a stage for every hour the app runs with that theme (OfrendaStage),
+        // since the theme is only on for a couple of days.
+        public int SnowmanStage { get { return GrowsByHour ? OfrendaStage : dailyStage; } }
+        int dailyStage = 1;
+        // One step of the ofrenda takes this long (seconds the app runs with the theme on).
+        public const double OfrendaStepTime = 3600;
+        // Finished, it stands until another theme is chosen; choosing the theme again starts a new altar.
+        public int OfrendaStage { get { return Math.Max(1, Math.Min(SnowmanMaxStage, (int)(Cfg.OfrendaSeconds / OfrendaStepTime) + 1)); } }
+        float ofrendaSaveTimer;
+        // JULE_SNOWMAN_SPEED=N builds the ofrenda N times faster too (3600 gives a step a second).
+        static readonly double OfrendaSpeed = ReadSpeed();
+        static double ReadSpeed()
+        {
+            double v;
+            return double.TryParse(Environment.GetEnvironmentVariable("JULE_SNOWMAN_SPEED"), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out v) && v > 0 ? Math.Max(0.01, v) : 1;
+        }
+        static readonly string[] OfrendaSteps = {
+            "et nederste trin med lilla dug", "et midterste trin med pink dug", "et øverste trin med turkis dug", "lys på nederste trin",
+            "tagetes langs trinene", "et sukkerkranie", "lys på midterste trin", "pan de muerto (de dødes brød)", "et billede af en, vi savner",
+            "en bue af tagetes", "papel picado foran alteret", "et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!" };
         // The same twelve days in autumn: the haystack grows, then the scarecrow is put up beside it.
         static readonly string[] ScarecrowSteps = {
             "en lille bunke hø", "mere hø", "en hel høstak", "en stolpe til fugleskræmslet", "en tværpind til armene", "et hoved af sækkelærred",
@@ -72,6 +93,49 @@ namespace JuleHygge
         // for the lights (Layer.cs and LayerAutumn.cs). The calendar and the countdown belong to Christmas and
         // are hidden in autumn.
         public bool Autumn { get { return Cfg.Theme == 1; } }
+        // De dødes dag (Día de los Muertos, Cfg.Theme 2), as the macOS version: marigold petals for snow, an ofrenda
+        // (altar) for the snowman, monarch butterflies for Santa, calacas (skeletons) for the nisser, papel picado
+        // for the lights, candles on the window edges and a donkey cart for the plow (LayerMuertos.cs).
+        public bool Muertos { get { return Cfg.Theme == 2; } }
+        public bool Christmas { get { return Cfg.Theme == 0; } }
+        // Halloween (Cfg.Theme 3), as the macOS version (OverlayHalloween.swift): autumn's leaves fall, jack-o'-lanterns
+        // are carved in the snowman's place, a witch on her broom flies in Santa's, ghosts and children dressed up for
+        // trick or treat walk in the nisser's, a string of pumpkin lanterns and bats hangs in the lights', black cats
+        // and spiders are on the window edges, and a witch sweeps the leaves up or ghosts blow them away
+        // (LayerHalloween.cs).
+        public bool Halloween { get { return Cfg.Theme == 3; } }
+        // A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
+        // runs and keeps it finished until another theme is chosen (UpdateOfrenda): the ofrenda, and the lanterns.
+        public bool GrowsByHour { get { return Muertos || Halloween; } }
+        static readonly string[] PumpkinSteps = {
+            "et lille græskar", "et græskar til", "et stort græskar i midten", "stilke og en snoet ranke", "øjne i det store græskar",
+            "en mund med tænder", "et lys inde i det store græskar", "et ansigt i det venstre græskar", "et ansigt i det højre græskar",
+            "lys i de to små græskar", "en heksehat", "en sort kat - græskarlygterne er færdige!" };
+        // What the menu items are called on Halloween, by their Christmas text (one not here keeps its text). An item
+        // that is hidden on De dødes dag is hidden here too.
+        static readonly Dictionary<string, string> HalloweenTexts = new Dictionary<string, string> {
+            { "Snevejr", "Løvfald" }, { "Snemængde", "Mængde af blade" }, { "Let sne", "Få blade" }, { "Snestorm", "Efterårsstorm" },
+            { "Sne på proceslinjen", "Blade på proceslinjen" }, { "Sne på vinduerne", "Blade, katte og edderkopper på vinduerne" },
+            { "Snemand", "Græskarlygter" }, { "Julemanden", "Heks på kost" }, { "Send julemanden afsted nu!", "Send heksen afsted nu!" },
+            { "Sneplov rydder proceslinjen", "Heks eller spøgelser rydder bladene" }, { "Send sneploven ud nu!", "Send dem ud nu!" },
+            { "Lyd: bjælder og jingle når julemanden flyver", "Lyd: uhyggelig melodi når heksen flyver" },
+            { "Lyd: motor, skraben og horn fra sneploven", "Lyd: kost eller spøgelsessus når bladene ryddes" },
+            { "Nisser", "Spøgelser og udklædte børn" }, { "Antal nisser pr. skærm", "Antal spøgelser pr. skærm" },
+            { "30 billeder/s - glattere sne", "30 billeder/s - glattere løvfald" }, { "Julelys", "Lyskæde med græskar og flagermus" } };
+        // Halloween's plow is one of two each run: three ghosts that blow the leaves away (true), or a witch who sweeps
+        // them up (false). Which one is random, but drawn two at a time (one of each, in random order), so over time
+        // each comes exactly half the times.
+        public bool GhostsBlow;
+        readonly List<bool> plowForms = new List<bool>();
+        void PickHalloweenPlow()
+        {
+            if (plowForms.Count == 0) { bool first = R() < 0.5f; plowForms.Add(first); plowForms.Add(!first); }
+            GhostsBlow = plowForms[plowForms.Count - 1];
+            plowForms.RemoveAt(plowForms.Count - 1);
+            ErrorLog.Debug("halloween plow: " + (GhostsBlow ? "ghosts blow" : "witch sweeps"));
+        }
+        // Leaves or petals instead of snow: fewer and bigger pictures, turning as they fall.
+        public bool Leaves { get { return Cfg.Theme != 0; } }
         // Nisser or elves in the Christmas theme: the user's choice, or by language and region (see Folk).
         public int WalkerFolk { get { return Folk.Chosen(Cfg.Folk); } }
         public bool Elves { get { return WalkerFolk == Folk.Alfer; } }
@@ -235,6 +299,14 @@ namespace JuleHygge
                 gooseVoices[i] = audio.CreateVoice(() => Synth.Geese(mood), true);
             }
             leafSuction = audio.CreateVoice(Synth.LeafSuction, true);
+            // Halloween: the witch's tune, and the wind the ghosts blow the leaves away with
+            witchTune = audio.CreateVoice(Synth.WitchTune, true);
+            ghostWind = audio.CreateVoice(Synth.GhostWind, true);
+            // De dødes dag: the butterflies' tune, and the donkey cart's hooves and wheel, broom and bray
+            butterflyTune = audio.CreateVoice(Synth.MuertosSon, true);
+            cartRoll = audio.CreateVoice(() => Synth.DonkeyCart(DonkeyStepCycle), true);
+            broomSweep = audio.CreateVoice(() => Synth.BroomSweep(DonkeyStepCycle), true);
+            donkeyBray = audio.CreateVoice(Synth.DonkeyBray, false);
             WarmSounds();
 
             AppIcon = MakeIcon();
@@ -342,6 +414,7 @@ namespace JuleHygge
             UpdateSparks(dt);
             UpdatePlow(dt);
             UpdateWindowSnow(dt);
+            UpdateOfrenda(dt);
             if (celebrateAt > 0 && Time >= celebrateAt) { celebrateAt = -1; SnowmanCelebrate(); }
             if (plowAt >= 0 && Time >= plowAt) { plowAt = -1; SendPlow(); }
 
@@ -377,6 +450,14 @@ namespace JuleHygge
         }
         public readonly PlowRun Plow = new PlowRun();
         public const float PlowSpeed = 170f, PlowScale = 1.15f;
+        // The donkey cart walks at a donkey's pace (a share of the plow's speed).
+        public const float CartPace = 0.45f;
+        // How fast the donkey's legs swing against the cart's wheel (radians of leg swing per radian of wheel turn).
+        public const float DonkeyStride = 1.6f;
+        // Seconds per step cycle of the donkey's legs (each leg lands once), worked out from how the drawing moves
+        // them: the legs swing with sin(wheel x DonkeyStride), and the wheel turns PlowSpeed x CartPace / (10 x PlowScale)
+        // radians a second. The hooves' sound is timed from it (Synth.DonkeyCart).
+        public static double DonkeyStepCycle { get { return 2 * Math.PI / DonkeyStride / (PlowSpeed * CartPace / (10 * PlowScale)); } }
 
         // Sends the plow out now (menu, --sneplov), starting from the primary screen's row of screens.
         public void SendPlow()
@@ -390,6 +471,7 @@ namespace JuleHygge
         void StartPlow(Layer start)
         {
             if (Plow.Active) return;
+            if (Halloween) PickHalloweenPlow();
             // all screens joined edge to edge with the starting screen, left and right
             var row = new List<Layer> { start };
             for (bool grew = true; grew; )
@@ -426,7 +508,7 @@ namespace JuleHygge
             if (Build.WantsPlow)
             {
                 Build.WantsPlow = false;
-                if (Cfg.Plow && Cfg.Snowman && !Autumn && !Plow.Active) SendPlow();
+                if (Cfg.Plow && Cfg.Snowman && Christmas && !Plow.Active) SendPlow();
             }
             if (!Plow.Active)
             {
@@ -444,8 +526,11 @@ namespace JuleHygge
                 if (Plow.GX >= l.ScreenBounds.Left && Plow.GX < l.ScreenBounds.Right) { here = l; break; }
             }
             float s = here != null ? here.S : 1;
-            Plow.GX += Plow.Dir * PlowSpeed * s * dt;
-            Plow.Wheel += PlowSpeed * s * dt / (10 * s * PlowScale);
+            // the donkey cart walks at a donkey's pace
+            // (so does Halloween's witch; the ghosts float a little faster)
+            float pace = Muertos ? CartPace : Halloween ? (GhostsBlow ? 0.6f : CartPace) : 1;
+            Plow.GX += Plow.Dir * PlowSpeed * pace * s * dt;
+            Plow.Wheel += PlowSpeed * pace * s * dt / (10 * s * PlowScale);
             if ((Plow.Dir > 0 && Plow.GX > Plow.MaxX + 260 * s * PlowScale) || (Plow.Dir < 0 && Plow.GX < Plow.MinX - 260 * s * PlowScale))
             {
                 Plow.Active = false;
@@ -458,6 +543,7 @@ namespace JuleHygge
         readonly AudioHub audio = new AudioHub();
         readonly Voice[] jingles, gooseVoices;
         readonly Voice plowEngine, plowScrape, plowHorn, leafSuction;
+        readonly Voice butterflyTune, cartRoll, broomSweep, donkeyBray, witchTune, ghostWind;
         int jingleIndex;
         // How near this trip's flyer passes (its size against the ordinary one): far geese are quieter too.
         float flyerDepth = 1;
@@ -470,8 +556,18 @@ namespace JuleHygge
         void WarmSounds()
         {
             // (only the theme's own sounds: the others are made if the theme is changed)
-            if (Cfg.Sound) foreach (var j in Autumn ? gooseVoices : jingles) j.Warm();
-            if (Cfg.PlowSound) { plowEngine.Warm(); (Autumn ? leafSuction : plowScrape).Warm(); plowHorn.Warm(); }
+            if (Cfg.Sound)
+            {
+                if (Muertos) butterflyTune.Warm();
+                else if (Halloween) witchTune.Warm();
+                else foreach (var j in Autumn ? gooseVoices : jingles) j.Warm();
+            }
+            if (Cfg.PlowSound)
+            {
+                if (Muertos) { cartRoll.Warm(); broomSweep.Warm(); donkeyBray.Warm(); }
+                else if (Halloween) { broomSweep.Warm(); ghostWind.Warm(); }
+                else { plowEngine.Warm(); (Autumn ? leafSuction : plowScrape).Warm(); plowHorn.Warm(); }
+            }
         }
 
         // Pans each sound with what makes it (Santa, the plow) across all screens and fades it at the edges.
@@ -482,32 +578,52 @@ namespace JuleHygge
                 float margin = 330 * SantaScale;
                 float presence = Math.Max(0, Math.Min(1, Math.Min(SantaX - (santaMinX - margin), (santaMaxX + margin) - SantaX) / margin));
                 bool on = SantaActive && Cfg.Sound && !SoundMuted;
-                bool autumn = Autumn;
+                bool autumn = Autumn, christmas = Christmas, muertos = Muertos;
                 float pan = (SantaX - santaMinX) / span * 2 - 1;
                 // only this trip's tune plays; any other one still fading out keeps being updated until it is silent
                 for (int i = 0; i < jingles.Length; i++)
-                    if ((Cfg.Sound && !autumn && i == jingleIndex) || jingles[i].Playing)
-                        jingles[i].Update(on && !autumn && i == jingleIndex ? presence * Volume : 0, pan, dt);
+                    if ((Cfg.Sound && christmas && i == jingleIndex) || jingles[i].Playing)
+                        jingles[i].Update(on && christmas && i == jingleIndex ? presence * Volume : 0, pan, dt);
                 // in autumn the geese call instead, quieter when they pass far off
                 for (int i = 0; i < gooseVoices.Length; i++)
                     if ((Cfg.Sound && autumn && i == jingleIndex) || gooseVoices[i].Playing)
                         gooseVoices[i].Update(on && autumn && i == jingleIndex ? presence * Math.Min(1f, flyerDepth) * Volume : 0, pan, dt);
+                // the Day of the Dead's butterflies have their own tune (guitar and marimba)
+                if ((Cfg.Sound && muertos) || butterflyTune.Playing)
+                    butterflyTune.Update(on && muertos ? presence * Math.Min(1f, flyerDepth) * Volume : 0, pan, dt);
+                // and Halloween's witch hers
+                bool halloween = Halloween;
+                if ((Cfg.Sound && halloween) || witchTune.Playing)
+                    witchTune.Update(on && halloween ? presence * Math.Min(1f, flyerDepth) * Volume : 0, pan, dt);
             }
-            if (Cfg.PlowSound || plowEngine.Playing || plowScrape.Playing || leafSuction.Playing)
+            if (Cfg.PlowSound || plowEngine.Playing || plowScrape.Playing || leafSuction.Playing || cartRoll.Playing || broomSweep.Playing || ghostWind.Playing)
             {
                 float span = Math.Max(1, Plow.MaxX - Plow.MinX);
                 const float margin = 300;
                 float presence = Math.Max(0, Math.Min(1, Math.Min(Plow.GX - (Plow.MinX - margin), (Plow.MaxX + margin) - Plow.GX) / margin));
                 float pan = (Plow.GX - Plow.MinX) / span * 2 - 1;
                 bool on = Plow.Active && Cfg.PlowSound && !SoundMuted;
-                plowEngine.Update(on ? presence * Volume * 0.8f : 0, pan, dt);
+                bool muertos = Muertos, halloween = Halloween;
+                plowEngine.Update(on && !muertos && !halloween ? presence * Volume * 0.8f : 0, pan, dt);
                 // scraping gets louder with the amount of snow in front of the blade
                 float load = (float)Math.Min(1, Math.Sqrt(Plow.Pushed / 2000));
                 // (the leaf collector does not scrape: it has the rush of its suction, which never goes quite quiet)
-                plowScrape.Update(on && !Autumn ? presence * Volume * (0.15f + 0.85f * load) : 0, pan, dt);
+                plowScrape.Update(on && Christmas ? presence * Volume * (0.15f + 0.85f * load) : 0, pan, dt);
                 if (Autumn || leafSuction.Playing)
                     leafSuction.Update(on && Autumn ? presence * Volume * (0.55f + 0.45f * load) : 0, pan, dt);
-                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; plowHorn.PlayOnce(Volume, pan); }
+                // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
+                // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
+                bool sweeps = muertos || (halloween && !GhostsBlow);
+                if (sweeps || cartRoll.Playing || broomSweep.Playing)
+                {
+                    cartRoll.Update(on && muertos ? presence * Volume * 0.9f : 0, pan, dt);
+                    broomSweep.Update(on && sweeps ? presence * Volume * (0.25f + 0.75f * load) * 0.7f : 0, pan, dt);
+                }
+                if ((halloween && GhostsBlow) || ghostWind.Playing)
+                    ghostWind.Update(on && halloween && GhostsBlow ? presence * Volume * (0.5f + 0.5f * load) : 0, pan, dt);
+                // (the donkey brays where the plow honks)
+                // (and Halloween has nothing in the horn's place: a truck's honk does not belong there)
+                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; if (!halloween) (muertos ? donkeyBray : plowHorn).PlayOnce(Volume, pan); }
             }
             if (!Plow.Active) hornedThisRun = false;
             audio.IdleCheck(Time);
@@ -546,7 +662,7 @@ namespace JuleHygge
             var b = target.ScreenBounds;
             // Size and pace are two separate things, each drawn per trip: Santa is ±15 % in size, and the geese
             // (autumn's flyer) pass anywhere from far off (half size) to close by. The speed never follows the size.
-            flyerDepth = Autumn ? 0.5f + R() * 0.7f : 0.85f + R() * 0.3f;
+            flyerDepth = !Christmas ? 0.5f + R() * 0.7f : 0.85f + R() * 0.3f;
             SantaScale = target.S * flyerDepth;
             SantaY0 = b.Y + b.Height * (0.12f + R() * 0.25f);
 
@@ -573,6 +689,8 @@ namespace JuleHygge
                 jingleIndex = EffectiveSnowLevel == 2 || R() < 1f / 3 ? 1 : 0;
                 gooseVoices[jingleIndex].Rate = pace;
             }
+            if (Muertos) butterflyTune.Rate = pace;
+            if (Halloween) witchTune.Rate = pace;
             SantaSpeed = 230 * pace * target.S * (santaMaxX - santaMinX > b.Width * 1.5f ? 1.6f : 1f);
             SantaPhase = 0;
             SantaActive = true;
@@ -587,7 +705,7 @@ namespace JuleHygge
             }
             SantaX += SantaDir * SantaSpeed * dt;
             SantaPhase += dt;
-            if (!Autumn) sparkAcc += dt * 45;   // Santa leaves a trail of sparks; the geese do not
+            if (Christmas) sparkAcc += dt * 45;   // Santa leaves a trail of sparks; the geese and the butterflies do not
             while (sparkAcc >= 1)
             {
                 sparkAcc -= 1;
@@ -671,13 +789,14 @@ namespace JuleHygge
         public void SnowmanCelebrate()
         {
             if (!Cfg.Snowman) return;
-            float wide = Autumn ? 90 : 60, high = Autumn ? 120 : 70;
+            bool small = Christmas;   // the children's snowman is small; the haystack and the ofrenda are not
+            float wide = small ? 60 : 90, high = small ? 70 : 120;
             foreach (var l in layers)
             {
                 if (!l.IsPrimary || l.SnowmanPos.IsEmpty) continue;
                 var p = l.SnowmanPos;
                 float s = l.S;
-                for (int i = 0; i < (Autumn ? 70 : 45); i++)
+                for (int i = 0; i < (small ? 45 : 70); i++)
                 {
                     var sp = new Spark();
                     sp.X = p.X + (R() - 0.5f) * wide * s;
@@ -699,20 +818,21 @@ namespace JuleHygge
             lastDay = today;
             CalendarContent.SyncYear(Cfg, today);
 
-            SnowmanStage = Math.Max(1, Math.Min(SnowmanMaxStage, (today - Cfg.FirstRun).Days + 1));
+            dailyStage = Math.Max(1, Math.Min(SnowmanMaxStage, (today - Cfg.FirstRun).Days + 1));
 
             string title = null, msg = null;
             balloonOpensCalendar = false;
-            if (SnowmanStage > Cfg.SnowmanSeenStage)
+            if (dailyStage > Cfg.SnowmanSeenStage)
             {
-                // (only autumn's haystack grows by the day; the Christmas snowman is built while you watch)
+                // (only autumn's haystack grows by the day: the Christmas snowman is built while you watch, and the
+                // ofrenda by the hour, see UpdateOfrenda)
                 if (Cfg.SnowmanSeenStage > 0 && Cfg.Snowman && Autumn)
                 {
                     title = "Høstakken vokser!";
-                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + ScarecrowSteps[SnowmanStage - 1];
+                    msg = "Pindsvinene og egernene har bygget videre. I dag kom der " + ScarecrowSteps[dailyStage - 1];
                     celebrateAt = Time + 2;
                 }
-                Cfg.SnowmanSeenStage = SnowmanStage;
+                Cfg.SnowmanSeenStage = dailyStage;
                 Cfg.Save();
             }
             if (today.Month == 12 && today.Day <= 24 && !Cfg.OpenedDoors.Contains(today.Day) && Cfg.LastDoorNotice != today)
@@ -729,6 +849,38 @@ namespace JuleHygge
                 msg = "Højreklik på snefnug-ikonet ved uret for indstillinger og julekalender. Dobbeltklik for at kalde på julemanden!";
             }
             if (msg != null) tray.ShowBalloonTip(6000, title, msg, ToolTipIcon.None);
+        }
+
+        // The ofrenda of De dødes dag: a step for every hour the app runs with the theme on. Each new step gets
+        // sparkles; the last one also a notice. Finished, it stands as it is until another theme is chosen
+        // (ThemeChanged). The time is kept in the settings (at each step and once a minute), so a restart carries on.
+        void UpdateOfrenda(float dt)
+        {
+            if (!GrowsByHour || !Cfg.Snowman || OfrendaStage >= SnowmanMaxStage) return;
+            int before = OfrendaStage;
+            Cfg.OfrendaSeconds += dt * OfrendaSpeed;
+            ofrendaSaveTimer += dt;
+            int stage = OfrendaStage;
+            if (stage != before)
+            {
+                ErrorLog.Debug("ofrenda: step " + stage + " of " + SnowmanMaxStage);
+                celebrateAt = Time + 0.5;
+                if (stage == SnowmanMaxStage && Halloween)
+                    tray.ShowBalloonTip(6000, "Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + PumpkinSteps[stage - 1], ToolTipIcon.None);
+                else if (stage == SnowmanMaxStage)
+                    tray.ShowBalloonTip(6000, "Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + OfrendaSteps[stage - 1], ToolTipIcon.None);
+            }
+            if (stage != before || ofrendaSaveTimer >= 60) { ofrendaSaveTimer = 0; Cfg.Save(); }
+        }
+
+        // Another theme was chosen in the menu: the ofrenda is taken down, so a new one is built from its first step
+        // the next time De dødes dag is chosen.
+        void ThemeChanged()
+        {
+            Cfg.OfrendaSeconds = 0;
+            ofrendaSaveTimer = 0;
+            celebrateAt = -1;
+            BuildLayers(); ApplyTheme(); WarmSounds();
         }
 
         public void ShowCalendar()
@@ -757,23 +909,24 @@ namespace JuleHygge
             var cal = new ToolStripMenuItem("Julekalender...");
             cal.Font = new Font(cal.Font, FontStyle.Bold);
             cal.Click += (s, e) => ShowCalendar();
-            menu.Items.Add(Themed(cal, null));
+            menu.Items.Add(Themed(cal, null, null));
             countdownItem = new ToolStripMenuItem(Countdown());
             countdownItem.Enabled = false;
             dynamicItems.Add(countdownItem);
-            menu.Items.Add(Themed(countdownItem, null));
+            menu.Items.Add(Themed(countdownItem, null, null));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår" }, new[] { 0, 1 }, () => Cfg.Theme,
-                v => { Cfg.Theme = v; BuildLayers(); ApplyTheme(); WarmSounds(); }));
-            menu.Items.Add(Themed(Toggle("Snevejr", () => Cfg.Snow, v => Cfg.Snow = v), "Løvfald"));
+            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår", "De dødes dag", "Halloween" }, new[] { 0, 1, 2, 3 }, () => Cfg.Theme,
+                v => { if (Cfg.Theme != v) { Cfg.Theme = v; ThemeChanged(); } }));
+            menu.Items.Add(Themed(Toggle("Snevejr", () => Cfg.Snow, v => Cfg.Snow = v), "Løvfald", "Kronblade fra tagetes"));
             var level = new ToolStripMenuItem("Snemængde");
             string[] names = { "Let sne", "Normal", "Snestorm", "Skiftende vejr" };
             string[] autumnNames = { "Få blade", "Normal", "Efterårsstorm", "Skiftende vejr" };
+            string[] muertosNames = { "Få kronblade", "Normal", "Kronbladsstorm", "Skiftende vejr" };
             for (int i = 0; i < names.Length; i++)
             {
                 int li = i;
-                var it = Themed(new ToolStripMenuItem(names[i]), autumnNames[i]);
+                var it = Themed(new ToolStripMenuItem(names[i]), autumnNames[i], muertosNames[i]);
                 it.Checked = Cfg.SnowLevel == li;
                 it.Click += (s, e) =>
                 {
@@ -783,36 +936,36 @@ namespace JuleHygge
                 };
                 level.DropDownItems.Add(it);
             }
-            menu.Items.Add(Themed(level, "Mængde af blade"));
-            menu.Items.Add(Themed(Toggle("Sne på proceslinjen", () => Cfg.SnowGround, v => Cfg.SnowGround = v), "Blade på proceslinjen"));
-            menu.Items.Add(Themed(Toggle("Sne på vinduerne", () => Cfg.WindowSnow, v => Cfg.WindowSnow = v), "Blade på vinduerne"));
+            menu.Items.Add(Themed(level, "Mængde af blade", "Mængde af kronblade"));
+            menu.Items.Add(Themed(Toggle("Sne på proceslinjen", () => Cfg.SnowGround, v => Cfg.SnowGround = v), "Blade på proceslinjen", "Tagetes-tæppe på proceslinjen"));
+            menu.Items.Add(Themed(Toggle("Sne på vinduerne", () => Cfg.WindowSnow, v => Cfg.WindowSnow = v), "Blade på vinduerne", "Kronblade på vinduerne"));
             snowmanItem = Toggle("Snemand", () => Cfg.Snowman, v => Cfg.Snowman = v);
-            menu.Items.Add(Themed(snowmanItem, "Høstak med fugleskræmsel"));
+            menu.Items.Add(Themed(snowmanItem, "Høstak med fugleskræmsel", "Ofrenda (alter)"));
             // the kite only exists in autumn: shown there, hidden in the Christmas theme (see ApplyTheme)
             kiteItem = Toggle("Drage", () => Cfg.Kite, v => Cfg.Kite = v);
             menu.Items.Add(kiteItem);
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Themed(Toggle("Julemanden", () => Cfg.Santa, v => Cfg.Santa = v), "Trækgæs"));
+            menu.Items.Add(Themed(Toggle("Julemanden", () => Cfg.Santa, v => Cfg.Santa = v), "Trækgæs", "Monarksommerfugle"));
             var send = new ToolStripMenuItem("Send julemanden afsted nu!");
             send.Click += (s, e) => LaunchSanta();
-            menu.Items.Add(Themed(send, "Send gæssene afsted nu!"));
+            menu.Items.Add(Themed(send, "Send gæssene afsted nu!", "Send sommerfuglene afsted nu!"));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Themed(Toggle("Sneplov rydder proceslinjen", () => Cfg.Plow, v => Cfg.Plow = v), "Løvsuger rydder proceslinjen"));
+            menu.Items.Add(Themed(Toggle("Sneplov rydder proceslinjen", () => Cfg.Plow, v => Cfg.Plow = v), "Løvsuger rydder proceslinjen", "Æselkærre samler kronbladene"));
             var plow = new ToolStripMenuItem("Send sneploven ud nu!");
             plow.Click += (s, e) => SendPlow();
-            menu.Items.Add(Themed(plow, "Send løvsugeren ud nu!"));
+            menu.Items.Add(Themed(plow, "Send løvsugeren ud nu!", "Send æselkærren ud nu!"));
             menu.Items.Add(new ToolStripSeparator());
 
             // Sound is off by default; each source is switched on separately.
-            menu.Items.Add(Themed(Toggle("Lyd: bjælder og jingle når julemanden flyver", () => Cfg.Sound, v => { Cfg.Sound = v; WarmSounds(); }), "Lyd: gåsetræk når gæssene flyver"));
-            menu.Items.Add(Themed(Toggle("Lyd: motor, skraben og horn fra sneploven", () => Cfg.PlowSound, v => { Cfg.PlowSound = v; WarmSounds(); }), "Lyd: motor, sug og horn fra løvsugeren"));
+            menu.Items.Add(Themed(Toggle("Lyd: bjælder og jingle når julemanden flyver", () => Cfg.Sound, v => { Cfg.Sound = v; WarmSounds(); }), "Lyd: gåsetræk når gæssene flyver", "Lyd: guitar og marimba når sommerfuglene flyver"));
+            menu.Items.Add(Themed(Toggle("Lyd: motor, skraben og horn fra sneploven", () => Cfg.PlowSound, v => { Cfg.PlowSound = v; WarmSounds(); }), "Lyd: motor, sug og horn fra løvsugeren", "Lyd: hovtramp, hjulknirk og æselbrøl fra æselkærren"));
             menu.Items.Add(Choice("Lydstyrke", new[] { "Lav", "Middel", "Høj" }, new[] { 0, 1, 2 },
                 () => Cfg.SoundLevel, v => Cfg.SoundLevel = v));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern",
+            menu.Items.Add(Themed(Toggle("Nisser", () => Cfg.Nisser, v => Cfg.Nisser = v), "Pindsvin og egern", "Calacas (skeletter)",
                 folk: new[] { null, "Alfer", "Wichtel", "Kabouters", "Päkapikud" }));
             var count = new ToolStripMenuItem("Antal nisser pr. skærm");
             foreach (int c in new[] { 1, 2, 3, 5, 8, 12 })
@@ -828,7 +981,7 @@ namespace JuleHygge
                 };
                 count.DropDownItems.Add(it);
             }
-            menu.Items.Add(Themed(count, "Antal dyr pr. skærm",
+            menu.Items.Add(Themed(count, "Antal dyr pr. skærm", "Antal calacas pr. skærm",
                 folk: new[] { null, "Antal alfer pr. skærm", "Antal Wichtel pr. skærm", "Antal kabouters pr. skærm", "Antal päkapikud pr. skærm" }));
             // Nisser or elves: automatic follows the language and region; the other two are for when that is wrong.
             // The walkers are drawn anew every frame, so they change clothes at once.
@@ -837,7 +990,7 @@ namespace JuleHygge
                 new[] { 0, Folk.Nisser, Folk.Alfer, Folk.Wichtel, Folk.Kabouter, Folk.Paekapikk }, () => Cfg.Folk, v => { Cfg.Folk = v; ApplyTheme(); });
             folkAutoItem = folkChoice.DropDownItems[0];   // its text says what automatic came to (see ApplyTheme)
             dynamicItems.Add(folkAutoItem);
-            menu.Items.Add(Themed(folkChoice, null));
+            menu.Items.Add(Themed(folkChoice, null, null));
             menu.Items.Add(new ToolStripSeparator());
 
             var power = new ToolStripMenuItem("Strømspare");
@@ -861,9 +1014,9 @@ namespace JuleHygge
             var rate = Choice("Billedfrekvens",
                 new[] { "12 billeder/s - mindst strøm", "20 billeder/s - normal", "30 billeder/s - glattere sne", "60 billeder/s - mest strøm (når sjældent helt op på Windows)" },
                 new[] { 12, 20, 30, 60 }, () => Cfg.FrameRate, v => { Cfg.FrameRate = v; UpdateFrameRate(); });
-            Themed(rate.DropDownItems[2], "30 billeder/s - glattere løvfald");
+            Themed(rate.DropDownItems[2], "30 billeder/s - glattere løvfald", "30 billeder/s - glattere kronbladsfald");
             menu.Items.Add(rate);
-            menu.Items.Add(Themed(Toggle("Julelys", () => Cfg.Lights, v => Cfg.Lights = v), "Løvranke med lygter"));
+            menu.Items.Add(Themed(Toggle("Julelys", () => Cfg.Lights, v => Cfg.Lights = v), "Løvranke med lygter", "Papel picado"));
             menu.Items.Add(Toggle("Vis på alle skærme", () => Cfg.AllScreens, v => { Cfg.AllScreens = v; BuildLayers(); }));
             menu.Items.Add(Toggle("Pause ved fuldskærm (spil/film)", () => Cfg.PauseFullscreen, v => Cfg.PauseFullscreen = v));
             // The checkmark always mirrors the registry (re-read when the menu opens), and a failed
@@ -934,7 +1087,8 @@ namespace JuleHygge
         // no autumn form yet, so the item is hidden in autumn). Applied when the menu opens and when the theme changes.
         // Folk holds the Christmas text for each folk that is not called nisser there, by the folk's number less one
         // (null = the same text).
-        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar; public string[] Folk; }
+        // Muertos is the text on De dødes dag (null = hidden there).
+        sealed class ThemedItem { public ToolStripItem Item; public string Jul, Efteraar, Muertos; public string[] Folk; }
 
         // Every menu item with its Danish text, which is the key to its text in the user's language (see Lang).
         // The items in dynamicItems have a number or a name in them and get their text in ApplyTheme.
@@ -956,9 +1110,9 @@ namespace JuleHygge
         readonly List<ThemedItem> themedItems = new List<ThemedItem>();
         ContextMenuStrip trayMenu;
 
-        T Themed<T>(T item, string efteraar, string[] folk = null) where T : ToolStripItem
+        T Themed<T>(T item, string efteraar, string muertos, string[] folk = null) where T : ToolStripItem
         {
-            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar, Folk = folk });
+            themedItems.Add(new ThemedItem { Item = item, Jul = item.Text, Efteraar = efteraar, Muertos = muertos, Folk = folk });
             return item;
         }
 
@@ -970,13 +1124,17 @@ namespace JuleHygge
             foreach (var kv in danish) kv.Key.Text = Lang.T(kv.Value);
             foreach (var t in themedItems)
             {
-                t.Item.Available = !Autumn || t.Efteraar != null;
+                t.Item.Available = Autumn ? t.Efteraar != null : (Muertos || Halloween) ? t.Muertos != null : true;
                 string own = t.Folk != null ? t.Folk[WalkerFolk - 1] : null;
-                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : (own ?? t.Jul));
+                string spooky;
+                if (!Halloween || !HalloweenTexts.TryGetValue(t.Jul, out spooky)) spooky = t.Jul;
+                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : Muertos ? (t.Muertos ?? t.Jul) : Halloween ? spooky : (own ?? t.Jul));
             }
             kiteItem.Available = Autumn;
             countdownItem.Text = Countdown();
-            snowmanItem.Text = Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Lang.T("Snemand");
+            snowmanItem.Text = Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
+                : Muertos ? Lang.T("Ofrenda (alter) (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
+                : Halloween ? Lang.T("Græskarlygter (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Lang.T("Snemand");
             folkAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(Folk.Name(Folk.Auto)));
             versionItem.Text = Updater.IsReleaseBuild ? Lang.T("Version {0}", Updater.Display(Updater.Current)) : Lang.T("Udviklerversion (opdaterer ikke)");
             // (the menu "Sprog" also says "Language", so it can be found by someone who cannot read the language chosen)

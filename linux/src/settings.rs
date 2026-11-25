@@ -36,7 +36,7 @@ pub struct Settings {
     pub sound_level: i32,
     /// Frames per second while the scene is calm: 12, 20, 30 or 60.
     pub frame_rate: i32,
-    /// 0 = jul, 1 = efterår (the autumn theme, as in the macOS and Windows versions). Key `Theme`.
+    /// 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween (as in the macOS and Windows versions). Key `Theme`.
     pub theme: i32,
     /// Autumn's kite over the primary screen. Key `Kite`.
     pub kite: bool,
@@ -49,6 +49,9 @@ pub struct Settings {
     /// The menu's language: empty = automatic, or a code such as "en" (see `lang.rs`). Key `Language`.
     pub language: String,
     pub snowman_seen_stage: i32,
+    /// How long the ofrenda (De dødes dag) has been built on: a step for every hour the app runs with that theme.
+    /// Whole seconds in the file. Key `OfrendaSeconds`.
+    pub ofrenda_seconds: f64,
     pub calendar_year: i32,
     pub first_run: Option<NaiveDate>,
     pub last_door_notice: Option<NaiveDate>,
@@ -84,6 +87,7 @@ impl Default for Settings {
             last_version: String::new(),
             language: String::new(),
             snowman_seen_stage: 0,
+            ofrenda_seconds: 0.0,
             calendar_year: 0,
             first_run: None,
             last_door_notice: None,
@@ -151,7 +155,8 @@ impl Settings {
             plow_sound: b("PlowSound", def.plow_sound),
             sound_level: i("SoundLevel", def.sound_level).clamp(0, 2),
             frame_rate,
-            theme: i32::from(i("Theme", def.theme) == 1),
+            // (a theme this version does not have shows as Christmas)
+            theme: Some(i("Theme", def.theme)).filter(|t| (0..=3).contains(t)).unwrap_or(0),
             kite: b("Kite", def.kite),
             folk: i("Folk", def.folk).clamp(0, 5),
             snow_level: i("SnowLevel", def.snow_level).clamp(0, 3),
@@ -161,6 +166,7 @@ impl Settings {
             last_version: d.get("LastVersion").cloned().unwrap_or_default(),
             language: d.get("Language").cloned().unwrap_or_default(),
             snowman_seen_stage: i("SnowmanSeenStage", 0),
+            ofrenda_seconds: i("OfrendaSeconds", 0).max(0) as f64,
             calendar_year: i("CalendarYear", 0),
             first_run: date("FirstRun"),
             last_door_notice: date("LastDoorNotice"),
@@ -203,6 +209,7 @@ impl Settings {
             format!("LastVersion={}", self.last_version),
             format!("Language={}", self.language),
             format!("SnowmanSeenStage={}", self.snowman_seen_stage),
+            format!("OfrendaSeconds={}", self.ofrenda_seconds as i64),
             format!("CalendarYear={}", self.calendar_year),
             format!("FirstRun={}", ds(&self.first_run)),
             format!("LastDoorNotice={}", ds(&self.last_door_notice)),

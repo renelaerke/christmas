@@ -48,6 +48,18 @@ impl Layer {
         let saved = cr.matrix();
         cr.translate(sx as f64, sy as f64);
         cr.scale((santa.dir * sc) as f64, sc as f64);
+        if st.muertos {
+            // De dødes dag: a swarm of monarch butterflies (they do not lean as the sleigh does)
+            super::muertos::monarchs(cr, santa.phase as f64);
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.halloween {
+            // Halloween: a witch on her broom, with bats after her
+            super::halloween::witch(cr, santa.phase as f64);
+            cr.set_matrix(saved);
+            return;
+        }
         cr.rotate(((santa.phase as f64 * 0.9).cos() * -4.0 * santa.dir as f64).to_radians());
         let t = santa.phase as f64;
         if st.autumn {

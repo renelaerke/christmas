@@ -229,6 +229,153 @@ enum Synth {
         }
     }
 
+    // ------------------------------------------------------------------ the donkey cart (the Day of the Dead's plow)
+
+    /// The leg phases at which the drawn donkey's hooves land, as shares of a step cycle, with how loud each is:
+    /// the near legs (phases 0 and π in `drawPetalCart`) louder than the far ones (1.2 and 1.2 + π).
+    private static let hoofFalls: [(at: Double, loud: Double, pitch: Double)] = [
+        (0, 1, 1.0), (1.2 / (2 * .pi), 0.7, 0.86), (0.5, 0.95, 1.07), (0.5 + 1.2 / (2 * .pi), 0.65, 0.9),
+    ]
+
+    /// Adds `make(k)` (k = samples since the start) at `start`, wrapping round the end of a loop of n samples.
+    private static func addWrapped(_ out: UnsafeMutablePointer<Float>, _ n: Int, at start: Int, count: Int,
+                                   _ make: (Int) -> Double) {
+        for k in 0..<count { out[((start + k) % n + n) % n] += Float(make(k)) }
+    }
+
+    /// The donkey cart rolling: four hooves per step cycle (`cycle` seconds, Controller.donkeyStepCycle) and the
+    /// wooden wheel creaking once a turn, over the low rumble of the wheel. The loop is 8 step cycles, which is
+    /// exactly 5 turns of the wheel (the legs swing 1.6 times per turn of it), so both repeat seamlessly.
+    static func donkeyCart(cycle: Double) -> AVAudioPCMBuffer? {
+        let cycle = max(0.2, min(2, cycle))
+        let len = 8 * cycle
+        return makeBuffer(seconds: len) { out, n in
+            var rng = SeededRandom(seed: 1102)
+            func r() -> Double { Double(rng.next()) }
+            // hooves: a short hollow "tok" (two inharmonic modes of the hoof and the ground) with a soft thump
+            // and a click of grit, each a little different
+            for c in 0..<8 {
+                for f in hoofFalls {
+                    let t0 = (Double(c) + f.at) * cycle + (r() - 0.5) * 0.012
+                    let f1 = (760 + r() * 160) * f.pitch, f2 = f1 * 2.37
+                    let loud = f.loud * (0.8 + 0.25 * r())
+                    addWrapped(out, n, at: Int(t0 * sampleRate), count: Int(0.12 * sampleRate)) { k in
+                        let t = Double(k) / sampleRate
+                        let tok = 0.55 * sin(2 * .pi * f1 * t) * exp(-t / 0.016) + 0.22 * sin(2 * .pi * f2 * t) * exp(-t / 0.008)
+                        let thump = 0.5 * sin(2 * .pi * 120 * t) * exp(-t / 0.035)
+                        let grit = (r() * 2 - 1) * 0.35 * exp(-t / 0.003)
+                        return loud * (tok + thump + grit) * 0.55
+                    }
+                }
+            }
+            // the wheel creaks once a turn: stick-slip pulses, getting quicker, ringing a wooden resonance
+            let turn = len / 5
+            for w in 0..<5 {
+                let t0 = Double(w) * turn + turn * 0.35 + (r() - 0.5) * 0.04
+                let dur = 0.2 + r() * 0.08, f0 = 150 + r() * 40, rise = 1.5 + r() * 0.3
+                let res = 1250 + r() * 300
+                let rr = 0.9965, cw = 2 * rr * cos(2 * .pi * res / sampleRate)
+                var y1 = 0.0, y2 = 0.0, phase = 0.0
+                addWrapped(out, n, at: Int(t0 * sampleRate), count: Int((dur + 0.06) * sampleRate)) { k in
+                    let t = Double(k) / sampleRate
+                    var x = 0.0
+                    if t < dur {
+                        phase += f0 * (1 + (rise - 1) * t / dur) / sampleRate
+                        if phase >= 1 { phase -= 1; x = 1 }
+                    }
+                    let y = cw * y1 - rr * rr * y2 + x
+                    y2 = y1; y1 = y
+                    let env = t < dur ? sin(.pi * min(1, t / dur)) : 1
+                    return y * env * 0.012
+                }
+            }
+            // the rumble of the wheel on the ground: low-passed noise, cross-faded over the loop's seam
+            let over = Int(0.2 * sampleRate)
+            var lp = 0.0, lp2 = 0.0
+            var rumble = [Double](repeating: 0, count: n + over)
+            for i in 0..<(n + over) {
+                lp += (r() * 2 - 1 - lp) * 0.02
+                lp2 += (lp - lp2) * 0.05
+                rumble[i] = lp2
+            }
+            for i in 0..<over { let k = Double(i) / Double(over); rumble[i] = rumble[i] * k + rumble[n + i] * (1 - k) }
+            for i in 0..<n { out[i] += Float(rumble[i] * 0.2) }
+        }
+    }
+
+    /// The calaca's broom: a swish on each forward stroke (the broom swings twice per step cycle), with a
+    /// rustle of petals. Same loop length as `donkeyCart`, so the two keep the same pace.
+    static func broomSweep(cycle: Double) -> AVAudioPCMBuffer? {
+        let cycle = max(0.2, min(2, cycle))
+        return makeBuffer(seconds: 8 * cycle) { out, n in
+            var rng = SeededRandom(seed: 2011)
+            func r() -> Double { Double(rng.next()) }
+            for s in 0..<16 {
+                let t0 = (Double(s) * 0.5 + 0.12) * cycle + (r() - 0.5) * 0.01
+                let dur = cycle * 0.3, loud = 0.8 + 0.3 * r()
+                // band-passed noise whose centre falls as the bristles slow down
+                var low = 0.0, band = 0.0
+                addWrapped(out, n, at: Int(t0 * sampleRate), count: Int(dur * sampleRate)) { k in
+                    let t = Double(k) / sampleRate, u = t / dur
+                    let fc = 3200 - 1700 * u
+                    let f = 2 * sin(.pi * fc / sampleRate)
+                    let high = (r() * 2 - 1) - low - 0.9 * band
+                    band += f * high
+                    low += f * band
+                    let env = pow(sin(.pi * u), 2) * (1 - 0.4 * u)
+                    // petals: a few tiny ticks in the swish
+                    let tick = r() < 0.0015 ? (r() - 0.5) * 1.2 : 0
+                    return (band * 0.5 + tick) * env * loud
+                }
+            }
+        }
+    }
+
+    /// The donkey's bray (the cart's form of the horn): "hee-haw, hee-haw". The "hee" is drawn in, high and
+    /// thin; the "haw" pushed out, low, loud and rough. A buzzy source (harmonics up to 5 kHz) through two
+    /// formant resonances for each vowel.
+    static func donkeyBray() -> AVAudioPCMBuffer? {
+        return makeBuffer(seconds: 1.9) { out, n in
+            var rng = SeededRandom(seed: 315)
+            // (start, length, f0 from, f0 to, formant 1, formant 2, loudness, roughness)
+            let parts: [(Double, Double, Double, Double, Double, Double, Double, Double)] = [
+                (0.00, 0.30, 470, 560, 1150, 2700, 0.45, 0.10),
+                (0.34, 0.42, 210, 150, 720, 1150, 1.00, 0.35),
+                (0.84, 0.26, 450, 530, 1150, 2700, 0.40, 0.10),
+                (1.14, 0.48, 200, 135, 700, 1100, 0.95, 0.40),
+            ]
+            for p in parts {
+                let start = Int(p.0 * sampleRate), count = Int(p.1 * sampleRate)
+                var phase = 0.0
+                var l1 = 0.0, b1 = 0.0, l2 = 0.0, b2 = 0.0
+                let g1 = 2 * sin(.pi * p.4 / sampleRate), g2 = 2 * sin(.pi * p.5 / sampleRate)
+                var jitter = 0.0
+                for k in 0..<count where start + k < n {
+                    let t: Double = Double(k) / sampleRate, u: Double = t / p.1
+                    // the pitch rises (hee) or falls (haw) along a curve, with a little wobble
+                    let noise: Double = Double(rng.next()) * 2 - 1
+                    jitter += (noise - jitter) * 0.002
+                    let glide: Double = p.2 + (p.3 - p.2) * sin(Double.pi / 2 * u)
+                    let wobble: Double = 1 + 0.025 * sin(2 * Double.pi * 6 * t) + 0.05 * jitter
+                    let f0: Double = glide * wobble
+                    phase += f0 / sampleRate
+                    if phase >= 1 { phase -= 1 }
+                    var src = 0.0
+                    let harmonics = max(1, Int(5000 / f0))
+                    for h in 1...harmonics { src += sin(2 * Double.pi * Double(h) * phase) / Double(h) }
+                    // roughness: the voice flutters at about 28 Hz
+                    let flutter: Double = 0.5 + 0.5 * sin(2 * Double.pi * 28 * t)
+                    src *= 1 - p.7 * flutter
+                    let h1: Double = src - l1 - 0.25 * b1; b1 += g1 * h1; l1 += g1 * b1
+                    let h2: Double = src - l2 - 0.3 * b2; b2 += g2 * h2; l2 += g2 * b2
+                    let env: Double = min(1, t / 0.03) * min(1, (p.1 - t) / 0.06)
+                    let voice: Double = b1 * 0.6 + b2 * 0.35 + src * 0.05
+                    out[start + k] += Float(voice * env * p.6 * 0.3)
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------ geese (autumn's flyer)
 
     /// The two moods of a flock of geese passing over; each trip picks one (alone twice as often as in wind).
@@ -492,6 +639,183 @@ enum Synth {
         // tiny fades at the loop seam
         let fade = Int(0.01 * sampleRate)
         for i in 0..<fade { let k = Float(i) / Float(fade); out[i] *= k; out[n - 1 - i] *= k }
+        return buf
+    }
+
+    // ------------------------------------------------------------------ halloween
+    /// The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
+    /// wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
+    /// fifth. Written for JuleHygge, so it is free of rights.
+    static func witchTune() -> AVAudioPCMBuffer? {
+        let beat = 0.42
+        let E4 = 64, Gs4 = 68, A4 = 69, B4 = 71, C5 = 72, D5 = 74, E5 = 76
+        let melody: [(Int, Double)] = [
+            (E5, 2), (C5, 1),   (D5, 2), (B4, 1),   (C5, 1), (B4, 1), (A4, 1),   (E4, 3),
+            (A4, 2), (C5, 1),   (B4, 2), (Gs4, 1),  (A4, 3),                     (0, 3),
+        ]
+        let roots = [45, 40, 45, 40, 41, 40, 45, 45]
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        let total = melody.reduce(0) { $0 + $1.1 } * beat
+        return makeBuffer(seconds: total) { out, n in
+            // the voice: the pitch glides toward each note, with a slow vibrato that deepens as the note is held
+            var phase = 0.0, pitch = freq(melody[0].0), level = 0.0
+            var noteStart = 0.0, idx = 0, noteEnd = melody[0].1 * beat
+            for i in 0..<n {
+                let t = Double(i) / sampleRate
+                while t >= noteEnd && idx < melody.count - 1 { idx += 1; noteStart = noteEnd; noteEnd += melody[idx].1 * beat }
+                let note = melody[idx].0
+                let held = t - noteStart, left = noteEnd - t
+                if note > 0 { pitch += (freq(note) - pitch) * 0.0009 }
+                let want = note > 0 ? min(1, held / 0.06) * min(1, left / 0.09) : 0
+                level += (want - level) * 0.002
+                let vibrato = 1 + 0.008 * min(1, held / 0.35) * sin(2 * .pi * 5.6 * t)
+                phase += pitch * vibrato / sampleRate
+                if phase >= 1 { phase -= 1 }
+                let voice = sin(2 * .pi * phase) + 0.16 * sin(4 * .pi * phase) + 0.05 * sin(6 * .pi * phase)
+                out[i] += Float(voice * level * 0.34)
+            }
+            // the organ: root and fifth per bar, soft, swelling in and out so the loop has no click
+            for (b, root) in roots.enumerated() {
+                let start = Int(Double(b * 3) * beat * sampleRate), count = Int(3 * beat * sampleRate)
+                let f = freq(root)
+                for k in 0..<count where start + k < n {
+                    let t = Double(k) / sampleRate, u = Double(k) / Double(count)
+                    let env = min(1, u / 0.12) * min(1, (1 - u) / 0.12)
+                    var v = 0.0
+                    for (mult, amp) in [(1.0, 1.0), (1.5, 0.55), (2.0, 0.4), (3.0, 0.18), (4.0, 0.1)] { v += amp * sin(2 * .pi * f * mult * t) }
+                    out[start + k] += Float(v * env * 0.1)
+                }
+            }
+        }
+    }
+
+    /// The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under
+    /// it two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of
+    /// cycles in it, and the air is made a little longer and faded into its own start, so there is no seam.
+    static func ghostWind() -> AVAudioPCMBuffer? {
+        let len = 4.0
+        return makeBuffer(seconds: len) { out, n in
+            var rng = SeededRandom(seed: 3110)
+            let over = Int(0.3 * sampleRate)
+            var air = [Double](repeating: 0, count: n + over)
+            var low = 0.0, band = 0.0
+            for i in 0..<(n + over) {
+                let t = Double(i) / sampleRate
+                // a resonance that slides up and down between about 350 and 900 Hz
+                let fc = 620 + 280 * sin(2 * .pi * 0.5 * t)
+                let f = 2 * sin(.pi * fc / sampleRate)
+                let high = (Double(rng.next()) * 2 - 1) - low - 0.35 * band
+                band += f * high
+                low += f * band
+                air[i] = band * (0.6 + 0.4 * sin(2 * .pi * 0.25 * t))
+            }
+            for i in 0..<over { let k = Double(i) / Double(over); air[i] = air[i] * k + air[n + i] * (1 - k) }
+            for i in 0..<n {
+                let t = Double(i) / sampleRate
+                let swell = 0.5 + 0.5 * sin(2 * .pi * 0.25 * t - 1)
+                let vib = 1 + 0.012 * sin(2 * .pi * 5 * t)
+                let voices = sin(2 * .pi * 330 * vib * t) + 0.8 * sin(2 * .pi * 392 * vib * t + 1) + 0.25 * sin(2 * .pi * 660 * vib * t)
+                out[i] = Float(air[i] * 0.22 + voices * swell * 0.035)
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ de dødes dag
+    /// The butterflies' tune: an original little waltz in D minor (16 bars of 3/4, about 18 s, looping) in the
+    /// style of a Mexican son: the melody on a marimba (long notes rolled, as marimba players do) over a guitar
+    /// that plays the bass on the first beat and strums the chord on the second and third (down, up, down).
+    /// Written for JuleHygge, so it is free of rights.
+    static func muertosSon() -> AVAudioPCMBuffer? {
+        let beat = 0.38
+        let A4 = 69, Cs5 = 73, C5 = 72, D5 = 74, E5 = 76, F5 = 77, G5 = 79, A5 = 81, Bb5 = 82, C6 = 84, D6 = 86
+        let melody: [(Int, Double)] = [
+            (A4, 1), (D5, 1), (F5, 1),            (A5, 2), (G5, 0.5), (F5, 0.5),
+            (E5, 1.5), (F5, 0.5), (G5, 1),        (A5, 2), (0, 1),
+            (F5, 1), (E5, 0.5), (D5, 0.5), (F5, 1), (A5, 1), (D6, 1), (A5, 1),
+            (Bb5, 1), (A5, 0.5), (G5, 0.5), (F5, 1), (E5, 2), (0, 1),
+            (C5, 1), (F5, 1), (A5, 1),            (C6, 2), (A5, 1),
+            (Bb5, 1), (G5, 1), (E5, 1),           (E5, 1), (G5, 1), (Bb5, 1),
+            (A5, 1.5), (G5, 0.5), (F5, 1),        (F5, 1), (E5, 0.5), (D5, 0.5), (A5, 1),
+            (G5, 1), (E5, 1), (Cs5, 1),           (D5, 2), (0, 1),
+        ]
+        // the guitar's chords, lowest string first (the first note is the bass)
+        let Dm = [50, 57, 62, 65], A7 = [45, 52, 55, 61, 64], Gm = [43, 50, 55, 58, 62], Fmaj = [41, 48, 53, 57, 60], C7 = [48, 52, 58, 60, 64]
+        let chords = [Dm, Dm, A7, A7, Dm, Dm, Gm, A7, Fmaj, Fmaj, C7, C7, Gm, Dm, A7, Dm]
+        let totalBeats = melody.reduce(0) { $0 + $1.1 }
+        let n = Int(totalBeats * beat * sampleRate)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
+              let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(n)) else { return nil }
+        buf.frameLength = AVAudioFrameCount(n)
+        let out = buf.floatChannelData![0]
+        for i in 0..<n { out[i] = 0 }
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        var rng = SeededRandom(seed: 1102)
+
+        /// One marimba stroke: the bar's fundamental with its 4th and 10th partials (a marimba bar is tuned so),
+        /// all dying fast, plus a soft knock of the mallet. Wraps round the loop's end, so the seam is clean.
+        func strike(_ t0: Double, _ midi: Int, _ amp: Double) {
+            let f = freq(midi)
+            let start = Int(t0 * sampleRate), count = Int(1.2 * sampleRate)
+            for k in 0..<count {
+                let t = Double(k) / sampleRate
+                let env = min(1, t / 0.002)
+                var v = exp(-t * 4.5) * sin(2 * .pi * f * t)
+                v += 0.22 * exp(-t * 14) * sin(2 * .pi * f * 4 * t)
+                v += 0.05 * exp(-t * 30) * sin(2 * .pi * f * 10 * t)
+                v += 0.15 * exp(-t * 300) * sin(2 * .pi * 180 * t)
+                out[(start + k) % n] += Float(v * env * amp)
+            }
+        }
+
+        /// One plucked string (Karplus-Strong): a burst of soft noise circulating in a delay line one period
+        /// long, averaged a little each round, so it rings and darkens like a nylon string.
+        func pluck(_ t0: Double, _ midi: Int, _ amp: Double, _ len: Double) {
+            let period = max(2, Int(sampleRate / freq(midi)))
+            var line = [Double](repeating: 0, count: period)
+            var prev = 0.0
+            for i in 0..<period { let r = Double(rng.next()) * 2 - 1; prev = prev * 0.5 + r * 0.5; line[i] = prev }
+            let start = Int(t0 * sampleRate), count = Int(len * sampleRate)
+            var i = 0
+            for k in 0..<count {
+                let j = i % period, j2 = (i + 1) % period
+                let v = line[j]
+                line[j] = 0.4985 * (line[j] + line[j2])
+                let fadeOut = k > count - 800 ? Double(count - k) / 800 : 1
+                out[(start + k) % n] += Float(v * amp * fadeOut)
+                i += 1
+            }
+        }
+
+        func strum(_ t0: Double, _ chord: [Int], down: Bool, _ amp: Double) {
+            let strings = down ? Array(chord.dropFirst()) : Array(chord.suffix(3).reversed())
+            for (k, m) in strings.enumerated() { pluck(t0 + Double(k) * 0.011, m, amp, beat * 1.4) }
+        }
+
+        // melody: short notes struck once, long ones rolled
+        var t = 0.0
+        for (note, len) in melody {
+            if note > 0 {
+                if len >= 1.5 {
+                    var r = 0.0
+                    while r < len * beat - 0.1 { strike(t + r, note, r == 0 ? 0.30 : 0.17); r += 0.085 }
+                } else {
+                    strike(t, note, 0.30)
+                }
+            }
+            t += len * beat
+        }
+        // guitar: bass on 1, strum down on 2, up on the "and", down on 3
+        for (b, chord) in chords.enumerated() {
+            let t0 = Double(b * 3) * beat
+            pluck(t0, chord[0], 0.38, beat * 2.2)
+            strum(t0 + beat, chord, down: true, 0.16)
+            strum(t0 + beat * 1.5, chord, down: false, 0.10)
+            strum(t0 + beat * 2, chord, down: true, 0.14)
+        }
+
+        var peak: Float = 0
+        for i in 0..<n { peak = max(peak, abs(out[i])) }
+        if peak > 0.9 { let k = 0.9 / peak; for i in 0..<n { out[i] *= k } }
         return buf
     }
 }

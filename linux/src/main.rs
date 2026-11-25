@@ -14,6 +14,7 @@ mod log;
 mod rng;
 mod session;
 mod settings;
+mod snowman_build;
 mod sound;
 mod supervisor;
 mod text;

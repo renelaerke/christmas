@@ -21,10 +21,13 @@ use cairo::{Context, Format, ImageSurface};
 
 pub(crate) mod draw;
 mod autumn;
+mod build;
 mod elves;
 mod ground;
+mod halloween;
 mod ledges;
 mod lights;
+mod muertos;
 mod plow;
 mod santa;
 mod snowman;
@@ -35,6 +38,7 @@ pub use snowman::MAX_STAGE as SNOWMAN_MAX_STAGE;
 use crate::figures::{PlowRun, Santa, Spark};
 use crate::folk::Folk;
 use crate::rng::Rng;
+use crate::snowman_build::SnowmanBuild;
 use crate::window_snow::{Clump, Ledge};
 use crate::x11::{Rect, Res};
 
@@ -65,8 +69,12 @@ pub struct SceneState<'a> {
     pub elves: bool,
     /// Chosen number of elves per screen (setting `NisseCount`).
     pub elf_count: i32,
-    /// The snowman's stage today (1..=12), or 0 when it is switched off. Only the primary screen has one.
+    /// The stage today (1..=12) of what grows by the day, autumn's haystack; 0 when it is switched off and in the
+    /// Christmas theme. Only the primary screen has one.
     pub snowman_stage: i32,
+    /// The snowman the children build in the Christmas theme (None when it is switched off, and in autumn). Only
+    /// the primary screen shows it.
+    pub build: Option<&'a SnowmanBuild>,
     pub santa: Option<&'a Santa>,
     pub sparks: &'a [Spark],
     pub plow: Option<&'a PlowRun>,
@@ -78,10 +86,38 @@ pub struct SceneState<'a> {
     pub ledge_u: f32,
     /// The autumn theme (setting `Theme` = 1): leaves for snow.
     pub autumn: bool,
+    /// De dødes dag (setting `Theme` = 2): marigold petals for snow, and every figure in its form for the dead
+    /// (`layer/muertos.rs`).
+    pub muertos: bool,
+    /// Halloween (setting `Theme` = 3): autumn's leaves, and every figure in its Halloween form
+    /// (`layer/halloween.rs`).
+    pub halloween: bool,
+    /// Halloween's plow this run: ghosts that blow the leaves away (true) or a witch who sweeps them up (false).
+    pub ghosts_blow: bool,
     /// Who the walkers are in the Christmas theme (setting `Folk`, see `folk.rs`).
     pub folk: Folk,
     /// Autumn's kite over the primary screen (setting `Kite`).
     pub kite: bool,
+}
+
+impl SceneState<'_> {
+    /// Leaves or petals instead of snow (autumn and De dødes dag): fewer and bigger pictures, turning as they fall.
+    pub fn leaves(&self) -> bool {
+        self.autumn || self.muertos || self.halloween
+    }
+
+    /// The dark between the leaves (or petals) of a pile; None when the pile is snow.
+    pub fn pile_fill(&self) -> Option<draw::Argb> {
+        if self.muertos {
+            Some((245, 168, 72, 8))
+        } else if self.halloween {
+            Some((245, 96, 46, 20))
+        } else if self.autumn {
+            Some((245, 122, 62, 24))
+        } else {
+            None
+        }
+    }
 }
 
 /// Width in pixels of one column of the snow pile, as on Windows.
@@ -343,12 +379,17 @@ pub struct Layer {
     next_elf_id: u64,
     elf_offset: i32,
     elf_change_timer: f32,
+    /// Where an elf vanished or reappeared by magic this frame (global x and y of its feet, its size in
+    /// pixels per unit): the controller lets sparkles fly there.
+    magic_puffs: Vec<(f32, f32, f32)>,
     /// Flakes that landed on a window's edge this frame (ledge index, global x, radius without the screen
     /// scale), and clumps that reached this screen's pile; the controller applies them.
     ledge_hits: Vec<(usize, f32, f32)>,
     clumps_landed: Vec<usize>,
-    /// The leaves' pictures for the autumn theme (`make_leaf_sprites`).
+    /// The pictures of what falls for snow: the leaves of the autumn theme (`make_leaf_sprites`) or, when `petals`,
+    /// the marigold petals of De dødes dag (`muertos::make_petal_sprites`). See `use_fall_sprites`.
     leaf_sprites: Vec<Vec<u32>>,
+    petals: bool,
 }
 
 impl Layer {
@@ -414,9 +455,11 @@ impl Layer {
             next_elf_id: seed << 20,
             elf_offset: 0,
             elf_change_timer: 90.0,
+            magic_puffs: Vec::new(),
             ledge_hits: Vec::new(),
             clumps_landed: Vec::new(),
             leaf_sprites: make_leaf_sprites()?,
+            petals: false,
         })
     }
 
@@ -461,6 +504,10 @@ impl Layer {
     pub fn snowman_pos(&self) -> Option<(f32, f32)> {
         self.snowman_pos
     }
+    /// Where elves vanished or reappeared by magic since the last call: (global x, global y, pixels per unit).
+    pub fn take_magic_puffs(&mut self) -> Vec<(f32, f32, f32)> {
+        std::mem::take(&mut self.magic_puffs)
+    }
     /// The top of a bottom panel in local y (None: no panel, the snow lies on the screen bottom).
     pub fn set_panel_top(&mut self, y: Option<i32>) {
         let y = y.map_or(self.h as f32, |y| (y as f32).clamp(self.h as f32 * 0.5, self.h as f32));
@@ -477,6 +524,20 @@ impl Layer {
             w.ceil() as i32 + 5,
             h.ceil() as i32 + 5,
         ));
+    }
+
+    /// Leaves or petals: the pictures follow the theme (the controller builds the screens anew when it changes, so
+    /// nothing cached was laid out with the other set).
+    fn use_fall_sprites(&mut self, st: &SceneState) {
+        if st.muertos == self.petals {
+            return;
+        }
+        let made = if st.muertos { muertos::make_petal_sprites() } else { make_leaf_sprites() };
+        match made {
+            Ok(sprites) => self.leaf_sprites = sprites,
+            Err(e) => crate::log::error(&format!("petals: {e}")),
+        }
+        self.petals = st.muertos;
     }
 
     // ------------------------------------------------------------------ one frame
@@ -506,9 +567,11 @@ impl Layer {
             self.full_present = true;
         }
 
+        self.use_fall_sprites(st);
         self.update_snow(dt, st);
         self.update_plow(dt, st);
         self.update_elves(dt, st);
+        self.update_build(st);
         self.update_rain(dt, st);
 
         // Clear what was drawn last frame (Cairo must finish before the buffer is touched directly).
@@ -524,9 +587,12 @@ impl Layer {
         // everything that moves is drawn over it, as on Windows
         self.draw_ledges(dt, st);
         self.draw_ground(dt, st);
+        self.draw_build(st);
+        self.draw_ledge_candles(st);
+        self.draw_ledge_spooks(st);
         self.draw_santa_and_sparks(st);
         self.draw_kite(dt, st);
-        self.draw_elves(st.autumn, st.folk);
+        self.draw_elves(st, st.folk);
         self.draw_plow(st);
         self.draw_rain(st); // behind the leaves
         self.draw_snow(st);
@@ -601,7 +667,7 @@ impl Layer {
         let lower = (amount as usize).min(1);
         // (leaves are much bigger than flakes, so far fewer are needed)
         let wanted = (BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32))
-            * if st.autumn { 0.2 } else { 1.0 };
+            * if st.leaves() { 0.2 } else { 1.0 };
         let logical_area = self.w as f32 * self.h as f32 / (self.dpi_scale * self.dpi_scale);
         // Snow covers the whole screen also in power-save mode; power-save only lowers the frame rate.
         let target = if st.snow_on {
@@ -775,8 +841,8 @@ impl Layer {
         let rot_spd = (self.rng.f() - 0.5) * 2.0;
         let catches = self.rng.f() < 0.5;
         let mut f = Flake { x, y, r, vy, phase, sway, sway_spd, rot, rot_spd, a, crystal, catches, kind: 0 };
-        if st.autumn {
-            // a leaf: bigger, opaque, swaying wide and turning as it falls
+        if st.leaves() {
+            // a leaf (or a petal): bigger, opaque, swaying wide and turning as it falls
             f.r = (5.0 + depth * 7.0) * s;
             f.vy = (30.0 + depth * 40.0 + self.rng.f() * 20.0) * s * if st.snow_level == 2 { 1.4 } else { 1.0 };
             f.sway = (25.0 + self.rng.f() * 45.0) * s;
@@ -858,7 +924,7 @@ impl Layer {
     fn draw_snow(&mut self, st: &SceneState) {
         // Dots go straight into the buffer, so Cairo must finish the figures first.
         self.canvas.surface.flush();
-        if st.autumn {
+        if st.leaves() {
             self.draw_leaves(st);
             return;
         }
@@ -984,6 +1050,7 @@ mod tests {
             elves: false,
             elf_count: 3,
             snowman_stage: 0,
+            build: None,
             santa: None,
             sparks: &[],
             plow: None,
@@ -992,6 +1059,9 @@ mod tests {
             clumps: &[],
             ledge_u: 1.0,
             autumn: false,
+            muertos: false,
+            halloween: false,
+            ghosts_blow: false,
             folk: Folk::Nisser,
             kite: false,
         }
@@ -1138,7 +1208,8 @@ mod tests {
     #[test]
     fn figures_leave_no_trails() {
         use crate::figures::{Figures, ScreenInfo};
-        // one 1280x720 screen with every figure: lights, elves, the finished snowman, Santa and the plow
+        // one 1280x720 screen with every figure: lights, elves, the children building their snowman, Santa and
+        // the plow (which runs the snowman down on its way)
         let rect = Rect::new(0, 0, 1280, 720);
         let mut l = Layer::new(rect, true, 1.0, 11).unwrap();
         l.heap.fill(18.0 * l.s);
@@ -1146,16 +1217,21 @@ mod tests {
         let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
         f.launch_santa(&info(&l));
         f.send_plow(&info(&l));
+        let mut build = SnowmanBuild::new(5);
+        let mut ran_down = false;
         let mut t = 0.0;
         let mut drew_elves = false;
         for _ in 0..1200 {
             t += 0.05;
             f.update(0.05, t, &info(&l), true, true);
+            let truck = f.plow.active.then(|| (f.plow.gx / l.s, f.plow.dir));
+            build.update(0.05, rect.w as f32 / l.s, truck);
+            ran_down |= !build.run_down.is_empty();
             let st = SceneState {
                 time: t,
                 lights: true,
                 elves: true,
-                snowman_stage: 12,
+                build: Some(&build),
                 santa: f.santa.as_ref(),
                 sparks: &f.sparks,
                 plow: Some(&f.plow),
@@ -1166,6 +1242,7 @@ mod tests {
             drew_elves |= !l.elves.is_empty();
         }
         assert!(drew_elves);
+        assert!(ran_down, "the plow did not reach the snowman");
         assert!(f.plow.pushed > 0.0, "the plow scraped nothing");
         // Everything off: once the last flakes have landed (up to ~40 s on this screen) and the pile has melted,
         // the screen must be completely empty again.
@@ -1179,6 +1256,56 @@ mod tests {
         if let Some(i) = l.pixels().iter().position(|p| *p != 0) {
             panic!("trail at {},{}", i as i32 % w, i as i32 / w);
         }
+    }
+
+    #[test]
+    fn the_children_and_their_snowman_leave_no_trails() {
+        use crate::snowman_build::State;
+        // Only the pile and the children's snowman, at every point of its story: whatever is lit and is not
+        // what clearing restores (the cached pile) must lie inside something registered with mark() this frame.
+        let rect = Rect::new(0, 0, 960, 540);
+        let mut l = Layer::new(rect, true, 1.0, 13).unwrap();
+        l.heap.fill(8.0 * l.s);
+        let width_u = rect.w as f32 / l.s;
+        let mut build = SnowmanBuild::new(9);
+        build.update(0.05, width_u, None);
+        let mut t = 5.0;
+        let mut drawn = false;
+        // rolling the bottom ball, two balls, lifting the middle, rolling and lifting the head, dressing, and
+        // the last second before it is finished (then cheering and the snowball fight)
+        for (start, frames) in [(20.0, 100), (300.0, 100), (556.0, 100), (700.0, 100), (752.0, 100), (850.0, 100), (899.0, 400)] {
+            build.state = State::Building;
+            build.t = start;
+            for frame in 0..frames {
+                t += 0.05;
+                build.update(0.05, width_u, None);
+                let st = SceneState { time: t, snow_intensity: 0.0, build: Some(&build), ..state() };
+                l.frame(0.05, &st);
+                if frame % 10 != 9 {
+                    continue;
+                }
+                let background = l.background();
+                let w = l.width();
+                for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+                    if p == b {
+                        continue;
+                    }
+                    drawn = true;
+                    let (x, y) = (i as i32 % w, i as i32 / w);
+                    assert!(
+                        l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom()),
+                        "{start} s into the build: something drawn outside its box at {x},{y}"
+                    );
+                }
+            }
+        }
+        assert!(drawn, "the children and the snowman were never drawn");
+        // switched off, they are gone without a trace: only the pile is left
+        let off = SceneState { time: t, snow_intensity: 0.0, ..state() };
+        l.frame(0.05, &off);
+        l.frame(0.05, &off);
+        let background = l.background();
+        assert!(l.pixels().iter().zip(&background).all(|(p, b)| p == b), "something of the snowman is left on screen");
     }
 
     impl Layer {
@@ -1210,6 +1337,125 @@ mod tests {
                 let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
                 assert!(drawn || p == q, "lights erased at {x},{y}");
             }
+        }
+    }
+
+    #[test]
+    fn the_day_of_the_dead_leaves_no_trails() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its form for the dead: papel picado, calacas, the finished
+        // ofrenda, the butterflies and the donkey cart, and a window whose petals carry candles
+        let rect = Rect::new(0, 0, 1280, 720);
+        let mut l = Layer::new(rect, true, 1.0, 13).unwrap();
+        l.heap.fill(18.0 * l.s);
+        let mut f = Figures::new(6);
+        f.muertos = true;
+        let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+        f.launch_santa(&info(&l));
+        f.send_plow(&info(&l));
+        let mut ws = WindowSnow::new(1.0, 5);
+        let win = WinInfo { id: 1, rect: FRect { x: 200.0, y: 400.0, w: 700.0, h: 300.0 }, visible: vec![(206.0, 894.0)] };
+        ws.update_ledges(vec![win]);
+        let mut t = 5.0;
+        for _ in 0..1200 {
+            t += 0.05;
+            f.update(0.05, t, &info(&l), true, true);
+            let st = SceneState {
+                time: t,
+                muertos: true,
+                lights: true,
+                elves: true,
+                snow_amount: 2.0,
+                snowman_stage: 12,
+                santa: f.santa.as_ref(),
+                sparks: &f.sparks,
+                plow: Some(&f.plow),
+                ledges: &ws.ledges,
+                clumps: &ws.clumps,
+                ..state()
+            };
+            l.frame(0.05, &st);
+            f.plow.pushed += l.take_pushed();
+            for (li, x, r) in l.take_ledge_hits() {
+                ws.ledges[li].deposit(x, r);
+            }
+            ws.update(0.05, false, false, 0.0, 720.0);
+        }
+        assert!(l.petals, "the petals' pictures are not in use");
+        // every lit pixel was drawn this frame or is what clearing restores (the ground with the ofrenda, the
+        // papel picado, the petals on the window)
+        let background = l.background();
+        let w = l.width();
+        for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+            let (x, y) = (i as i32 % w, i as i32 / w);
+            let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+            assert!(*p == *b || drawn, "stale pixel at {x},{y}");
+        }
+        // the ofrenda stands in the cached ground: something of it shows well above the pile
+        let x0 = (1280.0 * 0.78) as usize;
+        let above = (640..690).any(|y| (x0 - 30..x0 + 30).any(|x| background[y * w as usize + x] >> 24 > 200));
+        assert!(above, "no ofrenda in the ground image");
+    }
+
+    #[test]
+    fn halloween_leaves_no_trails_with_either_plow() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its Halloween form: the string of pumpkins and bats, ghosts and
+        // children dressed up, the finished jack-o'-lanterns, the witch flying, a window with a cat and a spider,
+        // and the plow in each of its two forms
+        for ghosts in [false, true] {
+            let rect = Rect::new(0, 0, 1280, 720);
+            let mut l = Layer::new(rect, true, 1.0, 17).unwrap();
+            l.heap.fill(18.0 * l.s);
+            let mut f = Figures::new(8);
+            f.halloween = true;
+            let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+            f.launch_santa(&info(&l));
+            f.send_plow(&info(&l));
+            f.ghosts_blow = ghosts;
+            let mut ws = WindowSnow::new(1.0, 5);
+            let win = WinInfo { id: 1, rect: FRect { x: 100.0, y: 400.0, w: 900.0, h: 300.0 }, visible: vec![(106.0, 994.0)] };
+            ws.update_ledges(vec![win]);
+            let mut t = 5.0;
+            for _ in 0..1200 {
+                t += 0.05;
+                f.update(0.05, t, &info(&l), true, true);
+                let st = SceneState {
+                    time: t,
+                    halloween: true,
+                    ghosts_blow: f.ghosts_blow,
+                    lights: true,
+                    elves: true,
+                    snow_amount: 2.0,
+                    snowman_stage: 12,
+                    santa: f.santa.as_ref(),
+                    sparks: &f.sparks,
+                    plow: Some(&f.plow),
+                    ledges: &ws.ledges,
+                    clumps: &ws.clumps,
+                    ..state()
+                };
+                l.frame(0.05, &st);
+                f.plow.pushed += l.take_pushed();
+                for (li, x, r) in l.take_ledge_hits() {
+                    ws.ledges[li].deposit(x, r);
+                }
+                ws.update(0.05, false, false, 0.0, 720.0);
+            }
+            assert!(!l.petals, "Halloween's leaves are autumn's, not petals");
+            let background = l.background();
+            let w = l.width();
+            for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+                let (x, y) = (i as i32 % w, i as i32 / w);
+                let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+                assert!(*p == *b || drawn, "stale pixel at {x},{y} (ghosts blow: {ghosts})");
+            }
+            // the jack-o'-lanterns stand in the cached ground: something of them shows above the pile
+            let x0 = (1280.0 * 0.78) as usize;
+            let above = (660..700).any(|y| (x0 - 20..x0 + 20).any(|x| background[y * w as usize + x] >> 24 > 200));
+            assert!(above, "no jack-o'-lanterns in the ground image");
         }
     }
 

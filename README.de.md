@@ -16,16 +16,18 @@ Ein kleines Weihnachts-Overlay für Windows, macOS und Linux: Schnee fällt übe
 - Es funktioniert auf **allen Bildschirmen**. Der Weihnachtsmann fliegt über Bildschirme hinweg, die nebeneinander stehen.
 - **Das Menü:** Ein Rechtsklick auf die Schneeflocke bei der Uhr (Windows und Linux) oder ein Klick auf sie in der Menüleiste (macOS) öffnet die Einstellungen und den Adventskalender. Dort lässt sich alles ein- und ausschalten.
 - **Adventskalender:** Ab dem 1. Dezember kannst du jeden Tag ein neues Türchen öffnen. Dahinter stecken Witze, gemütliche Tipps und Wissenswertes rund um Weihnachten, und manche Türchen lösen einen Effekt aus: den Weihnachtsmann, einen Schneesturm, ein Fest oder einen Sternenregen.
-- **Schneemann:** Drei Kinder bauen in etwa einer Viertelstunde einen Schneemann auf der Taskleiste: Sie rollen die Kugeln, heben sie aufeinander und geben ihm Augen, eine Karottennase, Knöpfe, Arme, ein Lächeln, einen Schal und eine Mütze. Wenn er fertig ist, jubeln sie und machen eine Schneeballschlacht, und ein paar Minuten später kommt der Schneepflug und fährt ihn um. Dann gehen die Kinder woandershin und fangen von vorn an. (So ist es unter Windows. Unter macOS und Linux wird der Schneemann noch über 12 Tage gebaut.)
+- **Schneemann:** Drei Kinder bauen in etwa einer Viertelstunde einen Schneemann auf der Taskleiste: Sie rollen die Kugeln, heben sie aufeinander und geben ihm Augen, eine Karottennase, Knöpfe, Arme, ein Lächeln, einen Schal und eine Mütze. Wenn er fertig ist, jubeln sie und machen eine Schneeballschlacht, und ein paar Minuten später kommt der Schneepflug und fährt ihn um. Dann gehen die Kinder woandershin und fangen von vorn an.
 - **Schneepflug:** fährt los und räumt den Schnee, wenn der Haufen hoch wird.
 - **Ton** ist aus, bis du ihn im Menü einschaltest: Schellen und eine Melodie für den Weihnachtsmann, Motor und Hupe für den Schneepflug.
 - **Herbst-Thema:** Das Menü „Thema“ tauscht den Schnee gegen fallendes Laub, den Weihnachtsmann gegen Zuggänse und den Schneemann gegen eine Vogelscheuche.
+- **Thema „Tag der Toten“:** Im selben Menü gibt es „De dødes dag“ (Día de los Muertos): Tagetes-Blütenblätter fallen, Skelette mit Sombrero laufen am unteren Rand, Monarchfalter fliegen vorbei, Papierfähnchen hängen am oberen Rand, und ein Altar wächst um einen Schritt für jede Stunde, die das Programm läuft.
+- **Halloween-Thema:** Im selben Menü gibt es „Halloween“: Laub fällt, Gespenster und verkleidete Kinder laufen am unteren Rand, eine Hexe fliegt mit Fledermäusen auf ihrem Besen vorbei, eine Kette kleiner Kürbislaternen hängt am oberen Rand, schwarze Katzen sitzen auf den Fenstern, und drei Kürbislaternen werden geschnitzt, ein Schritt für jede Stunde, die das Programm läuft.
 - Die Animation pausiert von selbst, solange eine App im Vollbild läuft (Spiele, Filme), und hält ganz an, wenn der Bildschirm gesperrt ist oder ruht.
 - Eine veröffentlichte Version hält sich selbst aktuell.
 
 ## Deine Sprache, deine Figuren
 
-- **Sprache:** Das Menü erscheint in der Sprache deines Computers, wenn es dafür eine Übersetzung gibt (Dänisch, Englisch, Schwedisch, Deutsch, Niederländisch), sonst auf Englisch. Unter *Sprache* im Menü kannst du eine andere wählen.
+- **Sprache:** Das Menü erscheint in der Sprache deines Computers, wenn es dafür eine Übersetzung gibt (Dänisch, Englisch, Schwedisch, Deutsch, Niederländisch, Italienisch, Spanisch (auch mexikanisch), Französisch, Portugiesisch (auch brasilianisch)), sonst auf Englisch. Unter *Sprache* im Menü kannst du eine andere wählen.
 - **Wer über deinen Bildschirm läuft**, richtet sich nach Sprache und Land: Nisser in den nordischen Ländern, Wichtel in Deutschland, Österreich und der Schweiz, Kabouter in den Niederlanden, Päkapikud in Estland und Weihnachtselfen überall sonst. Unter *Wichtel oder Elfen* im Menü kannst du andere wählen.
 - Bisher nur auf Dänisch: der Adventskalender mit seinen Türchen und die Mitteilungen.
 

@@ -24,6 +24,8 @@ final class NisseCostume {
         /// Turn and nod (radians), to know when the face looks straight ahead.
         var yaw: CGFloat = 0, pitch: CGFloat = 0
         var frontal: Bool { abs(yaw) < 0.3 && abs(pitch) < 0.25 }
+        /// Eyes and eyebrows (the person's own left and right), for the Day of the Dead's make-up; may be empty.
+        var leftEye: [CGPoint] = [], rightEye: [CGPoint] = [], leftBrow: [CGPoint] = [], rightBrow: [CGPoint] = []
         var up: CGPoint { CGPoint(x: -sin(roll), y: cos(roll)) }
         var right: CGPoint { CGPoint(x: cos(roll), y: sin(roll)) }
         /// The face as the rounded front of the head, measured with the head (see `measureFace`); nil until then.
@@ -107,6 +109,8 @@ final class NisseCostume {
                           fw: b.width * extent.width * k, fh: b.height * extent.height * k,
                           roll: NisseHat.rollSign * CGFloat(o.roll?.doubleValue ?? 0))
             s.yaw = CGFloat(o.yaw?.doubleValue ?? 0); s.pitch = CGFloat(o.pitch?.doubleValue ?? 0)
+            s.leftEye = lm.leftEye.map(pts) ?? []; s.rightEye = lm.rightEye.map(pts) ?? []
+            s.leftBrow = lm.leftEyebrow.map(pts) ?? []; s.rightBrow = lm.rightEyebrow.map(pts) ?? []
             raw.append(s)
         }
         ingest(raw, dt: dt)
@@ -122,9 +126,12 @@ final class NisseCostume {
             let st = f.map { dist($0.centre, c) < s.fw * 0.8 ? $0 : Steady(centre: c) } ?? Steady(centre: c)
             used.append(st)
             st.centre = c
-            let all = st.filter(s.contour + s.nose + s.lips, dt: dt)
-            let n1 = s.contour.count, n2 = n1 + s.nose.count
-            s.contour = Array(all[..<n1]); s.nose = Array(all[n1..<n2]); s.lips = Array(all[n2...])
+            let groups = [s.contour, s.nose, s.lips, s.leftEye, s.rightEye, s.leftBrow, s.rightBrow]
+            let all = st.filter(groups.flatMap { $0 }, dt: dt)
+            var at = 0
+            let back = groups.map { g -> [CGPoint] in defer { at += g.count }; return Array(all[at..<(at + g.count)]) }
+            s.contour = back[0]; s.nose = back[1]; s.lips = back[2]
+            s.leftEye = back[3]; s.rightEye = back[4]; s.leftBrow = back[5]; s.rightBrow = back[6]
             s.fw = st.fw.filter(s.fw, dt: dt); s.fh = st.fh.filter(s.fh, dt: dt); s.roll = st.roll.filter(s.roll, dt: dt)
             s.yaw = st.yaw.filter(s.yaw, dt: dt)
             if s.contour.count >= 7 && s.nose.count >= 3 && s.lips.count >= 4 { measureFace(&s, st, dt) }
@@ -211,6 +218,38 @@ final class NisseCostume {
     /// `mask` is the person mask in the same coordinates.
     /// `heads`: each head's measured outline (NisseHat.headOutlines). Where there is a face there is a head, and
     /// everything inside its outline (hair, ears) is head: never coloured, whatever its colour.
+    /// Halloween's witch: the person's clothes turned black and all bare skin tinted green, each with its own light
+    /// and shade kept. Both come from the parts model (clothes, and the face's and the body's skin), so hair, beard
+    /// and glasses stay as they are. Without the model (before macOS 15, or while it loads) nothing is changed:
+    /// the colour rule that stands in for it elsewhere cannot tell skin from clothes well enough to paint skin green.
+    func applyWitch(to cam: CIImage, mask: CIImage) -> CIImage {
+        let extent = cam.extent
+        guard let cloth = parts.clothes(cam: cam), let skin = parts.skinOfLastRun(extent: extent) else { return cam }
+        let person = mask.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 6, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 6, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
+            .applyingFilter("CIColorClamp")
+        // black cloth: the clothes' own light and shade, far down (folds and seams still show)
+        let gray = cam.applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.2, kCIInputBrightnessKey: 0])
+        let black = gray.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.13, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0.13, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0.15, y: 0, z: 0, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            "inputBiasVector": CIVector(x: 0.008, y: 0.008, z: 0.012, w: 0)])
+        let onClothes = person.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: cloth])
+        var out = black.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: cam, kCIInputMaskImageKey: onClothes]).cropped(to: extent)
+        // green skin: red taken down and carried over into green, blue halved; not all the way, so the face is still a face
+        let green = cam.applyingFilter("CIColorMatrix", parameters: [
+            "inputRVector": CIVector(x: 0.56, y: 0.06, z: 0, w: 0), "inputGVector": CIVector(x: 0.22, y: 0.86, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0.04, z: 0.50, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+            "inputBiasVector": CIVector(x: 0, y: 0.02, z: 0, w: 0)])
+        let onSkin = person.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: skin])
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: 0.88, y: 0, z: 0, w: 0), "inputGVector": CIVector(x: 0, y: 0.88, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: 0.88, w: 0), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1)])
+        out = green.applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: out, kCIInputMaskImageKey: onSkin]).cropped(to: extent)
+        return out
+    }
+
     func applySuit(to cam: CIImage, mask: CIImage, heads: [[CGPoint]] = []) -> CIImage {
         guard !shapes.isEmpty else { return cam }
         let extent = cam.extent
@@ -993,13 +1032,13 @@ final class NisseCostume {
     }
 }
 
-// small point helpers
-private func dot(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x * b.x + a.y * b.y }
-private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
-private func norm(_ a: CGPoint) -> CGPoint { let l = max(0.0001, hypot(a.x, a.y)); return CGPoint(x: a.x / l, y: a.y / l) }
-private func + (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
-private func - (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
-private func * (a: CGPoint, k: CGFloat) -> CGPoint { CGPoint(x: a.x * k, y: a.y * k) }
+// small point helpers (shared with Makeup.swift)
+func dot(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x * b.x + a.y * b.y }
+func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
+func norm(_ a: CGPoint) -> CGPoint { let l = max(0.0001, hypot(a.x, a.y)); return CGPoint(x: a.x / l, y: a.y / l) }
+func + (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x + b.x, y: a.y + b.y) }
+func - (a: CGPoint, b: CGPoint) -> CGPoint { CGPoint(x: a.x - b.x, y: a.y - b.y) }
+func * (a: CGPoint, k: CGFloat) -> CGPoint { CGPoint(x: a.x * k, y: a.y * k) }
 /// Smooth curve through points (midpoint quadratic curves); the path must already be at `pts[0]`.
 private func smoothCurve(_ path: CGMutablePath, through pts: [CGPoint]) {
     guard pts.count > 1 else { return }

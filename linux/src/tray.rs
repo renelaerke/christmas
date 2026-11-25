@@ -171,30 +171,60 @@ impl ksni::Tray for AppTray {
         }
         // The autumn theme: the calendar and the countdown belong to Christmas and are left out of the menu in
         // autumn; everything else has its autumn form and its autumn name.
-        let autumn = c.theme == 1;
-        if !autumn {
+        // De dødes dag is the same again: its own names, and no calendar, countdown or choice of folk.
+        // Halloween has autumn's leaves under autumn's names (`leafy`), and its own names for the rest.
+        let (autumn, muertos, halloween) = (c.theme == 1, c.theme == 2, c.theme == 3);
+        let christmas = !autumn && !muertos && !halloween;
+        let leafy = autumn || halloween;
+        if christmas {
             items.push(item(text::MENU_CALENDAR, || TrayMsg::Calendar));
             items.push(disabled(self.countdown.clone()));
             items.push(MenuItem::Separator);
         }
 
-        items.push(choice(text::MENU_THEME, &text::THEMES, &[0, 1], c.theme, |s| &mut s.theme));
-        let snow = if autumn { text::MENU_LEAVES } else { text::MENU_SNOW };
+        items.push(choice(text::MENU_THEME, &text::THEMES, &[0, 1, 2, 3], c.theme, |s| &mut s.theme));
+        let snow = if muertos {
+            text::MENU_PETALS
+        } else if leafy {
+            text::MENU_LEAVES
+        } else {
+            text::MENU_SNOW
+        };
         items.push(toggle(snow.into(), c.snow, |s| &mut s.snow));
-        let (level, levels) = if autumn {
+        let (level, levels) = if muertos {
+            (text::MENU_PETAL_LEVEL, &text::PETAL_LEVELS)
+        } else if leafy {
             (text::MENU_LEAF_LEVEL, &text::LEAF_LEVELS)
         } else {
             (text::MENU_SNOW_LEVEL, &text::SNOW_LEVELS)
         };
         items.push(choice(level, levels, &[0, 1, 2, 3], c.snow_level, |s| &mut s.snow_level));
-        let ground = if autumn { text::MENU_LEAF_GROUND } else { text::MENU_SNOW_GROUND };
+        let ground = if muertos {
+            text::MENU_PETAL_GROUND
+        } else if leafy {
+            text::MENU_LEAF_GROUND
+        } else {
+            text::MENU_SNOW_GROUND
+        };
         items.push(toggle(ground.into(), c.snow_ground, |s| &mut s.snow_ground));
-        let on_windows = if autumn { text::MENU_WINDOW_LEAVES } else { text::MENU_WINDOW_SNOW };
+        let on_windows = if muertos {
+            text::MENU_WINDOW_PETALS
+        } else if halloween {
+            text::MENU_WINDOW_SPOOKS
+        } else if autumn {
+            text::MENU_WINDOW_LEAVES
+        } else {
+            text::MENU_WINDOW_SNOW
+        };
         items.push(toggle(on_windows.into(), c.window_snow, |s| &mut s.window_snow));
-        let snowman = if autumn {
+        let snowman = if muertos {
+            text::menu_ofrenda(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        } else if halloween {
+            text::menu_pumpkins(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+        } else if autumn {
             text::menu_scarecrow(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
         } else {
-            text::menu_snowman(self.snowman_stage, crate::layer::SNOWMAN_MAX_STAGE)
+            text::MENU_SNOWMAN.to_string()
         };
         items.push(toggle(snowman, c.snowman, |s| &mut s.snowman));
         // (the kite only exists in autumn)
@@ -203,7 +233,11 @@ impl ksni::Tray for AppTray {
         }
         items.push(MenuItem::Separator);
 
-        let (santa, send) = if autumn {
+        let (santa, send) = if muertos {
+            (text::MENU_BUTTERFLIES, text::MENU_SEND_BUTTERFLIES)
+        } else if halloween {
+            (text::MENU_WITCH, text::MENU_SEND_WITCH)
+        } else if autumn {
             (text::MENU_GEESE, text::MENU_SEND_GEESE)
         } else {
             (text::MENU_SANTA, text::MENU_SEND_SANTA)
@@ -212,7 +246,11 @@ impl ksni::Tray for AppTray {
         items.push(item(send, || TrayMsg::Santa));
         items.push(MenuItem::Separator);
 
-        let (plow, send) = if autumn {
+        let (plow, send) = if muertos {
+            (text::MENU_CART, text::MENU_SEND_CART)
+        } else if halloween {
+            (text::MENU_SWEEPERS, text::MENU_SEND_SWEEPERS)
+        } else if autumn {
             (text::MENU_LEAF_COLLECTOR, text::MENU_SEND_LEAF_COLLECTOR)
         } else {
             (text::MENU_PLOW, text::MENU_SEND_PLOW)
@@ -222,7 +260,11 @@ impl ksni::Tray for AppTray {
         items.push(MenuItem::Separator);
 
         // sound is off by default; each source is switched on separately
-        let (sound, plow_sound) = if autumn {
+        let (sound, plow_sound) = if muertos {
+            (text::MENU_BUTTERFLY_SOUND, text::MENU_CART_SOUND)
+        } else if halloween {
+            (text::MENU_WITCH_SOUND, text::MENU_SWEEPER_SOUND)
+        } else if autumn {
             (text::MENU_GOOSE_SOUND, text::MENU_LEAF_COLLECTOR_SOUND)
         } else {
             (text::MENU_SOUND, text::MENU_PLOW_SOUND)
@@ -232,7 +274,11 @@ impl ksni::Tray for AppTray {
         items.push(choice(text::MENU_VOLUME, &text::VOLUMES, &[0, 1, 2], c.sound_level, |s| &mut s.sound_level));
         items.push(MenuItem::Separator);
 
-        let (elves, elf_count) = if autumn {
+        let (elves, elf_count) = if muertos {
+            (text::MENU_CALACAS, text::MENU_CALACA_COUNT)
+        } else if halloween {
+            (text::MENU_SPOOKS, text::MENU_SPOOK_COUNT)
+        } else if autumn {
             (text::MENU_ANIMALS, text::MENU_ANIMAL_COUNT)
         } else {
             let folk = folk::chosen(c.folk).index();
@@ -243,8 +289,8 @@ impl ksni::Tray for AppTray {
         let counts: Vec<&str> = counts.iter().map(|s| s.as_str()).collect();
         items.push(choice(elf_count, &counts, &ELF_COUNTS, c.elf_count, |s| &mut s.elf_count));
         // Nisser or elves: automatic follows the language and region; the other two are for when that is wrong.
-        // (in autumn animals walk here, so there is nothing to choose)
-        if !autumn {
+        // (in autumn animals walk here, and on the Day of the Dead calacas, so there is nothing to choose)
+        if christmas {
             let automatic = text::menu_folk_automatic(text::FOLK[folk::system().index()]);
             let mut names = vec![automatic.as_str()];
             names.extend(text::FOLK);
@@ -254,9 +300,23 @@ impl ksni::Tray for AppTray {
 
         let power: Vec<&str> = POWER_ORDER.iter().map(|&v| text::POWER_SAVE[v as usize]).collect();
         items.push(choice(text::MENU_POWER_SAVE, &power, &POWER_ORDER, c.power_save, |s| &mut s.power_save));
-        let rates = if autumn { &text::FRAME_RATES_AUTUMN } else { &text::FRAME_RATES };
+        let rates = if muertos {
+            &text::FRAME_RATES_MUERTOS
+        } else if leafy {
+            &text::FRAME_RATES_AUTUMN
+        } else {
+            &text::FRAME_RATES
+        };
         items.push(choice(text::MENU_FRAME_RATE, rates, &FRAME_RATES, c.frame_rate, |s| &mut s.frame_rate));
-        let lights = if autumn { text::MENU_GARLAND } else { text::MENU_LIGHTS };
+        let lights = if muertos {
+            text::MENU_PICADO
+        } else if halloween {
+            text::MENU_SPOOK_GARLAND
+        } else if autumn {
+            text::MENU_GARLAND
+        } else {
+            text::MENU_LIGHTS
+        };
         items.push(toggle(lights.into(), c.lights, |s| &mut s.lights));
         items.push(toggle(text::MENU_ALL_SCREENS.into(), c.all_screens, |s| &mut s.all_screens));
         items.push(toggle(text::MENU_PAUSE_FULLSCREEN.into(), c.pause_fullscreen, |s| &mut s.pause_fullscreen));

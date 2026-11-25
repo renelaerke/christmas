@@ -11,7 +11,7 @@
 
 use cairo::Context;
 
-use super::draw::Image;
+use super::draw::{set, Argb, Image};
 use super::{blend_leaf, chance, heap_at, leaf_sprite, snowman, Layer, SceneState, HEAP_STEP};
 use crate::x11::{Rect, Res};
 
@@ -77,8 +77,9 @@ impl Layer {
 
         let g = self.ground_y;
         let max = self.heap.iter().cloned().fold(0.0f32, f32::max);
-        // the snowman stands on the pile at 78% of the width, on the primary screen only
-        let snowman = (self.primary && st.snowman_stage > 0).then(|| {
+        // autumn's haystack stands on the pile at 78% of the width, on the primary screen only (the Christmas
+        // snowman is built by children and drawn each frame: `build.rs`)
+        let snowman = (self.primary && st.snowman_stage > 0 && st.leaves()).then(|| {
             let x = self.w as f32 * 0.78;
             (st.snowman_stage, x, g - heap_at(&self.heap, x) + 3.0 * s)
         });
@@ -103,7 +104,7 @@ impl Layer {
         // what to redraw: where the pile and the snowman were, and where they are now
         let pile_rect = (max >= 0.5).then(|| {
             // (in autumn with room for the leaves lying over the pile's top)
-            let over = if st.autumn { 16.0 * s } else { 0.0 };
+            let over = if st.leaves() { 16.0 * s } else { 0.0 };
             let top = (g - max - 4.0 * s - over).floor() as i32 - 2;
             Rect::new(0, top, w, (g + 4.0 * s).ceil() as i32 + 3 - top)
         });
@@ -147,16 +148,23 @@ impl Layer {
         cr.clip();
         cr.translate(0.0, -gi.y0 as f64);
         if let Some((stage, x, y)) = snowman {
-            snowman::draw(cr, x as f64, y as f64, s as f64, stage, st.autumn);
+            let what = if st.muertos {
+                snowman::Built::Ofrenda
+            } else if st.halloween {
+                snowman::Built::Pumpkins
+            } else {
+                snowman::Built::Scarecrow
+            };
+            snowman::draw(cr, x as f64, y as f64, s as f64, stage, what);
         }
         if max >= 0.5 {
-            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.autumn);
+            draw_pile(cr, &self.heap, g as f64, w as f64, s as f64, st.pile_fill());
         }
         cr.restore().ok();
         img.surface.flush();
         // a leaf pile is made of leaves: they are laid over its dark fill, in the pile's strip only (it is always
         // cleared and redrawn whole, so no leaf is laid twice)
-        if let Some(pr) = pile_rect.filter(|_| st.autumn).map(|r| clip_to(r, band)) {
+        if let Some(pr) = pile_rect.filter(|_| st.leaves()).map(|r| clip_to(r, band)) {
             let rows = (g.ceil() as i32 + 2).min(pr.bottom()) - pr.y;
             if rows > 0 && pr.w == w {
                 let start = (pr.y - gi.y0) as usize * w as usize;
@@ -220,7 +228,7 @@ fn lay_leaves(buf: &mut [u32], w: i32, rows: i32, heap: &[f32], sprites: &[Vec<u
 
 /// The pile: a white bank with a faint blue outline along its top, as on Windows. In the autumn theme it is a
 /// pile of leaves: here its dark fill, without an outline; the leaves are laid over it afterwards (`lay_leaves`).
-fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64, autumn: bool) {
+fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64, leaf_fill: Option<Argb>) {
     let top = |cr: &Context| {
         for (i, h) in heap.iter().enumerate() {
             cr.line_to((i * HEAP_STEP) as f64, g - *h as f64);
@@ -231,8 +239,8 @@ fn draw_pile(cr: &Context, heap: &[f32], g: f64, w: f64, s: f64, autumn: bool) {
     cr.line_to(w, g + 1.0);
     cr.line_to(0.0, g + 1.0);
     cr.close_path();
-    if autumn {
-        cr.set_source_rgba(122.0 / 255.0, 62.0 / 255.0, 24.0 / 255.0, 245.0 / 255.0);
+    if let Some(col) = leaf_fill {
+        set(cr, col);
         let _ = cr.fill();
         return;
     }

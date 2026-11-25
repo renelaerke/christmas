@@ -79,6 +79,24 @@ final class SnowClump {
     var dead = false
 }
 
+
+extension Ledge {
+    /// Where the candles stand on this window (Día de los Muertos): one about every 150 points, at places fixed on
+    /// the window, each with its own height. Global x.
+    var candleSpots: [(gx: F, tall: F, k: Int)] {
+        let count = max(1, Int((settled.width - 40) / 150))
+        let gap = (settled.width - 40) / F(count)
+        var spots: [(gx: F, tall: F, k: Int)] = []
+        for k in 0..<count {
+            let jitter: F = F((id * 7 + k * 13) % 9 - 4) * 3
+            let gx: F = settled.minX + 20 + gap * (F(k) + 0.5) + jitter
+            let tall: F = 14 + F((id + k * 5) % 3) * 2.5
+            spots.append((gx, tall, k))
+        }
+        return spots
+    }
+}
+
 extension Controller {
     /// Windows that can carry snow, front to back, plus the windows that cover a whole screen.
     static func scanWindows() -> (ledges: [(id: Int, rect: CGRect)], fullscreen: [CGRect]) {

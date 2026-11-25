@@ -16,16 +16,18 @@ Ett litet julöverlägg för Windows, macOS och Linux: snön faller över skrivb
 - Det fungerar på **alla skärmar**. Jultomten flyger över skärmar som står bredvid varandra.
 - **Menyn:** högerklicka på snöflingan vid klockan i Windows och Linux, eller klicka på den i menyraden på macOS, för inställningarna och julkalendern. Där kan allt slås på och av.
 - **Julkalender:** från den 1 december kan du öppna en ny lucka varje dag. Bakom luckorna finns skämt, mystips och julfakta, och vissa luckor sätter igång en effekt: jultomten, snöstorm, fest eller stjärnregn.
-- **Snögubbe:** tre barn bygger en snögubbe på aktivitetsfältet på ungefär en kvart: de rullar snöbollarna, lyfter dem på varandra och ger den ögon, morotsnäsa, knappar, armar, ett leende, halsduk och mössa. När den är klar jublar de och har snöbollskrig, och några minuter senare kommer snöplogen och kör över den. Sedan går barnen till ett annat ställe och börjar om. (Så är det på Windows. På macOS och Linux byggs snögubben fortfarande under 12 dagar.)
+- **Snögubbe:** tre barn bygger en snögubbe på aktivitetsfältet på ungefär en kvart: de rullar snöbollarna, lyfter dem på varandra och ger den ögon, morotsnäsa, knappar, armar, ett leende, halsduk och mössa. När den är klar jublar de och har snöbollskrig, och några minuter senare kommer snöplogen och kör över den. Sedan går barnen till ett annat ställe och börjar om.
 - **Snöplog:** kör ut och röjer snön när drivan blir hög.
 - **Ljudet** är avstängt tills du slår på det i menyn: bjällror och en melodi för jultomten, motor och tuta för snöplogen.
 - **Hösttema:** menyn "Tema" byter snön mot fallande löv, jultomten mot flyttgäss och snögubben mot en fågelskrämma.
+- **Tema för De dödas dag:** i samma meny finns "De dødes dag" (Día de los Muertos): kronblad från tagetes faller, skelett i sombrero går längst ner, monarkfjärilar flyger förbi, pappersflaggor hänger längst upp och ett altare byggs ett steg för varje timme programmet kör.
+- **Halloweentema:** i samma meny finns "Halloween": löv faller, spöken och utklädda barn går längst ner, en häxa flyger förbi på sin kvast med fladdermöss efter sig, en slinga med små pumpalyktor hänger längst upp, svarta katter sitter på fönstren och tre pumpalyktor skärs ut, ett steg för varje timme programmet kör.
 - Animationen pausar av sig själv när en app körs i helskärm (spel, film), och stannar helt när skärmen är låst eller i vila.
 - En utgiven version håller sig själv uppdaterad.
 
 ## Ditt språk, dina figurer
 
-- **Språk:** menyn visas på datorns språk när det finns en översättning (danska, engelska, svenska, tyska, nederländska), annars på engelska. Du kan välja ett annat under *Språk* i menyn.
+- **Språk:** menyn visas på datorns språk när det finns en översättning (danska, engelska, svenska, tyska, nederländska, italienska, spanska (även mexikansk), franska, portugisiska (även brasiliansk)), annars på engelska. Du kan välja ett annat under *Språk* i menyn.
 - **Vilka som går på din skärm** följer språk och land: tomtar (nisser) i Norden, Wichtel i Tyskland, Österrike och Schweiz, kabouters i Nederländerna, päkapikud i Estland och julälvor i resten av världen. Du kan välja andra under *Tomtar eller älvor* i menyn.
 - Finns än så länge bara på danska: julkalendern och dess luckor, samt aviseringarna.
 

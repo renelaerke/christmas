@@ -106,6 +106,10 @@ final class Nisse {
     /// (handed over, or swapped if both carry one). `meetWith` is set on one of the two only.
     var meetTimer: F = 0, meetCooldown: F = 0
     weak var meetWith: Nisse?
+    /// Magic past the children's snowman: gone for `magic` seconds, then back at `magicTo`.
+    /// `zoneBumps` counts the turns at the play zone since the last time.
+    var magic: F = 0, magicTo: F = 0
+    var zoneBumps = 0
     func refreshVariant() { variant = "\(tunicIndex)-\(carriesGift ? giftIndex : -1)" }
 }
 

@@ -76,7 +76,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
 // Windows versions).
 pub const MENU_THEME: &str = "Tema";
-pub const THEMES: [&str; 2] = ["Jul", "Efterår"];
+pub const THEMES: [&str; 4] = ["Jul", "Efterår", "De dødes dag", "Halloween"];
 pub const MENU_LEAVES: &str = "Løvfald";
 pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
@@ -93,6 +93,67 @@ pub const MENU_SEND_LEAF_COLLECTOR: &str = "Send løvsugeren ud nu!";
 pub const MENU_ANIMALS: &str = "Pindsvin og egern";
 pub const MENU_ANIMAL_COUNT: &str = "Antal dyr pr. skærm";
 pub const NOTICE_SCARECROW_TITLE: &str = "Høstakken vokser!";
+
+// ---------------------------------------------------------------------- De dødes dag (menu "Tema")
+// The same menu on the Day of the Dead (as in the macOS and Windows versions): marigold petals for snow, an ofrenda
+// for the snowman, monarch butterflies for Santa, calacas for the nisser, papel picado for the lights and a donkey
+// cart for the plow.
+pub const MENU_PETALS: &str = "Kronblade fra tagetes";
+pub const MENU_PETAL_LEVEL: &str = "Mængde af kronblade";
+pub const PETAL_LEVELS: [&str; 4] = ["Få kronblade", "Normal", "Kronbladsstorm", "Skiftende vejr"];
+pub const MENU_PETAL_GROUND: &str = "Tagetes-tæppe på panelet";
+pub const MENU_WINDOW_PETALS: &str = "Kronblade på vinduerne";
+pub const MENU_BUTTERFLIES: &str = "Monarksommerfugle";
+pub const MENU_SEND_BUTTERFLIES: &str = "Send sommerfuglene afsted nu!";
+pub const MENU_BUTTERFLY_SOUND: &str = "Lyd: guitar og marimba når sommerfuglene flyver";
+pub const MENU_CART_SOUND: &str = "Lyd: hovtramp, hjulknirk og æselbrøl fra æselkærren";
+pub const MENU_PICADO: &str = "Papel picado";
+pub const MENU_CART: &str = "Æselkærre samler kronbladene";
+pub const MENU_SEND_CART: &str = "Send æselkærren ud nu!";
+pub const MENU_CALACAS: &str = "Calacas (skeletter)";
+pub const MENU_CALACA_COUNT: &str = "Antal calacas pr. skærm";
+pub const NOTICE_OFRENDA_TITLE: &str = "Ofrendaen er færdig!";
+pub const FRAME_RATES_MUERTOS: [&str; 4] = [
+    "12 billeder/s - mindst strøm",
+    "20 billeder/s - normal",
+    "30 billeder/s - glattere kronbladsfald",
+    "60 billeder/s - mest strøm",
+];
+
+pub fn menu_ofrenda(stage: i32, max: i32) -> String {
+    crate::lang::trf("Ofrenda (alter) (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the ofrenda's last step is in place (it grows a step for every hour the app runs).
+pub fn notice_ofrenda() -> String {
+    "Calacas har pyntet alteret. Til sidst kom der et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!"
+        .to_string()
+}
+
+// ---------------------------------------------------------------------- Halloween (menu "Tema")
+// The same menu on Halloween (as in the macOS and Windows versions). The leaves are autumn's and keep autumn's
+// names; the rest: jack-o'-lanterns for the snowman, a witch for Santa, ghosts and children dressed up for the
+// nisser, a string of pumpkins and bats for the lights, and a witch or ghosts for the plow.
+pub const MENU_WINDOW_SPOOKS: &str = "Blade, katte og edderkopper på vinduerne";
+pub const MENU_WITCH: &str = "Heks på kost";
+pub const MENU_SEND_WITCH: &str = "Send heksen afsted nu!";
+pub const MENU_WITCH_SOUND: &str = "Lyd: uhyggelig melodi når heksen flyver";
+pub const MENU_SWEEPERS: &str = "Heks eller spøgelser rydder bladene";
+pub const MENU_SEND_SWEEPERS: &str = "Send dem ud nu!";
+pub const MENU_SWEEPER_SOUND: &str = "Lyd: kost eller spøgelsessus når bladene ryddes";
+pub const MENU_SPOOKS: &str = "Spøgelser og udklædte børn";
+pub const MENU_SPOOK_COUNT: &str = "Antal spøgelser pr. skærm";
+pub const MENU_SPOOK_GARLAND: &str = "Lyskæde med græskar og flagermus";
+pub const NOTICE_PUMPKINS_TITLE: &str = "Græskarlygterne er færdige!";
+
+pub fn menu_pumpkins(stage: i32, max: i32) -> String {
+    crate::lang::trf("Græskarlygter (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the last of the jack-o'-lanterns' steps is in place (a step for every hour the app runs).
+pub fn notice_pumpkins() -> String {
+    "Spøgelserne har skåret dem ud. Til sidst kom der en sort kat - græskarlygterne er færdige!".to_string()
+}
 
 pub fn menu_scarecrow(stage: i32, max: i32) -> String {
     crate::lang::trf("Høstak med fugleskræmsel (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
@@ -128,9 +189,9 @@ pub fn menu_version(v: &str) -> String {
     crate::lang::trf("Version {0}", &[v])
 }
 
-pub fn menu_snowman(stage: i32, max: i32) -> String {
-    crate::lang::trf("Snemand (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
-}
+/// (The Christmas snowman has no stage: the children build it while you watch. Autumn's haystack has, see
+/// `menu_scarecrow`.)
+pub const MENU_SNOWMAN: &str = "Snemand";
 
 /// "★ 12 dage til juleaften ★" for the given number of days.
 pub fn countdown(days: i64) -> String {
@@ -145,7 +206,6 @@ pub fn countdown(days: i64) -> String {
 pub const NOTICE_STARTED_TITLE: &str = "Jule-hygge er tændt";
 pub const NOTICE_STARTED: &str =
     "Klik på snefnugget i panelet for julekalenderen. Højreklik for indstillinger og for at kalde på julemanden!";
-pub const NOTICE_SNOWMAN_TITLE: &str = "Snemanden vokser!";
 pub const NOTICE_DOOR_TITLE: &str = "Dagens låge er klar!";
 /// The action on the door notice (shown as a button by some desktops).
 pub const NOTICE_OPEN_CALENDAR: &str = "Åbn kalenderen";
@@ -169,30 +229,9 @@ pub fn notice_install_failed(v: &str, e: &str) -> String {
     format!("Kunne ikke installere version {v}: {e}")
 }
 
-pub fn notice_snowman(step: &str, alfer: bool) -> String {
-    let who = if alfer { "Alferne" } else { "Nisserne" };
-    format!("{who} har bygget videre på snemanden. I dag fik den {step}")
-}
-
 pub fn notice_door(day: u32) -> String {
     format!("Låge {day} i julekalenderen venter på dig. Klik her for at åbne kalenderen.")
 }
-
-/// What the snowman got on each day (stage 1..=12).
-pub const SNOWMAN_STEPS: [&str; 12] = [
-    "en lille snebold",
-    "en stor snebold",
-    "maven",
-    "hovedet",
-    "øjne af kul",
-    "en gulerodsnæse",
-    "knapper",
-    "arme af grene",
-    "et smil",
-    "et rødt halstørklæde",
-    "en høj hat",
-    "en kost - snemanden er færdig!",
-];
 
 // ---------------------------------------------------------------------- calendar
 pub fn calendar_title(year: i32) -> String {

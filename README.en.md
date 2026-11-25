@@ -16,16 +16,18 @@ A small Christmas overlay for Windows, macOS and Linux: snow falls over your des
 - It works on **all screens**. Santa flies across screens that stand side by side.
 - **The menu:** right-click the snowflake icon by the clock on Windows and Linux, or click it in the menu bar on macOS, for the settings and the advent calendar. Everything can be switched on and off there.
 - **Advent calendar:** from 1 December you can open a new door every day. Behind the doors are jokes, cosy tips and Christmas facts, and some doors set off an effect: Santa, a blizzard, a party or a shower of stars.
-- **Snowman:** three children build a snowman on the taskbar in about a quarter of an hour: they roll the balls, lift them onto each other and give it eyes, a carrot nose, buttons, arms, a smile, a scarf and a hat. When it is finished they cheer and have a snowball fight, and a few minutes later the snow plow comes by and runs it down. Then the children go somewhere else and start again. (That is on Windows. On macOS and Linux the snowman is still built over 12 days.)
+- **Snowman:** three children build a snowman on the taskbar in about a quarter of an hour: they roll the balls, lift them onto each other and give it eyes, a carrot nose, buttons, arms, a smile, a scarf and a hat. When it is finished they cheer and have a snowball fight, and a few minutes later the snow plow comes by and runs it down. Then the children go somewhere else and start again.
 - **Snow plow:** drives out and clears the snow when the pile gets high.
 - **Sound** is off until you switch it on in the menu: sleigh bells and a tune for Santa, engine and horn for the snow plow.
 - **Autumn theme:** the menu "Theme" swaps the snow for falling leaves, Santa for migrating geese and the snowman for a scarecrow.
+- **Day of the Dead theme:** the same menu has "De dødes dag" (Día de los Muertos): marigold petals fall, skeletons in sombreros walk at the bottom, monarch butterflies fly over, paper flags hang along the top, and an altar is built one step for every hour the app runs.
+- **Halloween theme:** the same menu has "Halloween": leaves fall, ghosts and children dressed up for trick or treat walk at the bottom, a witch flies over on her broom with bats after her, a string of small pumpkin lanterns hangs along the top, black cats sit on the windows, and three jack-o'-lanterns are carved one step for every hour the app runs.
 - The animation pauses by itself while an app runs in full screen (games, films), and stops completely while the screen is locked or asleep.
 - A released version keeps itself up to date.
 
 ## Your language, your figures
 
-- **Language:** the menu is shown in your computer's language when there is a translation for it (Danish, English, Swedish, German, Dutch), and in English otherwise. You can choose another under *Language* in the menu.
+- **Language:** the menu is shown in your computer's language when there is a translation for it (Danish, English, Swedish, German, Dutch, Italian, Spanish (also Mexican), French, Portuguese (also Brazilian)), and in English otherwise. You can choose another under *Language* in the menu.
 - **Who walks on your screen** follows your language and country: nisser in the Nordic countries, Wichtel in Germany, Austria and Switzerland, kabouters in the Netherlands, päkapikud in Estonia and Christmas elves everywhere else. You can choose another under *Gnomes or elves* in the menu.
 - Still in Danish only: the advent calendar and its doors, and the notifications.
 

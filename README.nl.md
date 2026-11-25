@@ -16,16 +16,18 @@ Een kleine kerstoverlay voor Windows, macOS en Linux: er valt sneeuw over je bur
 - Het werkt op **alle schermen**. De Kerstman vliegt over schermen die naast elkaar staan.
 - **Het menu:** klik met de rechtermuisknop op het sneeuwvlokje bij de klok in Windows en Linux, of klik erop in de menubalk op macOS, voor de instellingen en de adventskalender. Daar kun je alles aan- en uitzetten.
 - **Adventskalender:** vanaf 1 december kun je elke dag een nieuw deurtje openen. Achter de deurtjes zitten grapjes, gezellige tips en kerstweetjes, en sommige deurtjes starten een effect: de Kerstman, een sneeuwstorm, een feestje of een sterrenregen.
-- **Sneeuwpop:** drie kinderen bouwen in ongeveer een kwartier een sneeuwpop op de taakbalk: ze rollen de ballen, tillen ze op elkaar en geven hem ogen, een wortelneus, knopen, armen, een glimlach, een sjaal en een muts. Als hij klaar is, juichen ze en houden ze een sneeuwballengevecht, en een paar minuten later komt de sneeuwschuiver en rijdt hem omver. Dan gaan de kinderen ergens anders heen en beginnen opnieuw. (Zo is het op Windows. Op macOS en Linux wordt de sneeuwpop nog in 12 dagen gebouwd.)
+- **Sneeuwpop:** drie kinderen bouwen in ongeveer een kwartier een sneeuwpop op de taakbalk: ze rollen de ballen, tillen ze op elkaar en geven hem ogen, een wortelneus, knopen, armen, een glimlach, een sjaal en een muts. Als hij klaar is, juichen ze en houden ze een sneeuwballengevecht, en een paar minuten later komt de sneeuwschuiver en rijdt hem omver. Dan gaan de kinderen ergens anders heen en beginnen opnieuw.
 - **Sneeuwschuiver:** rijdt uit en ruimt de sneeuw als de hoop hoog wordt.
 - **Geluid** staat uit tot je het in het menu aanzet: belletjes en een deuntje voor de Kerstman, motor en claxon voor de sneeuwschuiver.
 - **Herfstthema:** het menu "Thema" verruilt de sneeuw voor vallende bladeren, de Kerstman voor trekganzen en de sneeuwpop voor een vogelverschrikker.
+- **Thema Dag van de Doden:** in hetzelfde menu staat "De dødes dag" (Día de los Muertos): bloemblaadjes van afrikaantjes vallen, skeletten met sombrero lopen onderaan, monarchvlinders vliegen over, papieren vlaggetjes hangen bovenaan en er wordt een altaar gebouwd, één stap voor elk uur dat het programma draait.
+- **Halloweenthema:** in hetzelfde menu staat "Halloween": bladeren vallen, spoken en verklede kinderen lopen onderaan, een heks vliegt over op haar bezem met vleermuizen erachteraan, een snoer met kleine pompoenlantaarns hangt bovenaan, zwarte katten zitten op de vensters en er worden drie pompoenlantaarns uitgesneden, één stap voor elk uur dat het programma draait.
 - De animatie pauzeert vanzelf zolang een app in volledig scherm draait (games, films), en stopt helemaal als het scherm vergrendeld is of in de sluimerstand staat.
 - Een uitgebrachte versie houdt zichzelf up-to-date.
 
 ## Jouw taal, jouw figuurtjes
 
-- **Taal:** het menu verschijnt in de taal van je computer als daar een vertaling voor is (Deens, Engels, Zweeds, Duits, Nederlands), en anders in het Engels. Onder *Taal* in het menu kun je een andere kiezen.
+- **Taal:** het menu verschijnt in de taal van je computer als daar een vertaling voor is (Deens, Engels, Zweeds, Duits, Nederlands, Italiaans, Spaans (ook Mexicaans), Frans, Portugees (ook Braziliaans)), en anders in het Engels. Onder *Taal* in het menu kun je een andere kiezen.
 - **Wie er over je scherm loopt** hangt af van je taal en land: nisser in de Noordse landen, Wichtel in Duitsland, Oostenrijk en Zwitserland, kabouters in Nederland, päkapikud in Estland en kerstelfen in de rest van de wereld. Onder *Kabouters of elfen* in het menu kun je andere kiezen.
 - Voorlopig alleen in het Deens: de adventskalender met zijn deurtjes en de meldingen.
 

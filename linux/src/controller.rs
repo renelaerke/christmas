@@ -15,10 +15,11 @@ use x11rb::protocol::Event;
 
 use crate::calendar::{Calendar, CalendarAction};
 use crate::figures::{Figures, ScreenInfo};
-use crate::folk::{self, Folk};
+use crate::folk;
 use crate::layer::{Layer, PixelStore, Present, SceneState, SNOWMAN_MAX_STAGE};
 use crate::rng::Rng;
 use crate::session::SessionWatch;
+use crate::snowman_build::SnowmanBuild;
 use crate::settings::Settings;
 use crate::sound::{AudioHub, Voice};
 use crate::text;
@@ -51,6 +52,14 @@ struct Sounds {
     /// Autumn's sounds: the geese's two moods (`GOOSE_MOODS`) and the leaf collector's suction.
     geese: Vec<Voice>,
     leaf_suction: Voice,
+    /// De dødes dag: the butterflies' tune, and the donkey cart's hooves and wheel, the broom and the bray.
+    butterfly_tune: Voice,
+    cart_roll: Voice,
+    broom_sweep: Voice,
+    donkey_bray: Voice,
+    /// Halloween: the witch's tune, and the wind the ghosts blow the leaves away with.
+    witch_tune: Voice,
+    ghost_wind: Voice,
     /// This trip's tune (in autumn: the geese's mood).
     jingle: usize,
     horned_this_run: bool,
@@ -77,7 +86,11 @@ pub struct Controller {
     tray_rx: Receiver<TrayMsg>,
     snapshot: Option<(PathBuf, f32)>,
     figures: Figures,
-    /// The snowman's stage today, 1..=12 (checked every 30 seconds, for the day changing at midnight).
+    /// The snowman the children build in the Christmas theme (drawn by the primary screen; it lives here, so it
+    /// survives the screens being rebuilt).
+    build: SnowmanBuild,
+    /// The stage today of what grows by the day (autumn's haystack), 1..=12 (checked every 30 seconds, for the day
+    /// changing at midnight).
     snowman_stage: i32,
     day_timer: f32,
     last_day: NaiveDate,
@@ -149,6 +162,7 @@ impl Controller {
         let snow_phase_a = rng.f64() * 2.0 * std::f64::consts::PI;
         let snow_phase_b = rng.f64() * 2.0 * std::f64::consts::PI;
         let figures_seed = rng.next_u64();
+        let build_seed = rng.next_u64();
         let (display_scale, window_snow_seed) = (display.dpi_scale, rng.next_u64());
         let mut c = Controller {
             display,
@@ -161,6 +175,7 @@ impl Controller {
             tray_rx,
             snapshot: opts.snapshot,
             figures: Figures::new(figures_seed),
+            build: SnowmanBuild::new(build_seed),
             snowman_stage: 1,
             day_timer: 30.0,
             last_day: today,
@@ -200,6 +215,8 @@ impl Controller {
         c.warm_sounds();
         c.build_screens();
         c.figures.autumn = c.cfg.theme == 1;
+        c.figures.muertos = c.cfg.theme == 2;
+        c.figures.halloween = c.cfg.theme == 3;
         if opts.santa {
             let screens = c.screen_infos();
             c.figures.launch_santa(&screens);
@@ -311,12 +328,12 @@ impl Controller {
         if self.snowman_stage > self.cfg.snowman_seen_stage {
             if self.cfg.snowman_seen_stage > 0 && self.cfg.snowman {
                 let at = self.snowman_stage as usize - 1;
-                notice = Some(if self.cfg.theme == 1 {
-                    (text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false)
-                } else {
-                    (text::NOTICE_SNOWMAN_TITLE, text::notice_snowman(text::SNOWMAN_STEPS[at], folk::chosen(self.cfg.folk) == Folk::Alfer), false)
-                });
-                self.celebrate_at = Some(self.time + 2.0);
+                // (only autumn's haystack grows by the day; the Christmas snowman is built while you watch)
+                if self.cfg.theme == 1 {
+                    notice =
+                        Some((text::NOTICE_SCARECROW_TITLE, text::notice_scarecrow(text::SCARECROW_STEPS[at]), false));
+                    self.celebrate_at = Some(self.time + 2.0);
+                }
             }
             self.cfg.snowman_seen_stage = self.snowman_stage;
             self.cfg.save();
@@ -340,10 +357,48 @@ impl Controller {
         self.update_tray();
     }
 
+    /// How far the ofrenda of De dødes dag has come (1..=12): a step for every hour the app has run with that theme.
+    /// Finished, it stands until another theme is chosen; choosing the theme again starts a new altar.
+    fn ofrenda_stage(&self) -> i32 {
+        ((self.cfg.ofrenda_seconds / OFRENDA_STEP_TIME) as i32 + 1).clamp(1, crate::layer::SNOWMAN_MAX_STAGE)
+    }
+
+    /// The ofrenda grows while the app runs with the theme on. Each new step gets sparkles; the last one also a
+    /// notice. The time is kept in the settings (at each step and once a minute), so a restart carries on.
+    /// A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
+    /// runs: the ofrenda of De dødes dag (2), and Halloween's jack-o'-lanterns (3), which share its clock.
+    fn grows_by_hour(&self) -> bool {
+        self.cfg.theme == 2 || self.cfg.theme == 3
+    }
+
+    fn update_ofrenda(&mut self, dt: f32) {
+        let max = crate::layer::SNOWMAN_MAX_STAGE;
+        if !self.grows_by_hour() || !self.cfg.snowman || self.ofrenda_stage() >= max {
+            return;
+        }
+        let (before, was) = (self.ofrenda_stage(), self.cfg.ofrenda_seconds);
+        self.cfg.ofrenda_seconds += dt as f64 * ofrenda_speed();
+        let stage = self.ofrenda_stage();
+        if stage != before {
+            crate::log::debug(&format!("ofrenda: step {stage} of {max}"));
+            self.celebrate_at = Some(self.time + 0.5);
+            if stage == max && self.cfg.theme == 3 {
+                self.session.notify(text::NOTICE_PUMPKINS_TITLE, &text::notice_pumpkins(), false);
+            } else if stage == max {
+                self.session.notify(text::NOTICE_OFRENDA_TITLE, &text::notice_ofrenda(), false);
+            }
+            self.update_tray();
+        }
+        if stage != before || (was / 60.0) as i64 != (self.cfg.ofrenda_seconds / 60.0) as i64 {
+            self.cfg.save();
+        }
+    }
+
     /// Shows the current settings, the snowman's stage and the countdown in the tray menu.
     fn update_tray(&self) {
         let Some(t) = &self.tray else { return };
-        let (cfg, stage, countdown) = (self.cfg.clone(), self.snowman_stage, countdown_text(self.last_day));
+        let stage = if self.grows_by_hour() { self.ofrenda_stage() } else { self.snowman_stage };
+        let (cfg, countdown) = (self.cfg.clone(), countdown_text(self.last_day));
         let autostart = crate::autostart::enabled();
         let _ = t.update(move |tray: &mut crate::tray::AppTray| {
             tray.cfg = cfg;
@@ -362,10 +417,13 @@ impl Controller {
             TrayMsg::Santa => {
                 let screens = self.screen_infos();
                 self.figures.autumn = self.cfg.theme == 1;
+                self.figures.muertos = self.cfg.theme == 2;
+                self.figures.halloween = self.cfg.theme == 3;
                 self.figures.launch_santa(&screens);
             }
             TrayMsg::Plow => {
                 let screens = self.screen_infos();
+                self.figures.halloween = self.cfg.theme == 3;
                 self.figures.send_plow(&screens);
             }
             TrayMsg::Settings(m) => {
@@ -381,6 +439,13 @@ impl Controller {
                     // (a new theme starts from empty screens: nothing of the old one is left falling or lying)
                     if old.theme != self.cfg.theme {
                         self.finish_runs();
+                        // the ofrenda is taken down: a new one is built from its first step the next time De
+                        // dødes dag is chosen
+                        self.cfg.ofrenda_seconds = 0.0;
+                        self.celebrate_at = None;
+                        self.cfg.save();
+                        self.warm_sounds();
+                        self.update_tray();
                     }
                     self.build_screens();
                 }
@@ -521,14 +586,31 @@ impl Controller {
     fn warm_sounds(&mut self) {
         let s = &self.sounds;
         let autumn = self.cfg.theme == 1;
+        let muertos = self.cfg.theme == 2;
         if self.cfg.sound {
-            for j in if autumn { &s.geese } else { &s.jingles } {
-                s.hub.warm(*j);
+            if muertos {
+                s.hub.warm(s.butterfly_tune);
+            } else if self.cfg.theme == 3 {
+                s.hub.warm(s.witch_tune);
+            } else {
+                for j in if autumn { &s.geese } else { &s.jingles } {
+                    s.hub.warm(*j);
+                }
             }
         }
         if self.cfg.plow_sound {
-            for v in [s.plow_engine, if autumn { s.leaf_suction } else { s.plow_scrape }, s.plow_horn] {
-                s.hub.warm(v);
+            if muertos {
+                for v in [s.cart_roll, s.broom_sweep, s.donkey_bray] {
+                    s.hub.warm(v);
+                }
+            } else if self.cfg.theme == 3 {
+                for v in [s.broom_sweep, s.ghost_wind] {
+                    s.hub.warm(v);
+                }
+            } else {
+                for v in [s.plow_engine, if autumn { s.leaf_suction } else { s.plow_scrape }, s.plow_horn] {
+                    s.hub.warm(v);
+                }
             }
         }
     }
@@ -539,10 +621,20 @@ impl Controller {
         let volume = [0.15, 0.35, 0.6][self.cfg.sound_level.clamp(0, 2) as usize];
         let muted = self.cfg.pause_fullscreen && self.fullscreen.is_some();
         let autumn = self.cfg.theme == 1;
+        let muertos = self.cfg.theme == 2;
+        let halloween = self.cfg.theme == 3;
+        let ghosts_blow = self.figures.ghosts_blow;
+        let christmas = !autumn && !muertos && !halloween;
         let storm = self.storm_now;
         let s = &mut self.sounds;
         if self.figures.take_new_trip() {
-            if autumn {
+            if muertos {
+                // the butterflies' tune, at the trip's pace
+                s.hub.set_rate(s.butterfly_tune, self.figures.santa_pace);
+            } else if halloween {
+                // the witch's tune
+                s.hub.set_rate(s.witch_tune, self.figures.santa_pace);
+            } else if autumn {
                 // the geese: alone two trips out of three, otherwise in wind; in a storm always the one with wind
                 s.jingle = usize::from(storm || self.rng.f() < 1.0 / 3.0);
                 s.hub.set_rate(s.geese[s.jingle], self.figures.santa_pace);
@@ -564,8 +656,8 @@ impl Controller {
             // only this trip's tune plays; any other one still fading out keeps being updated until it is silent
             for i in 0..s.jingles.len() {
                 let v = s.jingles[i];
-                if (self.cfg.sound && !autumn && i == s.jingle) || s.hub.playing(v) {
-                    let level = if on && !autumn && i == s.jingle { presence * volume } else { 0.0 };
+                if (self.cfg.sound && christmas && i == s.jingle) || s.hub.playing(v) {
+                    let level = if on && christmas && i == s.jingle { presence * volume } else { 0.0 };
                     s.hub.update(v, level, pan, dt);
                 }
             }
@@ -578,31 +670,63 @@ impl Controller {
                     s.hub.update(v, level, pan, dt);
                 }
             }
+            // the Day of the Dead's butterflies have their own tune (guitar and marimba)
+            if (self.cfg.sound && muertos) || s.hub.playing(s.butterfly_tune) {
+                let level = if on && muertos { presence * depth * volume } else { 0.0 };
+                s.hub.update(s.butterfly_tune, level, pan, dt);
+            }
+            // and Halloween's witch hers
+            if (self.cfg.sound && halloween) || s.hub.playing(s.witch_tune) {
+                let level = if on && halloween { presence * depth * volume } else { 0.0 };
+                s.hub.update(s.witch_tune, level, pan, dt);
+            }
         }
         let plow = &self.figures.plow;
         if self.cfg.plow_sound
             || s.hub.playing(s.plow_engine)
             || s.hub.playing(s.plow_scrape)
             || s.hub.playing(s.leaf_suction)
+            || s.hub.playing(s.cart_roll)
+            || s.hub.playing(s.broom_sweep)
+            || s.hub.playing(s.ghost_wind)
         {
             let (min, max) = self.figures.plow_span();
             let margin = 300.0;
             let presence = ((plow.gx - (min - margin)).min((max + margin) - plow.gx) / margin).clamp(0.0, 1.0);
             let pan = (plow.gx - min) / (max - min).max(1.0) * 2.0 - 1.0;
             let on = plow.active && self.cfg.plow_sound && !muted;
-            s.hub.update(s.plow_engine, if on { presence * volume * 0.8 } else { 0.0 }, pan, dt);
+            let engine = if on && !muertos && !halloween { presence * volume * 0.8 } else { 0.0 };
+            s.hub.update(s.plow_engine, engine, pan, dt);
             // scraping gets louder with the amount of snow in front of the blade
             let load = (plow.pushed / 2000.0).sqrt().min(1.0);
-            let scrape = if on && !autumn { presence * volume * (0.15 + 0.85 * load) } else { 0.0 };
+            let scrape = if on && christmas { presence * volume * (0.15 + 0.85 * load) } else { 0.0 };
             s.hub.update(s.plow_scrape, scrape, pan, dt);
             // in autumn the leaf collector's suction takes the scraping's place
             if autumn || s.hub.playing(s.leaf_suction) {
                 let suction = if on && autumn { presence * volume * (0.55 + 0.45 * load) } else { 0.0 };
                 s.hub.update(s.leaf_suction, suction, pan, dt);
             }
+            // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
+            // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
+            let sweeps = muertos || (halloween && !ghosts_blow);
+            if sweeps || s.hub.playing(s.cart_roll) || s.hub.playing(s.broom_sweep) {
+                let roll = if on && muertos { presence * volume * 0.9 } else { 0.0 };
+                s.hub.update(s.cart_roll, roll, pan, dt);
+                let sweep = if on && sweeps { presence * volume * (0.25 + 0.75 * load) * 0.7 } else { 0.0 };
+                s.hub.update(s.broom_sweep, sweep, pan, dt);
+            }
+            if (halloween && ghosts_blow) || s.hub.playing(s.ghost_wind) {
+                let wind = if on && halloween && ghosts_blow { presence * volume * (0.5 + 0.5 * load) } else { 0.0 };
+                s.hub.update(s.ghost_wind, wind, pan, dt);
+            }
             if on && !s.horned_this_run && presence > 0.6 {
                 s.horned_this_run = true;
-                s.hub.play_once(s.plow_horn, volume, pan);
+                // (the donkey brays where the plow honks; Halloween has nothing there: a truck's honk does not
+                // belong with a witch or ghosts)
+                if !halloween {
+                    let horn = if muertos { s.donkey_bray } else { s.plow_horn };
+                    s.hub.play_once(horn, volume, pan);
+                }
             }
         }
         if !plow.active {
@@ -798,12 +922,22 @@ impl Controller {
             last = now;
             self.time += dt as f64;
             self.timers(dt);
+            self.update_ofrenda(dt);
             let screens = self.screen_infos();
             // The autumn theme: every figure has its autumn form (`SceneState::autumn`), and so have the sounds
             // (`update_sound`).
             let autumn = self.cfg.theme == 1;
+            let muertos = self.cfg.theme == 2;
+            let halloween = self.cfg.theme == 3;
             self.figures.autumn = autumn;
+            self.figures.muertos = muertos;
+            self.figures.halloween = halloween;
             self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
+            // In the Christmas theme children build the snowman; autumn's haystack grows by the day.
+            let children = self.cfg.snowman && !autumn && !muertos && !halloween;
+            if children {
+                self.update_build(dt);
+            }
 
             let amount = self.snow_amount();
             let level = if amount > 1.5 {
@@ -832,7 +966,16 @@ impl Controller {
                 lights: self.cfg.lights,
                 elves: self.cfg.elves,
                 elf_count: self.cfg.elf_count,
-                snowman_stage: if self.cfg.snowman { self.snowman_stage } else { 0 },
+                snowman_stage: if !self.cfg.snowman {
+                    0
+                } else if muertos || halloween {
+                    self.ofrenda_stage()
+                } else if autumn {
+                    self.snowman_stage
+                } else {
+                    0
+                },
+                build: children.then_some(&self.build),
                 santa: self.figures.santa.as_ref(),
                 sparks: &self.figures.sparks,
                 plow: Some(&self.figures.plow),
@@ -841,6 +984,9 @@ impl Controller {
                 clumps: &self.window_snow.clumps,
                 ledge_u: self.display.dpi_scale,
                 autumn,
+                muertos,
+                halloween,
+                ghosts_blow: self.figures.ghosts_blow,
                 folk: folk::chosen(self.cfg.folk),
                 kite: self.cfg.kite,
             };
@@ -925,7 +1071,7 @@ impl Controller {
             if self.cfg.snowman {
                 if let Some(s) = self.screens.iter().find(|s| s.layer.primary) {
                     if let Some(pos) = s.layer.snowman_pos() {
-                        self.figures.snowman_celebrate(pos, s.layer.scale());
+                        self.figures.snowman_celebrate(pos, s.layer.scale(), false);
                     }
                 }
             }
@@ -967,8 +1113,38 @@ impl Controller {
         }
     }
 
-    /// What the screens hand back after a frame: snow the plow scraped up, and elves walking over to a
-    /// neighbouring screen.
+    /// One frame of the children's snowman on the primary screen: it is told where the plow is (which runs it
+    /// down), sparkles fly when it is finished, and a few minutes later the plow is sent (`UpdateBuild` and the
+    /// start of `UpdatePlow` on Windows).
+    fn update_build(&mut self, dt: f32) {
+        let Some(p) = self.screens.iter().position(|s| s.layer.primary) else { return };
+        let layer = &self.screens[p].layer;
+        // (a fullscreen app pauses the screen, and the story with it)
+        if layer.paused() {
+            return;
+        }
+        let (x0, s, width) = (layer.rect.x as f32, layer.scale(), layer.rect.w as f32);
+        let pos = layer.snowman_pos();
+        let plow = &self.figures.plow;
+        let truck = (plow.active && plow.members.contains(&p)).then(|| ((plow.gx - x0) / s, plow.dir));
+        let pushed = self.build.update(dt, width / s, truck);
+        self.figures.plow.pushed += pushed * s;
+        if self.build.just_finished {
+            if let Some(pos) = pos {
+                self.figures.snowman_celebrate(pos, s, true);
+            }
+        }
+        if self.build.wants_plow {
+            self.build.wants_plow = false;
+            if self.cfg.plow && !self.figures.plow.active {
+                let screens = self.screen_infos();
+                self.figures.send_plow(&screens);
+            }
+        }
+    }
+
+    /// What the screens hand back after a frame: snow the plow scraped up, elves walking over to a neighbouring
+    /// screen, and where an elf vanished by magic.
     fn after_frame(&mut self) {
         for i in 0..self.screens.len() {
             self.figures.plow.pushed += self.screens[i].layer.take_pushed();
@@ -983,6 +1159,9 @@ impl Controller {
                 }
             }
             let from_scale = self.screens[i].layer.scale();
+            for (x, y, sc) in self.screens[i].layer.take_magic_puffs() {
+                self.figures.magic_puff((x, y), sc, from_scale);
+            }
             for elf in self.screens[i].layer.take_outgoing_elves() {
                 let rects: Vec<Rect> = self.screens.iter().map(|s| s.layer.rect).collect();
                 if let Some(j) = crate::figures::neighbor(&rects, i, elf.dir()) {
@@ -1081,8 +1260,22 @@ impl Sounds {
             .map(|mood| hub.create_voice(move || crate::sound::geese(mood), true))
             .collect();
         let leaf_suction = hub.create_voice(crate::sound::leaf_suction, true);
+        let butterfly_tune = hub.create_voice(crate::sound::muertos_son, true);
+        let cart_roll =
+            hub.create_voice(|| crate::sound::donkey_cart(crate::figures::donkey_step_cycle()), true);
+        let broom_sweep =
+            hub.create_voice(|| crate::sound::broom_sweep(crate::figures::donkey_step_cycle()), true);
+        let donkey_bray = hub.create_voice(crate::sound::donkey_bray, false);
+        let witch_tune = hub.create_voice(crate::sound::witch_tune, true);
+        let ghost_wind = hub.create_voice(crate::sound::ghost_wind, true);
         Sounds {
             hub,
+            witch_tune,
+            ghost_wind,
+            butterfly_tune,
+            cart_roll,
+            broom_sweep,
+            donkey_bray,
             geese,
             leaf_suction,
             jingles,
@@ -1094,6 +1287,21 @@ impl Sounds {
             santa_last: (0.0, 1.0, 0.0, 1.0),
         }
     }
+}
+
+/// One step of the ofrenda (De dødes dag) takes this long: seconds the app runs with the theme on.
+const OFRENDA_STEP_TIME: f64 = 3600.0;
+
+/// `JULE_SNOWMAN_SPEED=N` builds the ofrenda N times faster too (3600 gives a step a second).
+fn ofrenda_speed() -> f64 {
+    static SPEED: std::sync::OnceLock<f64> = std::sync::OnceLock::new();
+    *SPEED.get_or_init(|| {
+        std::env::var("JULE_SNOWMAN_SPEED")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| *v > 0.0)
+            .map_or(1.0, |v| v.max(0.01))
+    })
 }
 
 /// The snowman gets one more step each day from the first start, up to the finished snowman.

@@ -4,7 +4,9 @@
     python3 tools/sprog-check.py
 
 It reports, and exits with 1 if there is anything:
-  - a text that en.ini has and another language lacks (it would be shown in English)
+  - a text that en.ini has and another language lacks (it would be shown in English); a regional variant
+    (xx-YY.ini, e.g. es-MX.ini) holds only what differs from its language, so it may lack texts, but its
+    language's file must be there
   - a text a language has that en.ini does not (a key that was changed or removed)
   - a key in en.ini that is no longer a text in any of the three versions' code (the Danish text was changed
     in the code, so its translations no longer match)
@@ -42,6 +44,14 @@ for code, (name, texts) in langs.items():
     if not name:
         problems.append(f"{code}.ini: no @name line")
     if code in ("da", "en"):
+        continue
+    if "-" in code:
+        # a regional variant: what it lacks comes from its language's file (es-MX → es → en)
+        if code.split("-")[0] not in langs:
+            problems.append(f"{code}.ini is a variant of {code.split('-')[0]}, but {code.split('-')[0]}.ini is missing")
+        for key in texts:
+            if key not in english:
+                problems.append(f"{code}.ini has a text that en.ini does not: {key}")
         continue
     for key in english:
         if key not in texts:

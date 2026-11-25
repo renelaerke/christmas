@@ -186,12 +186,23 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         guard let maskBuffer = segmentation.results?.first?.pixelBuffer else { return nil }
         // the nisse hat: find the faces in the same camera frame
         // autumn: a sou'wester and a yellow raincoat, and nothing in the beard's place
-        let autumn = c.cfg.theme == Theme.efteraar.rawValue
+        // the Day of the Dead: a crown of marigolds, and calavera make-up in the beard's place; no suit
+        let autumn = c.cfg.theme == Theme.efteraar.rawValue, muertos = c.cfg.theme == Theme.muertos.rawValue
         CameraCostume.autumn = autumn
+        CameraCostume.muertos = muertos
         // and each folk has its own hat, beard and suit (elves and päkapikud have no beard)
         CameraCostume.folk = Folk.chosen(c.cfg.folk)
-        let wantsHat = c.cfg.cameraHat, wantsBeard = c.cfg.cameraBeard && !autumn && CameraCostume.look.beard > 0, wantsSuit = c.cfg.cameraSuit
-        let wantsCostume = wantsBeard || wantsSuit   // both need the face landmarks
+        // Halloween: a witch's hat, and nothing in the beard's or the suit's place
+        let halloween = c.cfg.theme == Theme.halloween.rawValue
+        CameraCostume.halloween = halloween
+        // (the two are alternatives, chosen in the menu; the pumpkin head is part of the hat's drawing)
+        CameraCostume.witchHat = !halloween || c.cfg.cameraHalloween == 1
+        CameraCostume.pumpkinHead = halloween && c.cfg.cameraHalloween == 2
+        let wantsHat = halloween ? c.cfg.cameraHalloween != 0 : c.cfg.cameraHat
+        let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && !halloween && CameraCostume.look.beard > 0
+        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween
+        let wantsMakeup = c.cfg.cameraBeard && muertos
+        let wantsCostume = wantsBeard || wantsSuit || wantsMakeup   // all need the face landmarks
         let now = CACurrentMediaTime()
         let dt = CGFloat(min(0.2, now - lastFrameTime)); lastFrameTime = now
         var faces: [VNFaceObservation] = [], landmarks: [VNFaceObservation] = []
@@ -228,6 +239,10 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             costume.update(landmarks, extent: camImage.extent, transform: fill, dt: dt)
         }
         if wantsSuit { cam = costume.applySuit(to: cam, mask: mask, heads: hat.headOutlines) }
+        // Halloween's witch: black clothes and green skin with the hat and the nose
+        if halloween && c.cfg.cameraHalloween == 1 { cam = costume.applyWitch(to: cam, mask: mask) }
+        // the make-up is on the skin, so it too goes in before the cutout
+        if wantsMakeup { cam = costume.applyMakeup(to: cam) }
         let bg = aspectFill(background, W, H)
         guard let blend = CIFilter(name: "CIBlendWithMask", parameters: [
             kCIInputImageKey: cam, kCIInputBackgroundImageKey: bg, kCIInputMaskImageKey: mask]),

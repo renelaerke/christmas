@@ -40,10 +40,23 @@ pub(super) struct LightsImage {
     timer: f32,
     /// The autumn theme's form: a vine of leaves with small lanterns (`MakeGarland` on Windows).
     autumn: bool,
+    /// De dødes dag's form: papel picado, flags of cut paper with no lights of their own (so there are no bulbs).
+    muertos: bool,
+    /// Halloween's form: small pumpkin lanterns where the bulbs are, and sleeping bats on the string between them.
+    halloween: bool,
+}
+
+/// Which form the strip has (the theme's).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct LightsForm {
+    pub autumn: bool,
+    pub muertos: bool,
+    pub halloween: bool,
 }
 
 impl LightsImage {
-    fn new(w: i32, h: i32, s: f64, autumn: bool, leaves: &[Vec<u32>]) -> Res<LightsImage> {
+    fn new(w: i32, h: i32, s: f64, form: LightsForm, leaves: &[Vec<u32>]) -> Res<LightsImage> {
+        let LightsForm { autumn, muertos, halloween } = form;
         let (span, sag, top) = (230.0 * s, 22.0 * s, 1.0);
         let mut wire = Image::new(w, h)?;
         let mut bulbs = Vec::new();
@@ -57,12 +70,15 @@ impl LightsImage {
                 .collect();
             wire.cr.new_path();
             curve_path(&wire.cr, &pts);
-            if autumn {
+            if muertos || halloween {
+                stroke(&wire.cr, (200, 40, 30, 36), 2.0 * s, LineCap::Round);
+            } else if autumn {
                 stroke(&wire.cr, (235, 104, 68, 34), 2.0 * s, LineCap::Round);
             } else {
                 stroke(&wire.cr, (220, 25, 60, 35), 2.0 * s, LineCap::Butt);
             }
-            for b in 0..PER_SPAN {
+            // (the papel picado has no lights: nothing twinkles, and the flags are drawn below)
+            for b in (0..PER_SPAN).filter(|_| !muertos) {
                 let u = (b as f64 + 0.5) / PER_SPAN as f64;
                 let (x, y) = (x0 + u * span, top + sag * (1.0 - (2.0 * u - 1.0) * (2.0 * u - 1.0)));
                 let index = bulbs.len();
@@ -83,6 +99,18 @@ impl LightsImage {
             x0 += span;
         }
         wire.surface.flush();
+        if muertos {
+            super::muertos::papel_picado(&wire.cr, w as f64, s);
+            wire.surface.flush();
+        }
+        if halloween {
+            // sleeping bats on the string, and the unlit lanterns (their lit forms twinkle over them)
+            super::halloween::sleeping_bats(&wire.cr, w as f64, s);
+            for b in &bulbs {
+                super::halloween::garland_pumpkin(&wire.cr, b.x, b.y, s, None);
+            }
+            wire.surface.flush();
+        }
         if autumn {
             // leaves along the vine, each hanging by its stalk at its own angle (none where a lantern hangs)
             let (sf, mut n) = (s as f32, 0usize);
@@ -118,7 +146,7 @@ impl LightsImage {
             wire.surface.flush();
         }
         let current = Image::new(w, h)?;
-        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn };
+        let mut l = LightsImage { current, wire, bulbs, h, w, timer: 0.0, autumn, muertos, halloween };
         l.current.pixels.copy_from_slice(&l.wire.pixels);
         Ok(l)
     }
@@ -137,7 +165,12 @@ impl LightsImage {
         }
         cur.surface.mark_dirty();
         for b in &self.bulbs {
-            if self.autumn {
+            if self.halloween {
+                // the same slow twinkle as the bulbs
+                let (idx, t) = (b.index, time);
+                let br = 0.55 + 0.45 * (t * (1.3 + ((idx * 37) % 10) as f64 * 0.12) + idx as f64 * 1.7).sin();
+                super::halloween::garland_pumpkin(&cur.cr, b.x, b.y, s, Some(br));
+            } else if self.autumn {
                 draw_lantern(&cur.cr, b, s, time);
             } else {
                 draw_bulb(&cur.cr, b, s, time);
@@ -221,8 +254,10 @@ impl Layer {
             }
             return;
         }
-        if self.lights.as_ref().is_none_or(|l| l.h != lh || l.autumn != st.autumn) {
-            match LightsImage::new(self.w, lh, self.s as f64, st.autumn, &self.leaf_sprites) {
+        let form = LightsForm { autumn: st.autumn, muertos: st.muertos, halloween: st.halloween };
+        let shown = |l: &LightsImage| LightsForm { autumn: l.autumn, muertos: l.muertos, halloween: l.halloween };
+        if self.lights.as_ref().is_none_or(|l| l.h != lh || shown(l) != form) {
+            match LightsImage::new(self.w, lh, self.s as f64, form, &self.leaf_sprites) {
                 Ok(l) => self.lights = Some(l),
                 Err(e) => {
                     crate::log::error(&format!("lights: {e}"));

@@ -7,8 +7,9 @@ final class Settings {
         pauseFullscreen = true, snowman = true, allScreens = true, plow = true,
         cameraPausesScreens = true, windowSnow = true, cameraHat = true, cameraFront = true, cameraBeard = true, cameraSuit = true,
         sound = false, plowSound = false   // lyd er slået fra, indtil man selv slår den til
-    var theme = 0              // 0 = jul, 1 = efterår (Theme)
+    var theme = 0              // 0 = jul, 1 = efterår, 2 = de dødes dag (Theme)
     var kite = true            // efterårets drage
+    var cameraHalloween = 1    // Halloween i kameraet: 0 = ingen udklædning, 1 = heksehat, 2 = græskarhoved
     var folk = 0               // 0 = automatisk efter sprog og land, ellers 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud (Folk)
     var autoUpdate = true      // install new GitHub releases by itself
     var lastVersion = ""       // the version that ran last time, to announce an update
@@ -19,6 +20,7 @@ final class Settings {
     var soundLevel = 1         // 0 = lav, 1 = middel, 2 = høj
     var frameRate = 20         // billeder/s når scenen er rolig (12, 20, 30 eller 60)
     var snowmanSeenStage = 0
+    var ofrendaSeconds = 0.0   // how long the ofrenda (De dødes dag) has been built on: a step for every hour the app runs
     var calendarYear = 0
     var firstRun: Date? = nil, lastDoorNotice: Date? = nil
     var openedDoors = Set<Int>()
@@ -69,12 +71,14 @@ final class Settings {
         s.frameRate = [12, 20, 30, 60].contains(i("FrameRate", 20)) ? i("FrameRate", 20) : 20
         s.theme = Theme(rawValue: i("Theme", 0)) != nil ? i("Theme", 0) : 0
         s.kite = b("Kite", s.kite)
+        s.cameraHalloween = max(0, min(2, i("CameraHalloween", s.cameraHalloween)))
         s.folk = Folk(rawValue: i("Folk", s.folk)) != nil ? i("Folk", s.folk) : 0
         s.autoUpdate = b("AutoUpdate", s.autoUpdate)
         s.lastVersion = d["LastVersion"] ?? ""
         s.language = d["Language"] ?? ""
         Lang.setting = s.language
         s.snowmanSeenStage = i("SnowmanSeenStage", 0)
+        s.ofrendaSeconds = max(0, Double(d["OfrendaSeconds"] ?? "") ?? 0)
         s.calendarYear = i("CalendarYear", 0)
         s.firstRun = d["FirstRun"].flatMap(JuleClock.parse)
         s.lastDoorNotice = d["LastDoorNotice"].flatMap(JuleClock.parse)
@@ -93,8 +97,8 @@ final class Settings {
             "Nisser=" + b(nisser), "Lights=" + b(lights), "PauseFullscreen=" + b(pauseFullscreen),
             "Snowman=" + b(snowman), "AllScreens=" + b(allScreens), "Plow=" + b(plow), "WindowSnow=" + b(windowSnow), "CameraHat=" + b(cameraHat), "CameraFront=" + b(cameraFront), "CameraBeard=" + b(cameraBeard), "CameraSuit=" + b(cameraSuit), "Sound=" + b(sound), "CameraPausesScreens=" + b(cameraPausesScreens), "PlowSound=" + b(plowSound), "SoundLevel=\(soundLevel)",
             "SnowLevel=\(snowLevel)", "NisseCount=\(nisseCount)", "PowerSave=\(powerSave)", "FrameRate=\(frameRate)",
-            "Theme=\(theme)", "Kite=" + b(kite), "Folk=\(folk)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
-            "SnowmanSeenStage=\(snowmanSeenStage)", "CalendarYear=\(calendarYear)",
+            "Theme=\(theme)", "Kite=" + b(kite), "CameraHalloween=\(cameraHalloween)", "Folk=\(folk)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
+            "SnowmanSeenStage=\(snowmanSeenStage)", "OfrendaSeconds=\(Int(ofrendaSeconds))", "CalendarYear=\(calendarYear)",
             "FirstRun=" + ds(firstRun), "LastDoorNotice=" + ds(lastDoorNotice),
             "OpenedDoors=" + openedDoors.sorted().map(String.init).joined(separator: ","),
         ]
