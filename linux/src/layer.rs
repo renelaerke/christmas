@@ -28,6 +28,7 @@ mod halloween;
 mod ledges;
 mod lights;
 mod muertos;
+mod nytaar;
 mod plow;
 mod santa;
 mod snowman;
@@ -35,7 +36,7 @@ mod snowman;
 pub use elves::Elf;
 pub use snowman::MAX_STAGE as SNOWMAN_MAX_STAGE;
 
-use crate::figures::{PlowRun, Santa, Spark};
+use crate::figures::{Ember, PlowRun, Rocket, Santa, Spark};
 use crate::folk::Folk;
 use crate::rng::Rng;
 use crate::snowman_build::SnowmanBuild;
@@ -98,18 +99,34 @@ pub struct SceneState<'a> {
     pub folk: Folk,
     /// Autumn's kite over the primary screen (setting `Kite`).
     pub kite: bool,
+    /// New Year (setting `Theme` = 4): confetti for snow, and every figure in its New Year form
+    /// (`layer/nytaar.rs`).
+    pub nytaar: bool,
+    /// New Year's rockets on their way up and the sparks of their bursts (and of the numbers written in sparks),
+    /// in global coordinates.
+    pub rockets: &'a [Rocket],
+    pub embers: &'a [Ember],
+    /// What New Year's clock shows: the hour hand's and the minute hand's turn (0..1 round the face), and the
+    /// second hand's in the last minute before midnight. `clock_key` changes whenever a hand has moved enough to
+    /// be drawn again (every minute; every second in the last one).
+    pub clock: (f64, f64, Option<f64>),
+    pub clock_key: i32,
+    /// The last minutes before midnight: the guests on the clock's screen stand round it.
+    pub gather: bool,
 }
 
 impl SceneState<'_> {
     /// Leaves or petals instead of snow (autumn and De dødes dag): fewer and bigger pictures, turning as they fall.
     pub fn leaves(&self) -> bool {
-        self.autumn || self.muertos || self.halloween
+        self.autumn || self.muertos || self.halloween || self.nytaar
     }
 
     /// The dark between the leaves (or petals) of a pile; None when the pile is snow.
     pub fn pile_fill(&self) -> Option<draw::Argb> {
         if self.muertos {
             Some((245, 168, 72, 8))
+        } else if self.nytaar {
+            Some((245, 92, 70, 120))
         } else if self.halloween {
             Some((245, 96, 46, 20))
         } else if self.autumn {
@@ -390,6 +407,8 @@ pub struct Layer {
     /// the marigold petals of De dødes dag (`muertos::make_petal_sprites`). See `use_fall_sprites`.
     leaf_sprites: Vec<Vec<u32>>,
     petals: bool,
+    /// ... or, when `confetti`, New Year's confetti and streamers (`nytaar::make_confetti_sprites`).
+    confetti: bool,
 }
 
 impl Layer {
@@ -460,6 +479,7 @@ impl Layer {
             clumps_landed: Vec::new(),
             leaf_sprites: make_leaf_sprites()?,
             petals: false,
+            confetti: false,
         })
     }
 
@@ -529,15 +549,22 @@ impl Layer {
     /// Leaves or petals: the pictures follow the theme (the controller builds the screens anew when it changes, so
     /// nothing cached was laid out with the other set).
     fn use_fall_sprites(&mut self, st: &SceneState) {
-        if st.muertos == self.petals {
+        if st.muertos == self.petals && st.nytaar == self.confetti {
             return;
         }
-        let made = if st.muertos { muertos::make_petal_sprites() } else { make_leaf_sprites() };
+        let made = if st.nytaar {
+            nytaar::make_confetti_sprites()
+        } else if st.muertos {
+            muertos::make_petal_sprites()
+        } else {
+            make_leaf_sprites()
+        };
         match made {
             Ok(sprites) => self.leaf_sprites = sprites,
             Err(e) => crate::log::error(&format!("petals: {e}")),
         }
         self.petals = st.muertos;
+        self.confetti = st.nytaar;
     }
 
     // ------------------------------------------------------------------ one frame
@@ -590,7 +617,9 @@ impl Layer {
         self.draw_build(st);
         self.draw_ledge_candles(st);
         self.draw_ledge_spooks(st);
+        self.draw_ledge_party(st);
         self.draw_santa_and_sparks(st);
+        self.draw_embers(st);
         self.draw_kite(dt, st);
         self.draw_elves(st, st.folk);
         self.draw_plow(st);
@@ -667,7 +696,13 @@ impl Layer {
         let lower = (amount as usize).min(1);
         // (leaves are much bigger than flakes, so far fewer are needed)
         let wanted = (BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32))
-            * if st.leaves() { 0.2 } else { 1.0 };
+            * if st.nytaar {
+                0.4 // (confetti is smaller than a leaf: twice as many)
+            } else if st.leaves() {
+                0.2
+            } else {
+                1.0
+            };
         let logical_area = self.w as f32 * self.h as f32 / (self.dpi_scale * self.dpi_scale);
         // Snow covers the whole screen also in power-save mode; power-save only lowers the frame rate.
         let target = if st.snow_on {
@@ -851,6 +886,12 @@ impl Layer {
             f.crystal = false;
             f.rot_spd = (self.rng.f() - 0.5) * 5.0;
             f.kind = self.rng.range(0, LEAF_KINDS as i32) as usize;
+            if st.nytaar {
+                // confetti: smaller and lighter than a leaf, fluttering down slowly and turning fast
+                f.r = (3.5 + depth * 4.5) * s;
+                f.vy = (24.0 + depth * 30.0 + self.rng.f() * 16.0) * s * if st.snow_level == 2 { 1.4 } else { 1.0 };
+                f.rot_spd = (self.rng.f() - 0.5) * 9.0;
+            }
         }
         f
     }
@@ -1064,6 +1105,12 @@ mod tests {
             ghosts_blow: false,
             folk: Folk::Nisser,
             kite: false,
+            nytaar: false,
+            rockets: &[],
+            embers: &[],
+            clock: (0.0, 0.0, None),
+            clock_key: 0,
+            gather: false,
         }
     }
 
@@ -1396,6 +1443,74 @@ mod tests {
         let x0 = (1280.0 * 0.78) as usize;
         let above = (640..690).any(|y| (x0 - 30..x0 + 30).any(|x| background[y * w as usize + x] >> 24 > 200));
         assert!(above, "no ofrenda in the ground image");
+    }
+
+    #[test]
+    fn new_year_leaves_no_trails() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its New Year form: the pennants, bulbs and paper lanterns, the
+        // guests (gathering at the clock in the second half), the decorated clock with its hands moving, volleys
+        // of rockets, a number written in sparks, a window with a popper and sparklers, and the street sweeper
+        let rect = Rect::new(0, 0, 1280, 720);
+        let mut l = Layer::new(rect, true, 1.0, 19).unwrap();
+        l.heap.fill(18.0 * l.s);
+        let mut f = Figures::new(9);
+        f.nytaar = true;
+        let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+        f.launch_santa(&info(&l));
+        f.send_plow(&info(&l));
+        let mut ws = WindowSnow::new(1.0, 5);
+        let win = WinInfo { id: 1, rect: FRect { x: 100.0, y: 400.0, w: 900.0, h: 300.0 }, visible: vec![(106.0, 994.0)] };
+        ws.update_ledges(vec![win]);
+        let mut t = 5.0;
+        let mut seen = 0usize;
+        for i in 0..1200 {
+            t += 0.05;
+            f.update(0.05, t, &info(&l), true, true);
+            if i == 600 {
+                f.write_in_sparks(7, (1000.0, 300.0), 60.0, 0.95, 1.0);
+            }
+            seen = seen.max(f.embers.len());
+            // (the clock runs a minute a second here, and has its second hand in the second half)
+            let turn = t / 60.0;
+            let st = SceneState {
+                time: t,
+                nytaar: true,
+                lights: true,
+                elves: true,
+                snow_amount: 2.0,
+                snowman_stage: 12,
+                rockets: &f.rockets,
+                embers: &f.embers,
+                clock: (turn / 12.0, turn.fract(), (i > 600).then_some((t * 3.0).fract())),
+                clock_key: (t * 3.0) as i32,
+                gather: i > 600,
+                plow: Some(&f.plow),
+                ledges: &ws.ledges,
+                clumps: &ws.clumps,
+                ..state()
+            };
+            l.frame(0.05, &st);
+            f.plow.pushed += l.take_pushed();
+            for (li, x, r) in l.take_ledge_hits() {
+                ws.ledges[li].deposit(x, r);
+            }
+            ws.update(0.05, false, false, 0.0, 720.0);
+        }
+        assert!(l.confetti && !l.petals, "the confetti's pictures are not in use");
+        assert!(seen > 60, "no rocket ever burst ({seen} sparks at most)");
+        let background = l.background();
+        let w = l.width();
+        for (i, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+            let (x, y) = (i as i32 % w, i as i32 / w);
+            let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+            assert!(*p == *b || drawn, "stale pixel at {x},{y}");
+        }
+        // the clock stands in the cached ground: something of it shows above the pile
+        let x0 = (1280.0 * 0.78) as usize;
+        let above = (620..690).any(|y| (x0 - 20..x0 + 20).any(|x| background[y * w as usize + x] >> 24 > 200));
+        assert!(above, "no clock in the ground image");
     }
 
     #[test]

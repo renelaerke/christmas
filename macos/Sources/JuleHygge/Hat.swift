@@ -247,6 +247,9 @@ final class NisseHat {
         /// The crown's height above the eye line as a share of the head's breadth, learned while the head is seen
         /// straight on (see `parts`); nil until then.
         var crownShare: Double?
+        /// The chin's depth below the eye line as a share of the head's breadth (negative), learned the same way:
+        /// while the head is seen straight on. For what must keep its size when the head turns (the pumpkin head).
+        var chinShare: Double?
         var sums = (cc: 0.0, cs: 0.0, ss: 0.0, bc: 0.0, bs: 0.0)
         // ---- steadying
         var fOrigin = [OneEuro(minCutoff: 0.9, beta: 0.03), OneEuro(minCutoff: 0.9, beta: 0.03)]
@@ -656,6 +659,7 @@ final class NisseHat {
 
     /// The last crown share learned from any head (see `parts`).
     private var crownShareSeen: Double?
+    private var chinShareSeen: Double?
     private enum Item { case quad([V], CGColor), ball(V, Double, Double), disc(V, Double, CGColor), flower(V, Double, Int, Double) }
     private static let light = simd_normalize(V(-0.45, 0.6, 0.7))
 
@@ -674,6 +678,11 @@ final class NisseHat {
             let s = t.crownV / U
             t.crownShare = t.crownShare.map { $0 + (s - $0) * 0.05 } ?? s
             crownShareSeen = t.crownShare
+            if t.chinV < -0.5 * U {
+                let c = t.chinV / U
+                t.chinShare = t.chinShare.map { $0 + (c - $0) * 0.05 } ?? c
+                chinShareSeen = t.chinShare
+            }
         }
         let vc = g.centre.y, vLow = -Self.below * U
         // (a head that is found again after a quick move starts as a new one: until it has been seen straight
@@ -735,14 +744,32 @@ final class NisseHat {
         }
         func depthOnAxis(_ v: Double) -> Double { (v - vc) * Y.z / Y.y }
         var Qb = V(0, 0, 0)
-        if !autumn {
+        // (the paper cone has no bend, and needs nothing from the outline above the brim)
+        if !autumn && !look.cone {
             guard let (bl, br) = Self.row(poly, vBend) else { return nil }
             Qb = V((bl + br) / 2, vBend, depthOnAxis(vBend))
         }
 
         let M = 38, segs = 36
         var rings: [[V]] = [], centres: [V] = []
-        for j in 0...M {
+        // A stiff paper hat is a true cone: it stands on the band's own ring and points along that ring's axis, so
+        // it tilts, turns and nods with the band as one thing. (Built like the cloth, from level rows of the
+        // outline, it stood upright in the picture while its band tilted with the head: REL, live, 2026-11-25.)
+        let coneTip: V = g.centre + g.N * ((top - vc) + L)
+        if look.cone {
+            let base = (0..<segs).map { i -> V in
+                let ph = Double(i) / Double(segs) * 2 * .pi, sp = sin(ph), cp = cos(ph)
+                let nrm: V = simd_normalize((k * sp) * X + cp * g.B)
+                let onRing: V = g.centre + (g.a * sp) * X + (g.a * k * cp) * g.B
+                return onRing + nrm * (rf * 0.85)
+            }
+            for j in 0...M {
+                let w = Double(j) / Double(M) * 0.985
+                rings.append(base.map { $0 + (coneTip - $0) * w })
+                centres.append(g.centre + (coneTip - g.centre) * w)
+            }
+        }
+        for j in 0...M where !look.cone {
             let v = vc + Double(j) / Double(M) * 0.97 * (apex.y - vc)
             guard let (l, r) = Self.row(poly, v) else { continue }
             let h = (r - l) / 2
@@ -788,10 +815,14 @@ final class NisseHat {
                 if nrm.z < -0.02 { continue }   // faces away from the camera
                 let diffuse = max(0, simd_dot(nrm, lightH)), spec = pow(max(0, simd_dot(nrm, halfway)), 16) * 0.22
                 let shade = 0.32 + 0.68 * diffuse
+                // (a striped hat: two bands round its upper half in the second colour. Stripes running up the hat
+                // were tried first, then three bands; REL 2026-11-25: rings work better, and two are enough)
+                let part = j * 7 / (rings.count - 1)
+                let cloth = part == 3 || part == 5 ? (look.stripe ?? look.cloth) : look.cloth
                 let col = autumn
                     ? CGColor(srgbRed: min(1, 0.97 * shade + spec), green: min(1, 0.77 * shade + spec), blue: min(1, 0.08 * shade + spec * 0.8), alpha: 1)
-                    : CGColor(srgbRed: min(1, look.cloth.r * shade + spec), green: min(1, look.cloth.g * shade + spec * 0.9),
-                              blue: min(1, look.cloth.b * shade + spec * 0.9), alpha: 1)
+                    : CGColor(srgbRed: min(1, cloth.r * shade + spec), green: min(1, cloth.g * shade + spec * 0.9),
+                              blue: min(1, cloth.b * shade + spec * 0.9), alpha: 1)
                 front.append((m.z, .quad(q, col)))
             }
         }
@@ -866,7 +897,7 @@ final class NisseHat {
             }
         }
         // at the tip: the nisse's pompom, the elf's bell, or nothing
-        let tip = Qb + bent(1)
+        let tip = look.cone ? coneTip : Qb + bent(1)
         switch look.tip {
         case .pompom: front.append((tip.z + Self.pompom * U, .ball(tip, Self.pompom * U, 0.9)))
         case .bell: front.append((tip.z + Self.pompom * U, .disc(tip, Self.pompom * U * 0.8, CGColor(srgbRed: 0.92, green: 0.76, blue: 0.27, alpha: 1))))
@@ -1074,11 +1105,69 @@ final class NisseHat {
     /// the head's own measures. Returned as parts in front of the head, to be drawn before the hat.
     private func pumpkinHead(_ t: Track, _ g: Ring, top: Double, lightH: V) -> [(Double, Item)] {
         let U = t.U, X = g.X, Y = g.Y, Z = g.Z
-        // the chin as measured, or where an ordinary chin is until it has been
-        let chin = t.chinV < -0.5 * U ? t.chinV : -1.3 * U
+        // A pumpkin keeps its size when the head turns, but the head's measures in the picture do not: the chin is a
+        // landmark of the face analysis, which sits up on the jaw when the head is seen from the side, and the crown
+        // reads low there too. Built on those two in every frame, the ball shrank by a third at a turn of 50°, and
+        // jaw and nose stood out of it (REL 2026-11-25: "drawn in front of my head, not round it"). So its height
+        // is the head's own, crown to chin, learned as shares of the head's breadth while it is seen straight on
+        // (until then: what is measured now, but never less than an ordinary head).
+        let crownS = t.crownShare ?? crownShareSeen ?? max(top / U, 1.2)
+        let chinS = t.chinShare ?? chinShareSeen ?? min(t.chinV / U, -1.4)
+        let tall = (crownS - chinS) * U
         // (a pumpkin is broader than it is tall)
-        let ry = (top - chin) / 2 * 1.08, rx = max(max(g.widest, U) * 1.3, ry * 1.12), rz = rx * 0.95
-        let centre = V(g.centre.x, (top + chin) / 2, 0)
+        var ry = tall / 2 * 1.08, rx = max(max(g.widest, U) * 1.3, ry * 1.12)
+        // ... and never smaller than the head as it is in the picture now: wider than the outline at its widest
+        // (turned, that is the head's depth), and reaching below the chin where the chin is measured lower
+        var across = 0.0
+        let from = min(0, g.centre.y)
+        for i in 0...16 {
+            let (l, r) = Self.outline(t, at: from + (t.crownV - from) * Double(i) / 19)
+            across = max(across, (r - l) / 2)
+        }
+        rx = max(rx, across * 1.1)
+        let chin = min(top - tall, t.chinV)
+        ry = max(ry, (top - chin) / 2 * 1.08)
+        var centre = V(g.centre.x, (top + chin) / 2, 0)
+        // Where it sits: round everything that is known of the head in this frame at once. That is the outline
+        // on both sides from a little under the eyes to the crown (turned, one side is the back of the head with its
+        // hair), the top, the chin, and the face's front: the point under the nose and the nose's tip, the tip
+        // taken a little further out the way the head faces. The ball is put at the middle of the smallest ball
+        // of its own shape that holds all of them, and grows only if that one is larger than the size learned.
+        // (Moved toward nose and chin alone, the back of the head came out of it on the other side: REL, live,
+        // 2026-11-25.)
+        var hold: [P2] = [P2(centre.x, top), P2(t.chinX, chin - 0.08 * U), P2(centre.x, chin)]
+        // (the outline from half a head's breadth under the eyes and up: lower down it is neck, collar and
+        // shoulders, and with those in it the ball grew down over the chest)
+        let low = -0.5 * U
+        for i in 0...20 {
+            let v = low + (t.crownV - low) * Double(i) / 20
+            let (l, r) = Self.outline(t, at: v)
+            hold.append(P2(l, v)); hold.append(P2(r, v))
+        }
+        if let p = t.noseUnder { hold.append(P2(Double(p.x), Double(p.y))) }
+        if let p = t.noseTip { hold.append(P2(Double(p.x) + Z.x * 0.3 * U, Double(p.y) + Z.y * 0.3 * U)) }
+        // (the smallest enclosing circle, in units of the ball's own half-axes: step toward the farthest point,
+        // each step shorter than the last)
+        let unit = P2(rx, ry)
+        var mid = P2(centre.x, centre.y) / unit
+        var reach = 0.0
+        for n in 1...120 {
+            var far = mid
+            reach = 0
+            for p in hold { let d = simd_length(p / unit - mid); if d > reach { reach = d; far = p / unit } }
+            if n < 120 { mid += (far - mid) / Double(n + 1) }
+        }
+        centre.x = mid.x * rx; centre.y = mid.y * ry
+        let grow = max(1, reach * 1.05)
+        rx *= grow; ry *= grow
+        let rz = rx * 0.95
+        // (HUE_GRAESKAR_MAAL=1 prints what the ball is built from and draws it half see-through in the replay, so
+        // the head inside it can be seen)
+        let see = ProcessInfo.processInfo.environment["HUE_GRAESKAR_MAAL"] != nil
+        if see {
+            print(String(format: "græskar: U %.0f bredest %.0f, omrids nu %.0f | isse målt %.0f, brugt %.0f | hage målt %.0f, brugt %.0f | andele isse %.2f hage %.2f | rx %.0f ry %.0f | drej %.2f nik %.2f",
+                         U, g.widest, across, t.crownV, top, t.chinV, chin, crownS, chinS, rx, ry, t.yaw, t.pitch))
+        }
         let lobes = 5.0
         func point(_ ph: Double, _ th: Double, _ lift: Double) -> V {
             // the ribs: the ball swells between the grooves that run from the stalk down
@@ -1103,7 +1192,7 @@ final class NisseHat {
                 let groove = 0.80 + 0.20 * abs(cos(lobes * (p0 + p1) / 2))
                 let shade = (0.40 + 0.60 * max(0, simd_dot(nrm, lightH))) * groove
                 // (keyed far back, so the hat's cloth, band and brim are drawn over it)
-                out.append((-1e6 + m.z, .quad(q, CGColor(srgbRed: min(1, 1.0 * shade), green: min(1, 0.50 * shade), blue: min(1, 0.10 * shade), alpha: 1))))
+                out.append((-1e6 + m.z, .quad(q, CGColor(srgbRed: min(1, 1.0 * shade), green: min(1, 0.50 * shade), blue: min(1, 0.10 * shade), alpha: see ? 0.4 : 1))))
             }
         }
         // ---- the face cut through it, lit by the candle inside: each hole is one shape lying on the ball

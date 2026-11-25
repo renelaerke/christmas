@@ -314,6 +314,7 @@ extension NisseHat {
             // (HUE_HALLOWEEN=1 replays the witch's hat: nothing in the beard's or the suit's place)
             var out = muertos ? costume.applyMakeup(to: src)
                 : CameraCostume.halloween ? (CameraCostume.pumpkinHead ? src : costume.applyWitch(to: src, mask: mask))
+                : CameraCostume.nytaar ? src   // (HUE_NYTAAR=1: the paper hat alone)
                 : costume.applySuit(to: src, mask: mask, heads: hat.headOutlines)
             if muertos, let cg = GPU.ciContext.createCGImage(out, from: src.extent) {
                 // (rendered here only to time it: what the camera pays for the make-up, model included)

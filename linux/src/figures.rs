@@ -18,6 +18,52 @@ pub struct Spark {
     pub star: bool,
 }
 
+/// A spark of New Year's rockets: of a burst (in the burst's colour, an index into the confetti's colours), of a
+/// rocket's tail (no colour: gold), or one dot of a number written in sparks (`holds`: it stays fully lit and only
+/// fades at the very end). It is slowed by the air (`drag`, per second) and sinks with its own weight.
+pub struct Ember {
+    pub x: f32,
+    pub y: f32,
+    vx: f32,
+    vy: f32,
+    pub life: f32,
+    pub max: f32,
+    pub size: f32,
+    pub colour: Option<usize>,
+    pub holds: bool,
+    drag: f32,
+    gravity: f32,
+}
+
+/// One of New Year's rockets on its way up, in global coordinates: it bursts when it reaches `burst_y`.
+pub struct Rocket {
+    pub x: f32,
+    pub y: f32,
+    vy: f32,
+    burst_y: f32,
+    pub scale: f32,
+    sway: f32,
+    trail: f32,
+    colour: usize,
+}
+
+/// How many colours a burst can have (the confetti's, `layer/nytaar.rs`).
+const BURST_COLOURS: i32 = 7;
+
+/// The digits, written as dots on a grid of five by seven.
+const DIGIT_DOTS: [[&str; 7]; 10] = [
+    ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+    ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+    ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+    ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+    ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+    ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+    ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+    ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+    ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+    ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+];
+
 pub struct Santa {
     pub x: f32,
     y0: f32,
@@ -107,6 +153,19 @@ pub struct Figures {
     plow_forms: Vec<bool>,
     /// How near this trip passes (0.5 far .. 1.2 near; 1 at Christmas): far geese call more quietly.
     pub flyer_depth: f32,
+    /// New Year (set by the controller): the flyer in Santa's place is a volley of rockets. Each rises from the
+    /// bottom of a screen with a tail of sparks and bursts in a band across the top into one soft bloom of
+    /// coloured sparks, which fades over a second or two (never a flash, and nothing below the top band). The
+    /// volley keeps Santa's schedule and his switch, and counts as "Santa is flying" for the frame rate and the
+    /// tune: while it lasts `santa` is set (standing still in the middle), but no figure is drawn for it.
+    pub nytaar: bool,
+    pub rockets: Vec<Rocket>,
+    pub embers: Vec<Ember>,
+    /// How long this volley lasts, the time to its next rocket, and the average time between two rockets on one
+    /// screen.
+    volley_length: f32,
+    volley_next: f32,
+    volley_gap: f32,
 }
 
 /// The screen directly to the left (dir < 0) or right (dir > 0) of screen `i`: edge to edge and overlapping
@@ -148,17 +207,24 @@ impl Figures {
             ghosts_blow: false,
             plow_forms: Vec::new(),
             flyer_depth: 1.0,
+            nytaar: false,
+            rockets: Vec::new(),
+            embers: Vec::new(),
+            volley_length: 0.0,
+            volley_next: 0.0,
+            volley_gap: 0.85,
         }
     }
 
     /// True while something fast is on its way (the frame rate is boosted).
     pub fn busy(&self) -> bool {
-        self.santa.is_some() || !self.sparks.is_empty() || self.plow.active
+        self.santa.is_some() || !self.sparks.is_empty() || !self.rockets.is_empty() || !self.embers.is_empty() || self.plow.active
     }
 
     /// The screens were rebuilt: whatever was on its way is gone with them.
     pub fn screens_changed(&mut self) {
         self.santa = None;
+        self.rockets.clear();
         self.plow.active = false;
         self.plow.members.clear();
     }
@@ -173,6 +239,8 @@ impl Figures {
             self.santa_next = 60.0 + self.rng.f() * 120.0;
         }
         self.sparks.clear();
+        self.rockets.clear();
+        self.embers.clear();
         if self.plow.active {
             self.plow.active = false;
             self.plow.cooldown = 30.0;
@@ -182,6 +250,12 @@ impl Figures {
     // ------------------------------------------------------------------ Santa
     pub fn launch_santa(&mut self, screens: &[ScreenInfo]) {
         if self.santa.is_some() || screens.is_empty() {
+            return;
+        }
+        // (New Year's flyer is a volley of rockets)
+        if self.nytaar {
+            let seconds = 12.0 + self.rng.f() * 6.0;
+            self.launch_volley(screens, seconds, 0.85);
             return;
         }
         let target = &screens[self.rng.range(0, screens.len() as i32) as usize];
@@ -221,6 +295,35 @@ impl Figures {
             }
             return;
         };
+        if self.nytaar {
+            // the volley: rockets go up one after the other, anywhere on any screen
+            s.phase += dt;
+            if s.phase < self.volley_length {
+                self.volley_next -= dt;
+                while self.volley_next <= 0.0 && !screens.is_empty() {
+                    let r = &mut self.rng;
+                    self.volley_next += self.volley_gap * (0.45 + r.f() * 1.1) / screens.len() as f32;
+                    let o = &screens[r.range(0, screens.len() as i32) as usize];
+                    let b = o.rect;
+                    let y = b.bottom() as f32 - 4.0 * o.s;
+                    let burst_y = b.y as f32 + b.h as f32 * (0.10 + r.f() * 0.22);
+                    self.rockets.push(Rocket {
+                        x: b.x as f32 + b.w as f32 * (0.07 + r.f() * 0.86),
+                        y,
+                        vy: -(y - burst_y) / (0.9 + r.f() * 0.45),
+                        burst_y,
+                        scale: o.s,
+                        sway: r.f() * std::f32::consts::TAU,
+                        trail: 0.0,
+                        colour: r.range(0, BURST_COLOURS) as usize,
+                    });
+                }
+            } else if self.rockets.is_empty() && s.phase > self.volley_length + 2.5 {
+                self.santa = None;
+                self.santa_next = 60.0 + self.rng.f() * 120.0;
+            }
+            return;
+        }
         s.x += s.dir * s.speed * dt;
         s.phase += dt;
         if !self.autumn && !self.muertos && !self.halloween {
@@ -260,6 +363,142 @@ impl Figures {
             sp.vy += gravity * dt;
             true
         });
+    }
+
+    // ------------------------------------------------------------------ New Year's rockets
+    /// Starts a volley over every screen, lasting `seconds`; `gap` is the average time between two rockets on one
+    /// screen. One that is already going is replaced (midnight's big volley takes over from an ordinary one).
+    pub fn launch_volley(&mut self, screens: &[ScreenInfo], seconds: f32, gap: f32) {
+        let Some(first) = screens.first() else { return };
+        let min_x = screens.iter().map(|s| s.rect.x as f32).fold(f32::MAX, f32::min);
+        let max_x = screens.iter().map(|s| s.rect.right() as f32).fold(f32::MIN, f32::max);
+        self.volley_length = seconds;
+        self.volley_gap = gap;
+        self.volley_next = 0.3;
+        self.flyer_depth = 1.0;
+        self.santa_pace = 0.95 + self.rng.f() * 0.1;
+        self.santa = Some(Santa {
+            x: (min_x + max_x) / 2.0,
+            y0: first.rect.y as f32 + first.rect.h as f32 * 0.2,
+            dir: 1.0,
+            speed: 0.0,
+            phase: 0.0,
+            scale: first.s,
+            min_x,
+            max_x,
+        });
+        self.new_trip = true;
+        crate::log::debug(&format!("volley: {seconds:.0} s over {} screen(s)", screens.len()));
+    }
+
+    /// The rockets rise, each leaving a short tail of gold sparks, and burst where they were aimed: a round bloom
+    /// of sparks in the rocket's colour. Most are thrown out at nearly the same speed and make the shell; the rest
+    /// fill it, and a few are silver. The sparks are slowed by the air and sink a little as they fade.
+    fn update_rockets(&mut self, dt: f32) {
+        let mut i = 0;
+        while i < self.rockets.len() {
+            let r = &mut self.rockets[i];
+            r.y += r.vy * dt;
+            r.x += (r.sway + r.y * 0.012).sin() * 14.0 * r.scale * dt;
+            r.trail += dt * 48.0;
+            let (x, y, scale, colour, arrived) = (r.x, r.y, r.scale, r.colour, r.y <= r.burst_y);
+            while self.rockets[i].trail >= 1.0 {
+                self.rockets[i].trail -= 1.0;
+                let g = &mut self.rng;
+                let life = 0.3 + g.f() * 0.35;
+                self.embers.push(Ember {
+                    x: x + (g.f() - 0.5) * 3.0 * scale,
+                    y: y + g.f() * 8.0 * scale,
+                    vx: (g.f() - 0.5) * 16.0 * scale,
+                    vy: (20.0 + g.f() * 30.0) * scale,
+                    life,
+                    max: life,
+                    size: (1.6 + g.f() * 1.6) * scale,
+                    colour: None,
+                    holds: false,
+                    drag: 0.0,
+                    gravity: 60.0 * scale,
+                });
+            }
+            if !arrived {
+                i += 1;
+                continue;
+            }
+            self.rockets.remove(i);
+            let n = 64;
+            for k in 0..n {
+                let g = &mut self.rng;
+                let a = std::f32::consts::TAU * (k as f32 + g.f()) / n as f32;
+                let shell = k % 3 != 0;
+                let reach = if shell { 0.86 + g.f() * 0.2 } else { 0.25 + g.f() * 0.55 };
+                let v = 195.0 * reach * scale;
+                let life = (if shell { 1.35 } else { 1.0 }) + g.f() * 0.85;
+                let size = (if shell { 3.4 + g.f() * 2.4 } else { 2.4 + g.f() * 1.6 }) * scale;
+                self.embers.push(Ember {
+                    x,
+                    y,
+                    vx: a.cos() * v,
+                    vy: a.sin() * v,
+                    life,
+                    max: life,
+                    size,
+                    colour: Some(if k % 8 == 4 { 1 } else { colour }),
+                    holds: false,
+                    drag: 1.9,
+                    gravity: 30.0 * scale,
+                });
+            }
+        }
+        self.embers.retain_mut(|e| {
+            e.life -= dt;
+            if e.life <= 0.0 {
+                return false;
+            }
+            e.x += e.vx * dt;
+            e.y += e.vy * dt;
+            if e.drag > 0.0 {
+                let k = (-e.drag * dt).exp();
+                e.vx *= k;
+                e.vy *= k;
+            }
+            e.vy += e.gravity * dt;
+            true
+        });
+    }
+
+    /// Writes a number in sparks, centred on (x, y) in global coordinates and `height` tall, on a screen of scale
+    /// `scale`. The sparks stay lit for `life` seconds, hardly moving (a number that drifts apart cannot be read),
+    /// and go out at the end.
+    pub fn write_in_sparks(&mut self, number: i32, (x, y): (f32, f32), height: f32, life: f32, scale: f32) {
+        let digits: Vec<usize> = number.to_string().bytes().filter(u8::is_ascii_digit).map(|b| (b - b'0') as usize).collect();
+        let pitch = height / 7.0;
+        let (wide, gap) = (5.0 * pitch, pitch * 1.7);
+        let total = digits.len() as f32 * wide + digits.len().saturating_sub(1) as f32 * gap;
+        for (i, d) in digits.iter().enumerate() {
+            let x0 = x - total / 2.0 + i as f32 * (wide + gap) + pitch / 2.0;
+            for (row, line) in DIGIT_DOTS[*d].iter().enumerate() {
+                for (col, ch) in line.bytes().enumerate() {
+                    if ch != b'1' {
+                        continue;
+                    }
+                    let g = &mut self.rng;
+                    let lasts = life * (0.85 + g.f() * 0.15);
+                    self.embers.push(Ember {
+                        x: x0 + col as f32 * pitch,
+                        y: y - height / 2.0 + (row as f32 + 0.5) * pitch,
+                        vx: (g.f() - 0.5) * 1.6 * scale,
+                        vy: (g.f() - 0.5) * 1.6 * scale,
+                        life: lasts,
+                        max: lasts,
+                        size: pitch * 0.42,
+                        colour: Some(0),
+                        holds: true,
+                        drag: 0.0,
+                        gravity: 1.5 * scale,
+                    });
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ snow plow
@@ -335,10 +574,10 @@ impl Figures {
             }
             return;
         }
-        // (so does Halloween's witch; the ghosts float a little faster)
+        // (so does Halloween's witch; the ghosts float a little faster, and New Year's street sweeper trundles)
         let pace = if self.muertos || (self.halloween && !self.ghosts_blow) {
             CART_PACE
-        } else if self.halloween {
+        } else if self.halloween || self.nytaar {
             0.6
         } else {
             1.0
@@ -448,6 +687,7 @@ impl Figures {
         }
         self.update_santa(dt, screens, santa);
         self.update_sparks(dt);
+        self.update_rockets(dt);
         self.update_plow(dt, screens, plow);
     }
 }
@@ -491,6 +731,50 @@ mod tests {
         assert!(!f.plow.active, "the plow never arrived");
         // across 11264 px at 170 px/s per 1080 px of screen height: well under a minute on these screens
         assert!(t < 60.0, "took {t} s");
+    }
+
+    #[test]
+    fn a_volley_sends_rockets_up_that_burst_in_the_top_band_and_then_it_is_over() {
+        let sc = screens();
+        let mut f = Figures::new(4);
+        f.nytaar = true;
+        f.launch_santa(&sc);
+        assert!(f.santa.is_some(), "the volley counts as a trip");
+        let (mut t, mut most, mut rockets) = (0.0, 0usize, 0usize);
+        while f.santa.is_some() && t < 60.0 {
+            f.update(0.05, t, &sc, false, false);
+            rockets = rockets.max(f.rockets.len());
+            most = most.max(f.embers.len());
+            for e in f.embers.iter().filter(|e| e.colour.is_some()) {
+                // (a burst's sparks start in the top third of their screen and reach about a fifth of its height)
+                let on = sc.iter().find(|s| e.x >= s.rect.x as f32 - 700.0 && e.x < s.rect.right() as f32 + 700.0 && e.y >= s.rect.y as f32 - 800.0 && e.y < s.rect.bottom() as f32);
+                let s = on.expect("a spark is on no screen");
+                assert!(e.y < s.rect.y as f32 + s.rect.h as f32 * 0.62, "a spark at {} is far below the top band", e.y);
+            }
+            t += 0.05;
+        }
+        assert!(rockets > 0 && most > 60, "{rockets} rockets at once, {most} sparks");
+        assert!(t > 12.0 && t < 30.0, "the volley took {t} s");
+        assert!(f.rockets.is_empty());
+        // the last sparks go out by themselves
+        for _ in 0..80 {
+            f.update(0.05, t, &sc, false, false);
+        }
+        assert!(f.embers.is_empty() && !f.busy());
+    }
+
+    #[test]
+    fn a_number_is_written_in_sparks_and_goes_out() {
+        let mut f = Figures::new(5);
+        f.write_in_sparks(2027, (1000.0, 500.0), 140.0, 2.0, 1.0);
+        // 2, 0, 2 and 7 have 14, 19, 14 and 11 dots
+        assert_eq!(f.embers.len(), 14 + 19 + 14 + 11);
+        let (left, right) = f.embers.iter().fold((f32::MAX, f32::MIN), |(l, r), e| (l.min(e.x), r.max(e.x)));
+        assert!(left > 700.0 && right < 1300.0 && (left + right) / 2.0 > 980.0 && (left + right) / 2.0 < 1020.0, "{left}..{right}");
+        for _ in 0..50 {
+            f.update(0.05, 0.0, &[], false, false);
+        }
+        assert!(f.embers.is_empty());
     }
 
     #[test]

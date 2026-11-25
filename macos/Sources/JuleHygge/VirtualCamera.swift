@@ -84,6 +84,8 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private func start() {
         guard sink.startSink() else { camLog.error("startSink failed"); return }
         camLog.info("virtual camera started")
+        // (New Year's paper hat gets a new colour each time the camera is taken into use)
+        CameraLook.partyHat = Int.random(in: 0..<Theme.confettiColours.count)
         active = true
         c.virtualSceneChanged()
         startCapture()
@@ -198,9 +200,12 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // (the two are alternatives, chosen in the menu; the pumpkin head is part of the hat's drawing)
         CameraCostume.witchHat = !halloween || c.cfg.cameraHalloween == 1
         CameraCostume.pumpkinHead = halloween && c.cfg.cameraHalloween == 2
+        // New Year: a paper party hat, and nothing in the beard's or the suit's place
+        let nytaar = c.cfg.theme == Theme.nytaar.rawValue
+        CameraCostume.nytaar = nytaar
         let wantsHat = halloween ? c.cfg.cameraHalloween != 0 : c.cfg.cameraHat
         let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && !halloween && CameraCostume.look.beard > 0
-        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween
+        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween && !nytaar
         let wantsMakeup = c.cfg.cameraBeard && muertos
         let wantsCostume = wantsBeard || wantsSuit || wantsMakeup   // all need the face landmarks
         let now = CACurrentMediaTime()

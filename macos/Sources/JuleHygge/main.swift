@@ -17,7 +17,8 @@ if let a = args.first(where: { $0.hasPrefix("--lyd-test=") }) {
     let cycle = Controller.donkeyStepCycle
     var sounds: [Maker] = Synth.Tune.all.map { t in ("julemand-" + t.name, { Synth.jingle(t) }) }
     sounds += [("sneplov-motor", Synth.plowEngine), ("sneplov-skraben", Synth.plowScrape), ("sneplov-horn", Synth.plowHorn),
-               ("loevsuger-sug", Synth.leafSuction), ("sommerfugle-son", Synth.muertosSon), ("heks-melodi", Synth.witchTune), ("spoegelser-sus", Synth.ghostWind)]
+               ("loevsuger-sug", Synth.leafSuction), ("sommerfugle-son", Synth.muertosSon), ("heks-melodi", Synth.witchTune), ("spoegelser-sus", Synth.ghostWind),
+               ("nytaar-melodi", Synth.auldLangSyne), ("nytaar-klokke", Synth.midnightBell)]
     sounds += [("aeselkaerre-hove", { Synth.donkeyCart(cycle: cycle) }), ("aeselkaerre-kost", { Synth.broomSweep(cycle: cycle) }),
                ("aesel-broel", Synth.donkeyBray)]
     sounds += Synth.gooseMoods.enumerated().map { m in ("gaes-" + m.element, { Synth.geese(mood: m.offset) }) }

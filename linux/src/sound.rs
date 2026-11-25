@@ -823,6 +823,125 @@ pub fn donkey_bray() -> Vec<f32> {
     })
 }
 
+// ---------------------------------------------------------------------- new year
+/// New Year's tune, to the rockets: "Auld Lang Syne", verse and refrain (16 bars of 4/4, about 29 s, looping). The
+/// melody is traditional (Scottish, 18th century) and free of rights; this arrangement is ours: a soft reed voice
+/// like an accordion over a slow bass and a held chord. Same as `Synth.AuldLangSyne` in `src/Sound.cs`.
+pub fn auld_lang_syne() -> Vec<f32> {
+    const BEAT: f64 = 0.46;
+    const C4: i32 = 60;
+    const D4: i32 = 62;
+    const F4: i32 = 65;
+    const G4: i32 = 67;
+    const A4: i32 = 69;
+    const C5: i32 = 72;
+    const D5: i32 = 74;
+    // every bar is a dotted quarter, an eighth and two quarters; the long notes take three beats, and the fourth
+    // is the upbeat to the next line
+    #[rustfmt::skip]
+    let melody: [(i32, f64); 56] = [
+        (F4, 1.5), (F4, 0.5), (F4, 1.0), (A4, 1.0),   (G4, 1.5), (F4, 0.5), (G4, 1.0), (A4, 1.0),
+        (F4, 1.5), (F4, 0.5), (A4, 1.0), (C5, 1.0),   (D5, 3.0), (D5, 1.0),
+        (C5, 1.5), (A4, 0.5), (A4, 1.0), (F4, 1.0),   (G4, 1.5), (F4, 0.5), (G4, 1.0), (A4, 1.0),
+        (F4, 1.5), (D4, 0.5), (D4, 1.0), (C4, 1.0),   (F4, 3.0), (D5, 1.0),
+        (C5, 1.5), (A4, 0.5), (A4, 1.0), (F4, 1.0),   (G4, 1.5), (F4, 0.5), (G4, 1.0), (D5, 1.0),
+        (C5, 1.5), (A4, 0.5), (A4, 1.0), (C5, 1.0),   (D5, 3.0), (D5, 1.0),
+        (C5, 1.5), (A4, 0.5), (A4, 1.0), (F4, 1.0),   (G4, 1.5), (F4, 0.5), (G4, 1.0), (A4, 1.0),
+        (F4, 1.5), (D4, 0.5), (D4, 1.0), (C4, 1.0),   (F4, 3.0), (C4, 1.0),
+    ];
+    // one chord a bar: F, C, F, B flat | F, C, B flat, F, twice (root, third, fifth)
+    const FA: [i32; 3] = [41, 57, 60];
+    const CE: [i32; 3] = [36, 55, 60];
+    const BE: [i32; 3] = [34, 58, 62];
+    let chords: [[i32; 3]; 16] = [FA, CE, FA, BE, FA, CE, BE, FA, FA, CE, FA, BE, FA, CE, BE, FA];
+    const REED: [(f64, f64); 5] = [(1.0, 1.0), (2.0, 0.42), (3.0, 0.2), (4.0, 0.1), (5.0, 0.05)];
+    fn freq(midi: i32) -> f64 {
+        440.0 * 2f64.powf((midi - 69) as f64 / 12.0)
+    }
+    let tau = std::f64::consts::TAU;
+    let beats: f64 = melody.iter().map(|m| m.1).sum();
+    make_buffer(beats * BEAT, |out| {
+        let n = out.len();
+        // the melody: two reeds a few cents apart (their slow beating is the accordion's tremolo)
+        let mut t0 = 0.0;
+        for (note, len) in melody {
+            let (f, dur) = (freq(note), len * BEAT);
+            let (start, count) = ((t0 * RATE) as usize, (dur * RATE) as usize);
+            for k in 0..count {
+                if start + k >= n {
+                    break;
+                }
+                let t = k as f64 / RATE;
+                let left = dur - t;
+                let env = (t / 0.035).min(1.0) * (left / 0.07).min(1.0) * (0.85 + 0.15 * (-t * 2.5).exp());
+                let mut v = 0.0;
+                for (mult, amp) in REED {
+                    v += amp * ((tau * f * mult * t).sin() + 0.8 * (tau * f * 1.006 * mult * t).sin());
+                }
+                out[start + k] += (v * env * 0.085) as f32;
+            }
+            t0 += dur;
+        }
+        // the left hand: the root on the first beat, the chord on the second and fourth, each note dying away
+        let mut tone = |at: f64, midi: i32, len: f64, amp: f64| {
+            let f = freq(midi);
+            let (start, count) = ((at * BEAT * RATE) as usize, (len * BEAT * RATE) as usize);
+            for k in 0..count {
+                if start + k >= n {
+                    break;
+                }
+                let (t, u) = (k as f64 / RATE, k as f64 / count as f64);
+                let env = (t / 0.02).min(1.0) * (1.0 - u) * (1.0 - u);
+                let wave = (tau * f * t).sin() + 0.35 * (2.0 * tau * f * t).sin() + 0.12 * (3.0 * tau * f * t).sin();
+                out[start + k] += (amp * env * wave) as f32;
+            }
+        };
+        for (b, chord) in chords.iter().enumerate() {
+            let bar = b as f64 * 4.0;
+            tone(bar, chord[0], 2.2, 0.2);
+            tone(bar + 2.0, chord[0] + 7, 1.8, 0.12);
+            for at in [1.0, 3.0] {
+                tone(bar + at, chord[1], 0.9, 0.06);
+                tone(bar + at, chord[2], 0.9, 0.06);
+            }
+        }
+    })
+}
+
+/// Midnight: twelve strokes of a tower bell, one every 1.3 s, each ringing on under the next. The partials are a
+/// bell's (hum, prime, minor third, fifth, octave and above), the low ones ringing longest. Same as
+/// `Synth.MidnightBell` in `src/Sound.cs`.
+pub fn midnight_bell() -> Vec<f32> {
+    const GAP: f64 = 1.3;
+    const F: f64 = 233.0;
+    const PARTIALS: [(f64, f64, f64); 7] =
+        [(0.5, 0.55, 0.55), (1.0, 1.0, 0.9), (1.19, 0.6, 1.3), (1.5, 0.35, 1.8), (2.0, 0.5, 2.2), (2.74, 0.22, 3.2), (4.07, 0.12, 5.0)];
+    let tau = std::f64::consts::TAU;
+    make_buffer(GAP * 12.0 + 4.5, |out| {
+        let n = out.len();
+        for s in 0..12 {
+            let (start, count) = ((s as f64 * GAP * RATE) as usize, (5.5 * RATE) as usize);
+            for k in 0..count {
+                if start + k >= n {
+                    break;
+                }
+                let t = k as f64 / RATE;
+                let mut v = 0.0;
+                for (mult, amp, decay) in PARTIALS {
+                    v += amp * (-t * decay).exp() * (tau * F * mult * t).sin();
+                }
+                // the clapper's knock
+                v += 0.5 * (-t * 60.0).exp() * (tau * 1300.0 * t).sin();
+                out[start + k] += (v * (t / 0.003).min(1.0) * 0.16) as f32;
+            }
+        }
+        let fade = ((0.6 * RATE) as usize).min(n);
+        for i in 0..fade {
+            out[n - 1 - i] *= i as f32 / fade as f32;
+        }
+    })
+}
+
 // ---------------------------------------------------------------------- halloween
 /// The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
 /// wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
@@ -1192,6 +1311,8 @@ pub fn write_test_files(dir: &std::path::Path) -> std::io::Result<()> {
     sounds.push(("aeselkaerre-broel".into(), donkey_bray()));
     sounds.push(("heks-melodi".into(), witch_tune()));
     sounds.push(("spoegelser-sus".into(), ghost_wind()));
+    sounds.push(("nytaar-melodi".into(), auld_lang_syne()));
+    sounds.push(("nytaar-klokke".into(), midnight_bell()));
     for (mood, name) in GOOSE_MOODS.iter().enumerate() {
         sounds.push((format!("gaes-{name}"), geese(mood)));
     }
@@ -1254,6 +1375,19 @@ mod tests {
         // 16 bars of 3/4 at 0.38 s a beat
         assert_eq!(son.len(), (48.0 * 0.38 * RATE) as usize);
         for (name, s) in [("cart", cart), ("broom", broom), ("bray", donkey_bray()), ("son", son)] {
+            let peak = s.iter().fold(0.0f32, |p, x| p.max(x.abs()));
+            assert!(peak > 0.1 && peak <= 0.9001 && s.iter().all(|x| x.is_finite()), "{name} peak {peak}");
+        }
+    }
+
+    #[test]
+    fn new_years_sounds_are_sane() {
+        let tune = auld_lang_syne();
+        // 16 bars of 4/4 at 0.46 s a beat
+        assert!((tune.len() as i64 - (64.0 * 0.46 * RATE) as i64).abs() <= 1, "{} samples", tune.len());
+        let bell = midnight_bell();
+        assert_eq!(bell.len(), ((1.3 * 12.0 + 4.5) * RATE) as usize);
+        for (name, s) in [("tune", tune), ("bell", bell)] {
             let peak = s.iter().fold(0.0f32, |p, x| p.max(x.abs()));
             assert!(peak > 0.1 && peak <= 0.9001 && s.iter().all(|x| x.is_finite()), "{name} peak {peak}");
         }

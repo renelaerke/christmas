@@ -60,6 +60,9 @@ struct Sounds {
     /// Halloween: the witch's tune, and the wind the ghosts blow the leaves away with.
     witch_tune: Voice,
     ghost_wind: Voice,
+    /// New Year: "Auld Lang Syne" to the rockets, and twelve strokes of a bell at midnight.
+    auld_tune: Voice,
+    midnight_bell: Voice,
     /// This trip's tune (in autumn: the geese's mood).
     jingle: usize,
     horned_this_run: bool,
@@ -101,6 +104,8 @@ pub struct Controller {
     scan_timer: f32,
     /// A calendar storm lasts until this time.
     storm_until: f64,
+    /// New Year's clock: the countdown to midnight and what is due when (`new_year.rs`).
+    new_year: crate::new_year::NewYear,
     /// The snowman grew today: celebrate with sparks at this time.
     celebrate_at: Option<f64>,
     /// The weather is a storm now (in autumn the geese then always call over wind).
@@ -184,6 +189,7 @@ impl Controller {
             window_snow: WindowSnow::new(display_scale, window_snow_seed),
             scan_timer: 0.0,
             storm_until: -1.0,
+            new_year: crate::new_year::NewYear::new(),
             celebrate_at: None,
             storm_now: false,
             // JULE_UPDATE_DELAY=N: the first check after N seconds (testing)
@@ -217,6 +223,7 @@ impl Controller {
         c.figures.autumn = c.cfg.theme == 1;
         c.figures.muertos = c.cfg.theme == 2;
         c.figures.halloween = c.cfg.theme == 3;
+        c.figures.nytaar = c.cfg.theme == 4;
         if opts.santa {
             let screens = c.screen_infos();
             c.figures.launch_santa(&screens);
@@ -368,7 +375,8 @@ impl Controller {
     /// A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
     /// runs: the ofrenda of De dødes dag (2), and Halloween's jack-o'-lanterns (3), which share its clock.
     fn grows_by_hour(&self) -> bool {
-        self.cfg.theme == 2 || self.cfg.theme == 3
+        // (and New Year's clock, 4, is decorated the same way)
+        self.cfg.theme == 2 || self.cfg.theme == 3 || self.cfg.theme == 4
     }
 
     fn update_ofrenda(&mut self, dt: f32) {
@@ -382,7 +390,9 @@ impl Controller {
         if stage != before {
             crate::log::debug(&format!("ofrenda: step {stage} of {max}"));
             self.celebrate_at = Some(self.time + 0.5);
-            if stage == max && self.cfg.theme == 3 {
+            if stage == max && self.cfg.theme == 4 {
+                self.session.notify(text::NOTICE_CLOCK_TITLE, &text::notice_clock(), false);
+            } else if stage == max && self.cfg.theme == 3 {
                 self.session.notify(text::NOTICE_PUMPKINS_TITLE, &text::notice_pumpkins(), false);
             } else if stage == max {
                 self.session.notify(text::NOTICE_OFRENDA_TITLE, &text::notice_ofrenda(), false);
@@ -398,7 +408,10 @@ impl Controller {
     fn update_tray(&self) {
         let Some(t) = &self.tray else { return };
         let stage = if self.grows_by_hour() { self.ofrenda_stage() } else { self.snowman_stage };
-        let (cfg, countdown) = (self.cfg.clone(), countdown_text(self.last_day));
+        // (at New Year the line counts down to midnight)
+        let countdown =
+            if self.cfg.theme == 4 { self.new_year.countdown.clone() } else { countdown_text(self.last_day) };
+        let cfg = self.cfg.clone();
         let autostart = crate::autostart::enabled();
         let _ = t.update(move |tray: &mut crate::tray::AppTray| {
             tray.cfg = cfg;
@@ -419,11 +432,13 @@ impl Controller {
                 self.figures.autumn = self.cfg.theme == 1;
                 self.figures.muertos = self.cfg.theme == 2;
                 self.figures.halloween = self.cfg.theme == 3;
+                self.figures.nytaar = self.cfg.theme == 4;
                 self.figures.launch_santa(&screens);
             }
             TrayMsg::Plow => {
                 let screens = self.screen_infos();
                 self.figures.halloween = self.cfg.theme == 3;
+                self.figures.nytaar = self.cfg.theme == 4;
                 self.figures.send_plow(&screens);
             }
             TrayMsg::Settings(m) => {
@@ -575,6 +590,66 @@ impl Controller {
         }
     }
 
+    /// New Year: the countdown in the menu, the last ten seconds written in sparks over the clock, and at
+    /// midnight about a minute of the big effect: rockets one after the other over every screen (unless they are
+    /// switched off), a burst of confetti, the guests jump, and the new year's number in sparks. With the sound on,
+    /// twelve strokes of a bell first, and the tune after them. (`UpdateNewYear` on Windows.)
+    fn update_new_year(&mut self) {
+        if self.cfg.theme != 4 {
+            self.new_year.rest();
+            return;
+        }
+        if self.new_year.refresh_countdown(self.time) {
+            self.update_tray();
+        }
+        let due = self.new_year.update(self.time);
+        if due.is_empty() {
+            return;
+        }
+        let screens = self.screen_infos();
+        let year = self.new_year.year(self.time);
+        for moment in due {
+            match moment {
+                crate::new_year::Moment::Count(second) => {
+                    // over the clock, or over the middle of the primary screen if the clock is switched off
+                    let Some((i, sc)) = screens.iter().enumerate().find(|(_, s)| s.primary) else { continue };
+                    let at = match self.screens[i].layer.snowman_pos() {
+                        Some((x, y)) => (x, y - 178.0 * sc.s),
+                        None => (sc.rect.x as f32 + sc.rect.w as f32 / 2.0, sc.rect.y as f32 + sc.rect.h as f32 * 0.45),
+                    };
+                    self.figures.write_in_sparks(second, at, 60.0 * sc.s, 0.95, sc.s);
+                }
+                crate::new_year::Moment::Midnight => {
+                    crate::log::debug(&format!("midnight: {year}"));
+                    self.storm_until = self.time + 35.0;
+                    self.write_year(&screens, year);
+                    let muted = self.cfg.pause_fullscreen && self.fullscreen.is_some();
+                    if self.cfg.sound && !muted {
+                        let volume = [0.15, 0.35, 0.6][self.cfg.sound_level.clamp(0, 2) as usize];
+                        let s = &mut self.sounds;
+                        s.hub.play_once(s.midnight_bell, volume, 0.0);
+                        self.new_year.tune_hold_until = self.time + 16.5;
+                    }
+                    if self.cfg.santa {
+                        self.figures.nytaar = true;
+                        self.figures.launch_volley(&screens, 46.0, 0.5);
+                    }
+                }
+                crate::new_year::Moment::Jump => self.elf_party(),
+                crate::new_year::Moment::YearAgain => self.write_year(&screens, year),
+            }
+        }
+    }
+
+    /// The new year's number, large, in the top third of every screen.
+    fn write_year(&mut self, screens: &[ScreenInfo], year: i32) {
+        for sc in screens {
+            let (b, s) = (sc.rect, sc.s);
+            let at = (b.x as f32 + b.w as f32 / 2.0, b.y as f32 + b.h as f32 * 0.3);
+            self.figures.write_in_sparks(year, at, (150.0 * s).min(b.w as f32 / 7.0), 9.0, s);
+        }
+    }
+
     fn elf_party(&mut self) {
         for s in &mut self.screens {
             s.layer.elf_wave(6.0);
@@ -590,6 +665,9 @@ impl Controller {
         if self.cfg.sound {
             if muertos {
                 s.hub.warm(s.butterfly_tune);
+            } else if self.cfg.theme == 4 {
+                s.hub.warm(s.auld_tune);
+                s.hub.warm(s.midnight_bell);
             } else if self.cfg.theme == 3 {
                 s.hub.warm(s.witch_tune);
             } else {
@@ -605,6 +683,10 @@ impl Controller {
                 }
             } else if self.cfg.theme == 3 {
                 for v in [s.broom_sweep, s.ghost_wind] {
+                    s.hub.warm(v);
+                }
+            } else if self.cfg.theme == 4 {
+                for v in [s.plow_engine, s.leaf_suction] {
                     s.hub.warm(v);
                 }
             } else {
@@ -623,8 +705,10 @@ impl Controller {
         let autumn = self.cfg.theme == 1;
         let muertos = self.cfg.theme == 2;
         let halloween = self.cfg.theme == 3;
+        let nytaar = self.cfg.theme == 4;
         let ghosts_blow = self.figures.ghosts_blow;
-        let christmas = !autumn && !muertos && !halloween;
+        let christmas = !autumn && !muertos && !halloween && !nytaar;
+        let tune_held = self.time < self.new_year.tune_hold_until;
         let storm = self.storm_now;
         let s = &mut self.sounds;
         if self.figures.take_new_trip() {
@@ -634,6 +718,9 @@ impl Controller {
             } else if halloween {
                 // the witch's tune
                 s.hub.set_rate(s.witch_tune, self.figures.santa_pace);
+            } else if nytaar {
+                // "Auld Lang Syne" to the rockets
+                s.hub.set_rate(s.auld_tune, self.figures.santa_pace);
             } else if autumn {
                 // the geese: alone two trips out of three, otherwise in wind; in a storm always the one with wind
                 s.jingle = usize::from(storm || self.rng.f() < 1.0 / 3.0);
@@ -680,6 +767,11 @@ impl Controller {
                 let level = if on && halloween { presence * depth * volume } else { 0.0 };
                 s.hub.update(s.witch_tune, level, pan, dt);
             }
+            // New Year's rockets go up to "Auld Lang Syne" (at midnight the tune waits for the bell's twelve strokes)
+            if (self.cfg.sound && nytaar) || s.hub.playing(s.auld_tune) {
+                let level = if on && nytaar && !tune_held { presence * volume } else { 0.0 };
+                s.hub.update(s.auld_tune, level, 0.0, dt);
+            }
         }
         let plow = &self.figures.plow;
         if self.cfg.plow_sound
@@ -695,15 +787,17 @@ impl Controller {
             let presence = ((plow.gx - (min - margin)).min((max + margin) - plow.gx) / margin).clamp(0.0, 1.0);
             let pan = (plow.gx - min) / (max - min).max(1.0) * 2.0 - 1.0;
             let on = plow.active && self.cfg.plow_sound && !muted;
-            let engine = if on && !muertos && !halloween { presence * volume * 0.8 } else { 0.0 };
+            // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
+            let engine =
+                if on && !muertos && !halloween { presence * volume * if nytaar { 0.4 } else { 0.8 } } else { 0.0 };
             s.hub.update(s.plow_engine, engine, pan, dt);
             // scraping gets louder with the amount of snow in front of the blade
             let load = (plow.pushed / 2000.0).sqrt().min(1.0);
             let scrape = if on && christmas { presence * volume * (0.15 + 0.85 * load) } else { 0.0 };
             s.hub.update(s.plow_scrape, scrape, pan, dt);
             // in autumn the leaf collector's suction takes the scraping's place
-            if autumn || s.hub.playing(s.leaf_suction) {
-                let suction = if on && autumn { presence * volume * (0.55 + 0.45 * load) } else { 0.0 };
+            if autumn || nytaar || s.hub.playing(s.leaf_suction) {
+                let suction = if on && (autumn || nytaar) { presence * volume * (0.55 + 0.45 * load) } else { 0.0 };
                 s.hub.update(s.leaf_suction, suction, pan, dt);
             }
             // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
@@ -723,7 +817,8 @@ impl Controller {
                 s.horned_this_run = true;
                 // (the donkey brays where the plow honks; Halloween has nothing there: a truck's honk does not
                 // belong with a witch or ghosts)
-                if !halloween {
+                // (nor has New Year's sweeper: it comes the morning after)
+                if !halloween && !nytaar {
                     let horn = if muertos { s.donkey_bray } else { s.plow_horn };
                     s.hub.play_once(horn, volume, pan);
                 }
@@ -923,18 +1018,23 @@ impl Controller {
             self.time += dt as f64;
             self.timers(dt);
             self.update_ofrenda(dt);
+            self.update_new_year();
             let screens = self.screen_infos();
             // The autumn theme: every figure has its autumn form (`SceneState::autumn`), and so have the sounds
             // (`update_sound`).
             let autumn = self.cfg.theme == 1;
             let muertos = self.cfg.theme == 2;
             let halloween = self.cfg.theme == 3;
+            let nytaar = self.cfg.theme == 4;
             self.figures.autumn = autumn;
             self.figures.muertos = muertos;
             self.figures.halloween = halloween;
+            self.figures.nytaar = nytaar;
             self.figures.update(dt, self.time, &screens, self.cfg.santa, self.cfg.plow);
             // In the Christmas theme children build the snowman; autumn's haystack grows by the day.
-            let children = self.cfg.snowman && !autumn && !muertos && !halloween;
+            let children = self.cfg.snowman && !autumn && !muertos && !halloween && !nytaar;
+            let (clock, clock_key) = if nytaar { self.new_year.hands(self.time) } else { ((0.0, 0.0, None), 0) };
+            let gather = nytaar && self.new_year.gather(self.time);
             if children {
                 self.update_build(dt);
             }
@@ -968,7 +1068,7 @@ impl Controller {
                 elf_count: self.cfg.elf_count,
                 snowman_stage: if !self.cfg.snowman {
                     0
-                } else if muertos || halloween {
+                } else if muertos || halloween || nytaar {
                     self.ofrenda_stage()
                 } else if autumn {
                     self.snowman_stage
@@ -976,7 +1076,8 @@ impl Controller {
                     0
                 },
                 build: children.then_some(&self.build),
-                santa: self.figures.santa.as_ref(),
+                // (New Year's flyer is a volley of rockets: no figure is drawn for it)
+                santa: if nytaar { None } else { self.figures.santa.as_ref() },
                 sparks: &self.figures.sparks,
                 plow: Some(&self.figures.plow),
                 window_snow: self.cfg.window_snow,
@@ -989,6 +1090,12 @@ impl Controller {
                 ghosts_blow: self.figures.ghosts_blow,
                 folk: folk::chosen(self.cfg.folk),
                 kite: self.cfg.kite,
+                nytaar,
+                rockets: &self.figures.rockets,
+                embers: &self.figures.embers,
+                clock,
+                clock_key,
+                gather,
             };
             let busy = Instant::now();
             frame_all(&mut self.display, &mut self.screens, dt, &st);
@@ -1268,10 +1375,14 @@ impl Sounds {
         let donkey_bray = hub.create_voice(crate::sound::donkey_bray, false);
         let witch_tune = hub.create_voice(crate::sound::witch_tune, true);
         let ghost_wind = hub.create_voice(crate::sound::ghost_wind, true);
+        let auld_tune = hub.create_voice(crate::sound::auld_lang_syne, true);
+        let midnight_bell = hub.create_voice(crate::sound::midnight_bell, false);
         Sounds {
             hub,
             witch_tune,
             ghost_wind,
+            auld_tune,
+            midnight_bell,
             butterfly_tune,
             cart_roll,
             broom_sweep,

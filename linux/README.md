@@ -80,6 +80,7 @@ quick crashes; `pkill -x JuleHygge` stops both. Test flags and `JULE_NO_SUPERVIS
 | `--plow[=N]` (`--sneplov[=N]`) | sends the snow plow after N seconds (default 3) |
 | `JULE_SETTINGS=path` | uses another settings file, so tests never change the real one |
 | `JULE_DATE=yyyy-MM-dd` | pretends it is another date (weather, calendar doors, autumn's haystack, notices) |
+| `JULE_NYTAAR_OM=N` | New Year (`Theme=4`): midnight is N seconds after the start (the clock, the countdown, the guests round the clock and the burst follow). `JULE_DATE=2026-12-31` keeps the real time of day on that date |
 | `JULE_HALLOWEEN_PLOV=heks` or `=spoegelser` | Halloween (`Theme=3`): fixes whether the witch sweeps or the ghosts blow when the leaves are cleared (otherwise drawn by lot) |
 | `JULE_SNOWMAN_SPEED=N` with `Theme=2` or `3` | builds the ofrenda of De dødes dag (or Halloween's jack-o'-lanterns) N times faster (3600: a step a second); `OfrendaSeconds=N` in the settings file starts it N seconds in (39600 is the finished altar) |
 | `JULE_SNOWMAN_SPEED=N` | the children build the snowman N times faster (30 gives a whole snowman in 30 s and the plow a few seconds later) |

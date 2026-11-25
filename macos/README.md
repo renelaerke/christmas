@@ -72,6 +72,24 @@ Temaet **Halloween** (`Theme=3`) er påbegyndt 2026-11-24. Idéen står i `docs/
 
 - **Test:** sæt `Theme=3` og `OfrendaSeconds=39600` (færdige lygter) i en settings-fil og brug den med `JULE_SETTINGS`; `--julemand` sender heksen, `--sneplov` den, der rydder bladene (`JULE_HALLOWEEN_PLOV=heks` eller `=spoegelser` låser hvilken), `JULE_DEEPSNOW=1` giver en fuld bunke. Kameraet: `HUE_HALLOWEEN=1 … --kamera-replay=MAPPE` (heks), med `HUE_GRAESKAR=1` græskarhovedet, og `HUE_NAESE_MAAL=1` viser næsens tre målte punkter og udskriver målingen.
 
+## Nytår
+Temaet **Nytår** (`Theme=4`) er påbegyndt 2026-11-25; Windows og Linux har det også (uden kameraet), se `AGENTS.md`. Idéen og RELs afgørelser står i `docs/nytaar-ide.md`, det udestående i `docs/nytaar-udestaaende.md`. Figurerne er i `Sources/JuleHygge/OverlayNytaar.swift`, raketterne og midnat i `Controller.swift`. Intet i temaet viser eller antyder drikkeri (ingen glas, flasker eller propper).
+
+| Jul | Nytår |
+|---|---|
+| Sne | Konfetti og serpentiner hele tiden (`DotImages.confetti`), i bunden og på vinduerne som bladene |
+| På vindueskanterne | Stjernekastere, der brænder ned og skiftes ud, og bordbomber (`addLedgeParty`) |
+| Snemand | Et stort ur på en stander, der viser klokken (`drawPartyClock`); 12 trin pynt, ét for hver time appen kører (`OfrendaSeconds`, `Controller.clockSteps`). Uret står der fra første trin |
+| Julemanden | En salve raketter (`launchVolley`): de stiger fra bunden og springer i et bånd øverst, bløde og uden blink. Samme menupunkt, kontakt og tidsplan som julemanden; melodien er "Auld Lang Syne" (`Synth.auldLangSyne`) |
+| Nisser | Festgæster i papirhatte (`drawGuest`, otte faste udseender i `Nisse.look`); de bytter knallerter og hopper og puster i trompet, når de "vinker" |
+| Julelys | Vimpler, guldpærer og papirlanterner (`drawPartyGarland`) |
+| Sneplov | En lille fejemaskine (`drawSweeper`), uden horn og røg |
+| Kalender og nedtælling | Kalenderen er skjult; nedtællingen tæller til midnat |
+| Nissehue i kameraet | En stribet papirhat med kvast (`CameraLook.party`); intet skæg og ingen dragt |
+
+- **Midnat** (`Controller.updateNewYear`): den 31. december står tiden til midnat ved siden af snefnugget i menulinjen (timer:minutter, i det sidste minut sekunderne, og årstallet i ti minutter efter). De sidste ti minutter samles gæsterne på hovedskærmen om uret, det sidste minut har uret sekundviser, og de sidste ti sekunder skrives i gnister over det. Ved midnat: ca. et minut med raketter på alle skærme (hvis de er slået til), et konfettibrag, hoppende gæster og årstallet i gnister; med lyd tolv klokkeslag (`Synth.midnightBell`) og derefter melodien. Sov skærmene ved midnat, springes det over.
+- **Test:** `tools/nytaar-snapshots.sh` gemmer billeder af det hele i `build-test/nytaar` (scenen, urets trin, raketter, fejemaskine, nedtælling, midnat). `JULE_NYTAAR_OM=N` lægger midnat N sekunder efter start; `JULE_DATE=2026-12-31` beholder klokkeslættet på den dato. `--julemand` sender en salve, `--sneplov` fejemaskinen, `--lyd-test` skriver `nytaar-melodi.wav` og `nytaar-klokke.wav`. Kameraet: `HUE_NYTAAR=1 … --kamera-replay=MAPPE`. Med `JULE_DEBUG=1` står menulinjens tekst i loggen (`menu bar: '…'`).
+
 ## Byg og kør
 
 Kræver Xcode eller Command Line Tools (Swift 5.10+), macOS 14+.
@@ -140,6 +158,9 @@ Et virtuelt kamera, der viser dig foran en levende julescene: nattehimmel, sneve
 | `HUE_MUERTOS=1` | `--kamera-replay` bruger de dødes dags blomsterkrans og calavera-sminke (og udskriver sminkens tid pr. billede) |
 | `HUE_HALLOWEEN=1` | `--kamera-replay` bruger Halloweens heksehat, heksenæse, sorte tøj og grønne hud; med `HUE_GRAESKAR=1` græskarhovedet i stedet |
 | `HUE_NAESE_MAAL=1` | sammen med `HUE_HALLOWEEN=1`: tegner næsens tre målte punkter (rod, under næsen, udregnet tip) og udskriver længde og fremspring pr. billede |
+| `HUE_GRAESKAR_MAAL=1` | sammen med `HUE_GRAESKAR=1`: udskriver græskarhovedets mål pr. billede og tegner det halvt gennemsigtigt, så hovedet indeni kan ses |
+| `HUE_NYTAAR=N` | `--kamera-replay` bruger nytårets stribede papirhat (intet skæg, ingen dragt) i hattefarve nr. N (1–7) |
+| `JULE_NYTAAR_OM=N` | Nytår: midnat er N sekunder efter start (uret, nedtællingen og braget følger med) |
 | `JULE_HALLOWEEN_PLOV=heks\|spoegelser` | Halloween: låser, om heksen fejer eller spøgelserne puster (ellers trækkes der lod) |
 | `HUE_INGEN_MODEL=1` | kameraet finder tøjet ved farve i stedet for med modellen (til sammenligning) |
 | `JULE_TICKS=1` | skriver faktiske billeder/s til stderr |
@@ -169,10 +190,11 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/SnowmanBuild.swift` | Snemanden, børnene bygger: kugler, løft, pynt, sneboldkamp, ventetid på sneploven, et nyt sted (som `src/SnowmanBuild.cs`) |
 | `Sources/JuleHygge/OverlaySnowman.swift` | Tegner snemanden, børnene og deres snebolde, og lader sneploven køre snemanden ned (som `src/LayerSnowman.cs`) |
 | `Sources/JuleHygge/OverlayHalloween.swift` | Halloweens figurer: græskarlygter, heks, flagermus, spøgelser og udklædte børn, lyskæde, katte og edderkopper, og de to, der rydder bladene |
+| `Sources/JuleHygge/OverlayNytaar.swift` | Nytårets figurer: uret, festgæster, vimpler og papirlanterner, fejemaskine, stjernekastere og bordbomber |
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
 | `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger, de dødes dags og Halloweens lyde), gåseoptagelsen og delt lydmotor |
-| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår, de dødes dag eller Halloween) og hvad der skifter med det, også i kameraet |
+| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår, de dødes dag, Halloween eller nytår) og hvad der skifter med det, også i kameraet |
 | `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
 | `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
 | `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |
