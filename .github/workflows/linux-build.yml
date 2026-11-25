@@ -154,7 +154,8 @@ jobs:
             om=""; extra="--santa --plow=1"
             if [ "$shot" = nytaar-midnat ]; then om=6; extra=""; fi
             set +e
-            JULE_SETTINGS="$RUNNER_TEMP/nytaar.ini" JULE_DEEPSNOW=1 ${om:+JULE_NYTAAR_OM=$om} xvfb-run -a -s "-screen 0 1920x1080x24" timeout 17 build/JuleHygge $extra --snapshot="$RUNNER_TEMP/shots-$shot,10"
+            # (through env: a variable that comes out of an expansion is not read as an assignment by the shell)
+            env JULE_SETTINGS="$RUNNER_TEMP/nytaar.ini" JULE_DEEPSNOW=1 ${om:+JULE_NYTAAR_OM=$om} xvfb-run -a -s "-screen 0 1920x1080x24" timeout 17 build/JuleHygge $extra --snapshot="$RUNNER_TEMP/shots-$shot,10"
             code=$?
             set -e
             [ "$code" = 124 ] || exit 1
