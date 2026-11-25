@@ -90,6 +90,25 @@ Temaet **Nytår** (`Theme=4`) er påbegyndt 2026-11-25; Windows og Linux har det
 - **Midnat** (`Controller.updateNewYear`): den 31. december står tiden til midnat ved siden af snefnugget i menulinjen (timer:minutter, i det sidste minut sekunderne, og årstallet i ti minutter efter). De sidste ti minutter samles gæsterne på hovedskærmen om uret, det sidste minut har uret sekundviser, og de sidste ti sekunder skrives i gnister over det. Ved midnat: ca. et minut med raketter på alle skærme (hvis de er slået til), et konfettibrag, hoppende gæster og årstallet i gnister; med lyd tolv klokkeslag (`Synth.midnightBell`) og derefter melodien. Sov skærmene ved midnat, springes det over.
 - **Test:** `tools/nytaar-snapshots.sh` gemmer billeder af det hele i `build-test/nytaar` (scenen, urets trin, raketter, fejemaskine, nedtælling, midnat). `JULE_NYTAAR_OM=N` lægger midnat N sekunder efter start; `JULE_DATE=2026-12-31` beholder klokkeslættet på den dato. `--julemand` sender en salve, `--sneplov` fejemaskinen, `--lyd-test` skriver `nytaar-melodi.wav` og `nytaar-klokke.wav`. Kameraet: `HUE_NYTAAR=1 … --kamera-replay=MAPPE`. Med `JULE_DEBUG=1` står menulinjens tekst i loggen (`menu bar: '…'`).
 
+## Karneval
+Temaet **Karneval** (`Theme=5`) er påbegyndt 2026-11-25, **kun i macOS-udgaven og uden kameraet**. Idéen, RELs afgørelser og planen for kameraet står i `docs/karneval-ide.md`, det udestående i `docs/karneval-udestaaende.md`. Figurerne er i `Sources/JuleHygge/OverlayKarneval.swift`. Intet i temaet viser eller antyder drikkeri.
+
+| Jul | Karneval |
+|---|---|
+| Sne | Konfetti, serpentiner og fjer (`DotImages.carnival`: nytårets konfetti med en fjer for hver sjette) |
+| På vindueskanterne | Tukaner, der kigger sig om og skræpper (`addLedgeToucans`) |
+| Snemand | En karnevalsvogn, der bygges i 12 trin, ét for hver time appen kører (`drawFloat`, `Controller.floatSteps`) |
+| Julemanden | En orkesterbil, der kører langs bunden (`drawBandTruck`): intet flyver i dette tema. Samme menupunkt, kontakt og tidsplan som julemanden; trommerne er `Synth.batucada` |
+| Nisser | Et sambaoptog (`drawReveller`, otte faste figurer i `Nisse.look`): fanebærer og ledsager, baiana, danser med fjerpragt, to trommeslagere, Pjerrot og Harlekin. De går, står og vinker i takt (`Controller.beat`, 120 slag i minuttet) |
+| Julelys | Frynseguirlande med masker (`drawCarnivalGarland`); pærerne er julelysenes egne |
+| Sneplov | Askeonsdags gadefejere med koste og en vogn (`drawStreetSweepers`), uden horn og røg |
+| Kalender og nedtælling | Begge skjult |
+| Kameraet | Intet endnu: hue, skæg og dragt er skjult og slået fra (`VirtualCamera`) |
+
+- **To karnevaller** (`Carnival` i `Theme.swift`, indstillingen `Carnival`: 0 automatisk, 1 Rio, 2 Rhinlandet; menuen "Karneval fra"). Automatisk giver Rhinlandets, hvor sproget eller landet er tysk (samme regel som giver Wichtel, `Folk.system`), ellers Rios. Rhinlandets form står i `OverlayKarnevalRhein.swift`: konfetti og karameller (Kamelle), en pragtvogn med et stort narrehoved (`drawPrunkwagen`), en traktor med en festvogn, hvorfra prinsen kaster karameller, og et hornorkester (`drawFestwagen`; musikken er en optagelse af et rigtigt blæserorkester, `Synth.rheinBand`, se `assets/lyd/KILDER.md`, og figurerne går efter dens målte slag, `Controller.advanceBeat`; `--lyd-test` skriver den som `karneval-rhein`; karamellerne er gnister fra `updateSanta`), et rosenmandagsoptog (`drawJeck`: dansepige og gardist i rødt og hvidt, lappeklovn, prins, tubaspiller, trommeslager, nar og et barn klædt ud som bi), vimpler og narrehuer (`drawRhenishGarland`) og narrehuer og berlinere på vindueskanterne (`addLedgeCaps`). Gadefejerne er de samme. Test: `CARNIVAL=2 tools/karneval-snapshots.sh ../build-test/karneval-rhein`.
+- Orkesterbilen og gadefejerne deler jorden og er aldrig ude samtidig (`launchSanta` og `startPlow` venter på hinanden).
+- **Test:** `tools/karneval-snapshots.sh` gemmer billeder i `build-test/karneval` (scenen, vognens trin, orkesterbil, gadefejere). Orkesterbilen starter uden for rækken af skærme og kører 70 punkter i sekundet, så på flere skærme skal den findes i `run-orkesterbil/screen1.png` eller `screen2.png`. `--lyd-test` skriver `karneval-trommer.wav`.
+
 ## Byg og kør
 
 Kræver Xcode eller Command Line Tools (Swift 5.10+), macOS 14+.
@@ -190,11 +209,13 @@ JULE_SETTINGS=$PWD/build/test.ini JULE_DATE=2026-12-13 build/JuleHygge.app/Conte
 | `Sources/JuleHygge/SnowmanBuild.swift` | Snemanden, børnene bygger: kugler, løft, pynt, sneboldkamp, ventetid på sneploven, et nyt sted (som `src/SnowmanBuild.cs`) |
 | `Sources/JuleHygge/OverlaySnowman.swift` | Tegner snemanden, børnene og deres snebolde, og lader sneploven køre snemanden ned (som `src/LayerSnowman.cs`) |
 | `Sources/JuleHygge/OverlayHalloween.swift` | Halloweens figurer: græskarlygter, heks, flagermus, spøgelser og udklædte børn, lyskæde, katte og edderkopper, og de to, der rydder bladene |
+| `Sources/JuleHygge/OverlayKarneval.swift` | Karnevallets figurer: karnevalsvogn, sambaoptog, orkesterbil, gadefejere, frynseguirlande og tukaner |
+| `Sources/JuleHygge/OverlayKarnevalRhein.swift` | Karnevallets tyske form (Rhinlandet): pragtvogn, rosenmandagsoptog, festvogn, vimpler og narrehuer |
 | `Sources/JuleHygge/OverlayNytaar.swift` | Nytårets figurer: uret, festgæster, vimpler og papirlanterner, fejemaskine, stjernekastere og bordbomber |
 | `Sources/JuleHygge/Calendar.swift` | Julekalender-vinduet og indholdet bag lågerne |
 | `Sources/JuleHygge/Settings.swift` | Indlæsning og gemning af indstillinger |
 | `Sources/JuleHygge/Sound.swift` | Lydsyntese (jingle, sneplov, løvsuger, de dødes dags og Halloweens lyde), gåseoptagelsen og delt lydmotor |
-| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår, de dødes dag, Halloween eller nytår) og hvad der skifter med det, også i kameraet |
+| `Sources/JuleHygge/Theme.swift` | Temaet (jul, efterår, de dødes dag, Halloween, nytår eller karneval) og hvad der skifter med det, også i kameraet |
 | `Sources/JuleHygge/Parts.swift` | Tøjmodellen i kameraet: tøj, hud og hår hver for sig |
 | `Sources/JuleHygge/Licenses.swift` | Vinduet med tøjmodellens licens |
 | `tools/parts-probe.swift`, `tools/sound-probe.swift`, `tools/goose-synth.swift`, `tools/window-probe.swift` | Måleværktøjer: tøjmodellen på billeder, en lyds tonehøjde og spektrum, en prøve på syntetiske gæs (ikke valgt), vinduernes størrelse under minimering |

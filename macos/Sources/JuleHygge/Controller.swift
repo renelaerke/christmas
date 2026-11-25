@@ -106,6 +106,58 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// suit's place in the camera. (The countdown line stays: here it counts down to midnight.)
     static let nytaarHidden: Set<String> = [
         "Julekalender…", "Nisser eller alfer", "Nisseskæg i kameraet", "Nissedragt i kameraet"]
+    /// Carnival: the float is built from the wheels up.
+    static let floatSteps = [
+        "et chassis på hjul", "et nederste dæk", "et skørt med frynser", "et øverste dæk og en trappe", "guldkanter", "to søjler",
+        "en stor sol", "solens stråler", "solens ansigt", "vifter af fjer", "kulørte pærer", "serpentiner og vimpler - vognen er færdig!"]
+    /// What the menu items are called at carnival, by their Christmas title (one not here keeps its title).
+    static let karnevalTitles: [String: String] = [
+        "Snevejr": "Konfetti og fjer", "Snemængde": "Mængde af konfetti", "Let sne": "Lidt konfetti", "Snestorm": "Konfettistorm",
+        "Sne i bunden af skærmen": "Konfetti i bunden af skærmen", "Sne på vinduerne": "Konfetti og tukaner på vinduerne",
+        "Snemand": "Karnevalsvogn", "Julemanden": "Orkesterbil", "Send julemanden afsted nu!": "Send orkesterbilen afsted nu!",
+        "Lyd: bjælder og jingle når julemanden flyver": "Lyd: sambatrommer når orkesterbilen kører",
+        "Nisser": "Sambaoptog", "Antal nisser pr. skærm": "Antal dansere pr. skærm",
+        "Fra - fuld sne på hele skærmen": "Fra - konfetti på hele skærmen", "Til - sne kun nederst, stille blæser": "Til - konfetti kun nederst, stille blæser",
+        "30 billeder/s - glattere sne": "30 billeder/s - glattere konfetti", "Send julemanden ind i kameraet": "Send orkesterbilen ind i kameraet",
+        "Nisser og sne foran mig i kameraet": "Dansere og konfetti foran mig i kameraet", "Julelys": "Frynseguirlande med masker",
+        "Sneplov rydder sneen": "Gadefejere rydder konfettien", "Send sneploven ud nu!": "Send gadefejerne ud nu!",
+        "Lyd: motor, skraben og horn fra sneploven": "Lyd: koste når gadefejerne fejer",
+        "Send sneploven ind i kameraet": "Send gadefejerne ind i kameraet"]
+    /// What carnival does not have: the camera's hat, beard and suit (nothing is built for the person yet; see
+    /// docs/karneval-ide.md). The calendar, the countdown and the choice of folk are hidden as on the Day of the Dead.
+    static let karnevalHidden: Set<String> = ["Nissehue på i kameraet", "Nisseskæg i kameraet", "Nissedragt i kameraet"]
+    /// Which carnival: the user's choice, or by language and region (see Carnival).
+    var carnival: Carnival { Carnival.chosen(cfg.carnival) }
+    /// What the Rhineland's carnival calls differently from Rio's (laid over karnevalTitles).
+    static let rheinTitles: [String: String] = [
+        "Snevejr": "Konfetti og karameller", "Sne på vinduerne": "Konfetti, narrehuer og berlinere på vinduerne",
+        "Snemand": "Pragtvogn", "Julemanden": "Festvogn", "Send julemanden afsted nu!": "Send festvognen afsted nu!",
+        "Lyd: bjælder og jingle når julemanden flyver": "Lyd: hornorkester når festvognen kører",
+        "Nisser": "Karnevalsoptog", "Antal nisser pr. skærm": "Antal narre pr. skærm",
+        "Send julemanden ind i kameraet": "Send festvognen ind i kameraet",
+        "Nisser og sne foran mig i kameraet": "Narre og konfetti foran mig i kameraet", "Julelys": "Vimpler og narrehuer"]
+    private var carnivalItem: NSMenuItem!
+    /// The drums' beat, in seconds (120 to the minute), and how many beats have gone: carnival's walkers step in
+    /// time with it on every screen, and the band on the truck plays to it, whether the sound is on or not.
+    static let beat = 0.5
+    private(set) var beatCount: Double = 0
+
+    /// Moves the beat on. With no music it is a clock's. While the Rhineland wagon's band is heard, the beat is
+    /// the band's own: where the recording is right now, looked up among its measured beats (a real band's tempo
+    /// wanders, so a clock would be half a step off within half a minute). The walkers are eased over to it,
+    /// never jumped: the difference (counted in pairs of beats, so nobody changes foot) is closed over a second.
+    private func advanceBeat(_ dt: Double) {
+        var step = dt / Self.beat
+        if theme == .karneval, carnival == .rhein, let at = marchTune.position, let music = Synth.rheinBeat(at: at) {
+            var off = (music - beatCount).truncatingRemainder(dividingBy: 2)
+            if off >= 1 { off -= 2 } else if off < -1 { off += 2 }
+            step += off * min(1, dt * 4)
+            if Int(time / 5) != Int((time - dt) / 5) {
+                ErrorLog.debug(String(format: "beat: the band is %.2f s in, on its beat %.2f; the walkers are %+.3f of a beat off", at, music, off))
+            }
+        }
+        beatCount += step
+    }
     /// What Halloween has its own item for: in the camera one choice of costume
     /// (`halloweenCameraItem`: a witch's hat or a pumpkin head) in place of hat, beard and suit.
     static let halloweenHidden: Set<String> = [
@@ -161,6 +213,13 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         }
         updatePowerSave()
         startTimer()
+        warmCarnivalSound()
+    }
+
+    /// Carnival's music takes a moment to make: it is made ahead of time when the theme and its sound are on.
+    private func warmCarnivalSound() {
+        guard theme == .karneval, cfg.sound else { return }
+        (carnival == .rhein ? marchTune : drumTune).warm()
     }
 
     private var asleep = false
@@ -334,6 +393,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         let dt = F(min(0.1, now - lastT))
         lastT = now
         time += Double(dt)
+        advanceBeat(Double(dt))
 
         dayTimer -= dt
         if dayTimer <= 0 {
@@ -424,6 +484,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// Sends Santa over a random screen, or over `screen` only (e.g. the camera scene).
     func launchSanta(on screen: ScreenOverlay? = nil) {
         if santaActive || overlays.isEmpty { return }
+        // (carnival's truck and its street sweepers share the ground: never both at once)
+        if theme == .karneval && plow.active { return }
         // (New Year's flyer is a volley of rockets)
         if theme == .nytaar { launchVolley(on: screen, seconds: 12 + Double(R()) * 6); return }
         // ordinary trips go over the real screens; the camera scene only gets Santa when sent there
@@ -461,6 +523,16 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if theme == .muertos { butterflyTune.rate = Float(pace) }
         if theme == .halloween { witchTune.rate = Float(pace) }
         santaSpeed = 230 * pace * baseScale * (santaMaxX - santaMinX > b.width * 1.5 ? 1.6 : 1)
+        if theme == .karneval {
+            // the band truck: on the ground, at the ordinary size and at a walking pace; the drums keep their own
+            // tempo, which is the beat the walkers step to
+            flyerDepth = 1
+            santaScale = baseScale
+            santaX = santaDir > 0 ? santaMinX - 260 * santaScale : santaMaxX + 260 * santaScale
+            santaSpeed = 70 * baseScale
+            drumTune.rate = 1
+            marchTune.rate = 1
+        }
         santaPhase = 0
         santaActive = true
     }
@@ -481,6 +553,24 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         santaX += santaDir * santaSpeed * dt
         santaPhase += dt
         if theme.santaSparkles { sparkAcc += dt * 45 }
+        // The Rhineland's wagon: sweets (Kamelle) are thrown from it in handfuls, up and out to both sides
+        if theme == .karneval && carnival == .rhein {
+            kamelleAcc += dt * 7
+            let ground = overlays.first { !$0.isVirtual == !screensPausedForCamera && santaX >= $0.screenBounds.minX && santaX < $0.screenBounds.maxX }
+            while kamelleAcc >= 1 {
+                kamelleAcc -= 1
+                guard let o = ground else { continue }
+                let s = santaScale
+                let sp = Spark()
+                sp.x = santaX + (R() - 0.5) * 120 * s; sp.y = o.screenBounds.maxY - (70 + R() * 20) * s
+                sp.vx = (R() - 0.5) * 220 * s; sp.vy = -(150 + R() * 130) * s
+                sp.gravity = 300 * s
+                sp.max = 1.5 + R() * 0.5; sp.life = sp.max
+                sp.size = (2.6 + R() * 1.2) * s
+                sp.colour = 1 + Int(R() * 7) % 7
+                sparks.append(sp)
+            }
+        }
         while sparkAcc >= 1 {
             sparkAcc -= 1
             let sp = Spark()
@@ -493,7 +583,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             sp.gold = R() < 0.6
             sparks.append(sp)
         }
-        if (santaDir > 0 && santaX > santaMaxX + 450 * santaScale) || (santaDir < 0 && santaX < santaMinX - 450 * santaScale) {
+        let reach: F = theme == .karneval ? 260 : 450
+        if (santaDir > 0 && santaX > santaMaxX + reach * santaScale) || (santaDir < 0 && santaX < santaMinX - reach * santaScale) {
             santaActive = false
             santaNext = 60 + R() * 120
         }
@@ -752,6 +843,12 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
     /// New Year's rockets go up to "Auld Lang Syne" (a traditional melody, free of rights; the arrangement is ours),
     /// and midnight has twelve strokes of a bell.
     private lazy var auldTune = audio.voice(Synth.auldLangSyne, loops: true, varispeed: true)
+    /// Carnival's band truck plays a samba batucada (an original pattern for six drums and a whistle).
+    private lazy var drumTune = audio.voice(Synth.batucada, loops: true, varispeed: true)
+    /// The Rhineland's wagon has a brass band on it: a recording of a real one (Synth.rheinBand), whose beats the
+    /// walkers follow (advanceBeat); the march of our own only if the recording is missing.
+    private lazy var marchTune = audio.voice(Synth.rheinBand, loops: true, varispeed: true)
+    private var kamelleAcc: F = 0
     private lazy var midnightBell = audio.voice(Synth.midnightBell, loops: false)
     private var jingleIndex = 0
     /// This trip's size (1 = the ordinary size); for the geese also how loud they are.
@@ -792,6 +889,14 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         if (cfg.sound && halloween) || witchTune.playing {
             witchTune.update(level: on && halloween ? Float(presence * min(1, flyerDepth)) * volume : 0, pan: pan, dt: d)
         }
+        let karneval = theme == .karneval
+        let rhein = karneval && carnival == .rhein
+        if (cfg.sound && karneval && !rhein) || drumTune.playing {
+            drumTune.update(level: on && karneval && !rhein ? Float(presence) * volume : 0, pan: pan, dt: d)
+        }
+        if (cfg.sound && rhein) || marchTune.playing {
+            marchTune.update(level: on && rhein ? Float(presence) * volume : 0, pan: pan, dt: d)
+        }
         let nytaar = theme == .nytaar
         if (cfg.sound && nytaar) || auldTune.playing {
             // (at midnight the tune waits for the bell's twelve strokes)
@@ -807,13 +912,13 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             let pan = Float((plow.gx - plow.minX) / span * 2 - 1)
             let on = plow.active && cfg.plowSound && !soundMuted
             // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
-            plowEngine.update(level: on && !muertos && !halloween ? Float(presence) * volume * (nytaar ? 0.4 : 0.8) : 0, pan: pan, dt: d)
+            plowEngine.update(level: on && !muertos && !halloween && !karneval ? Float(presence) * volume * (nytaar ? 0.4 : 0.8) : 0, pan: pan, dt: d)
             // scraping gets louder with the amount of snow in front of the blade
             let load = Float(min(1, sqrt(plow.pushed / 2000)))
             plowScrape.update(level: on && christmas ? Float(presence) * volume * (0.15 + 0.85 * load) : 0, pan: pan, dt: d)
             // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
             // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
-            let sweeps = muertos || (halloween && !ghostsBlow)
+            let sweeps = muertos || (halloween && !ghostsBlow) || karneval   // (carnival's street sweepers have brooms too)
             if sweeps || cartRoll.playing || broomSweep.playing {
                 cartRoll.update(level: on && muertos ? Float(presence) * volume * 0.9 : 0, pan: pan, dt: d)
                 broomSweep.update(level: on && sweeps ? Float(presence) * volume * (0.25 + 0.75 * load) * 0.7 : 0, pan: pan, dt: d)
@@ -829,7 +934,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
                 hornedThisRun = true
                 // (Halloween's witch and ghosts have nothing in the horn's place: a truck's honk does not belong there)
                 // (nor has New Year's sweeper: it comes the morning after)
-                if !halloween && !nytaar { (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan) }
+                if !halloween && !nytaar && !karneval { (muertos ? donkeyBray : plowHorn).playOnce(level: volume, pan: pan) }
             }
         }
         if !plow.active { hornedThisRun = false }
@@ -923,6 +1028,8 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
 
     private func startPlow(from start: ScreenOverlay) {
         if plow.active { return }
+        // (carnival's sweepers wait until the band truck has gone by)
+        if theme == .karneval && santaActive { plow.cooldown = 15; return }
         if theme == .halloween { pickHalloweenPlow() }
         // all screens joined edge to edge with the starting screen, left and right
         var row = [start]
@@ -962,7 +1069,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         // the donkey cart walks at a donkey's pace
         // (so does Halloween's witch; the ghosts float a little faster)
         // (New Year's street sweeper trundles)
-        let pace: F = theme == .muertos ? Controller.cartPace : theme == .halloween ? (ghostsBlow ? 0.6 : Controller.cartPace) : theme == .nytaar ? 0.6 : 1
+        let pace: F = theme == .muertos ? Controller.cartPace : theme == .halloween ? (ghostsBlow ? 0.6 : Controller.cartPace) : theme == .nytaar ? 0.6 : theme == .karneval ? Controller.cartPace : 1
         plow.gx += plow.dir * plowSpeed * pace * s * dt
         plow.wheel += plowSpeed * pace * s * dt / (10 * s * plowScale)
         if (plow.dir > 0 && plow.gx > plow.maxX + 260 * s * plowScale) || (plow.dir < 0 && plow.gx < plow.minX - 260 * s * plowScale) {
@@ -1073,7 +1180,9 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
             ErrorLog.debug("ofrenda: step \(stage) of \(Self.snowmanMaxStage)")
             celebrateAt = time + 0.5
             if stage == Self.snowmanMaxStage {
-                if theme == .nytaar {
+                if theme == .karneval {
+                    notify("Karnevalsvognen er færdig!", "Sambaskolen har bygget den. Til sidst kom der " + Self.floatSteps[stage - 1], opensCalendar: false)
+                } else if theme == .nytaar {
                     notify("Uret er pyntet færdigt!", "Gæsterne har pyntet det. Til sidst kom der " + Self.clockSteps[stage - 1], opensCalendar: false)
                 } else if theme == .halloween {
                     notify("Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + Self.pumpkinSteps[stage - 1], opensCalendar: false)
@@ -1093,6 +1202,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         ofrendaSaveTimer = 0
         celebrateAt = -1
         buildOverlays()
+        warmCarnivalSound()
     }
 
     private func notify(_ title: String, _ body: String, opensCalendar: Bool) {
@@ -1169,7 +1279,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(countdownItem, nil, nil))
         menu.addItem(themed(.separator(), nil, nil))
 
-        menu.addItem(choice("Tema", Theme.names, [0, 1, 2, 3, 4], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
+        menu.addItem(choice("Tema", Theme.names, [0, 1, 2, 3, 4, 5], { $0.theme }, { [unowned self] in if $0.theme != $1 { $0.theme = $1; themeChanged() } }))
         menu.addItem(themed(toggle("Snevejr", { $0.snow }, { $0.snow = $1 }), "Løvfald", "Kronblade fra tagetes"))
         menu.addItem(themed(choice("Snemængde", ["Let sne", "Normal", "Snestorm", "Skiftende vejr"], [0, 1, 2, 3], { $0.snowLevel }, { $0.snowLevel = $1 }),
                             "Mængde af blade", "Mængde af kronblade", choices: ["Få blade", nil, "Efterårsstorm", nil], muertosChoices: ["Få kronblade", nil, "Kronbladsstorm", nil]))
@@ -1177,6 +1287,10 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(themed(toggle("Sne på vinduerne", { $0.windowSnow }, { $0.windowSnow = $1 }), "Blade på vinduerne", "Kronblade på vinduerne"))
         snowmanItem = toggle("Snemand", { $0.snowman }, { $0.snowman = $1 })
         menu.addItem(themed(snowmanItem, "Høstak med fugleskræmsel", "Ofrenda (alter)"))
+        // which carnival: only shown in the Karneval theme (the walkers and all the rest change at once)
+        carnivalItem = choice("Karneval fra", ["Automatisk efter sprog og land"] + Carnival.names, [0] + Carnival.allCases.map(\.rawValue),
+                              { $0.carnival }, { [unowned self] in $0.carnival = $1; buildOverlays() })
+        menu.addItem(carnivalItem)
         // the kite only exists in autumn: shown there, hidden in the Christmas theme
         kiteItem = toggle("Drage", { $0.kite }, { $0.kite = $1 })
         menu.addItem(kiteItem)
@@ -1233,7 +1347,7 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         menu.addItem(item("Installér JuleHygge Kamera (baggrund i Teams)…") { [unowned self] _ in cameraInstaller.install() })
         menu.addItem(toggle("Pause skærmene mens JuleHygge Kamera bruges", { $0.cameraPausesScreens }, { $0.cameraPausesScreens = $1 }))
         menu.addItem(item("Fjern JuleHygge Kamera") { [unowned self] _ in cameraInstaller.remove() })
-        menu.addItem(item("Licens for tøjmodellen i kameraet…") { _ in LicenseWindow.show() })
+        menu.addItem(item("Licenser…") { _ in LicenseWindow.show() })
         menu.addItem(.separator())
         menu.addItem(themed(toggle("Julelys", { $0.lights }, { $0.lights = $1 }), "Løvranke med lygter", "Papel picado"))
         menu.addItem(toggle("Vis på alle skærme", { $0.allScreens }, { [unowned self] in $0.allScreens = $1; buildOverlays() }))
@@ -1285,7 +1399,11 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for t in titledItems { t.item.title = L(t.da) }
         for t in themedItems {
             let own = t.folk[folk]
-            if theme == .nytaar {
+            if theme == .karneval {
+                t.item.isHidden = t.muertos == nil || Self.karnevalHidden.contains(t.jul)
+                let own = carnival == .rhein ? Self.rheinTitles[t.jul] : nil
+                if !t.item.isSeparatorItem { t.item.title = L(own ?? Self.karnevalTitles[t.jul] ?? t.jul) }
+            } else if theme == .nytaar {
                 t.item.isHidden = Self.nytaarHidden.contains(t.jul)
                 if !t.item.isSeparatorItem { t.item.title = L(Self.nytaarTitles[t.jul] ?? t.jul) }
             } else if theme == .halloween {
@@ -1309,10 +1427,15 @@ final class Controller: NSObject, NSMenuDelegate, UNUserNotificationCenterDelega
         for it in languageItem.submenu?.items ?? [] { it.state = (it.representedObject as? String) == chosen ? .on : .off }
         languageItem.submenu?.items.first?.title = L("Automatisk ({0})", Lang.all[Lang.automatic]?.name ?? Lang.automatic)
         kiteItem.isHidden = !autumn
+        carnivalItem.isHidden = theme != .karneval
+        carnivalItem.submenu?.items.first?.title = L("Automatisk efter sprog og land ({0})", L(Carnival.system.name))
         halloweenCameraItem.isHidden = theme != .halloween
         countdownItem.title = theme == .nytaar ? newYearCountdown() : Self.countdown()
         // (the Christmas snowman has no stage: the children build it while you watch)
-        if theme == .nytaar { snowmanItem.title = L("Ur med pynt (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
+        if theme == .karneval {
+            snowmanItem.title = L(carnival == .rhein ? "Pragtvogn (trin {0} af {1})" : "Karnevalsvogn (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage)
+        }
+        else if theme == .nytaar { snowmanItem.title = L("Ur med pynt (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if theme == .halloween { snowmanItem.title = L("Græskarlygter (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if muertos { snowmanItem.title = L("Ofrenda (alter) (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }
         else if autumn { snowmanItem.title = L("Høstak med fugleskræmsel (trin {0} af {1})", snowmanStage, Self.snowmanMaxStage) }

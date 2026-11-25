@@ -10,6 +10,7 @@ final class Settings {
     var theme = 0              // 0 = jul, 1 = efterår, 2 = de dødes dag (Theme)
     var kite = true            // efterårets drage
     var cameraHalloween = 1    // Halloween i kameraet: 0 = ingen udklædning, 1 = heksehat, 2 = græskarhoved
+    var carnival = 0           // karnevallets form: 0 = automatisk efter sprog og land, 1 = Rio, 2 = Rhinlandet (Carnival)
     var folk = 0               // 0 = automatisk efter sprog og land, ellers 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud (Folk)
     var autoUpdate = true      // install new GitHub releases by itself
     var lastVersion = ""       // the version that ran last time, to announce an update
@@ -73,6 +74,7 @@ final class Settings {
         s.kite = b("Kite", s.kite)
         s.cameraHalloween = max(0, min(2, i("CameraHalloween", s.cameraHalloween)))
         s.folk = Folk(rawValue: i("Folk", s.folk)) != nil ? i("Folk", s.folk) : 0
+        s.carnival = Carnival(rawValue: i("Carnival", s.carnival)) != nil ? i("Carnival", s.carnival) : 0
         s.autoUpdate = b("AutoUpdate", s.autoUpdate)
         s.lastVersion = d["LastVersion"] ?? ""
         s.language = d["Language"] ?? ""
@@ -97,7 +99,7 @@ final class Settings {
             "Nisser=" + b(nisser), "Lights=" + b(lights), "PauseFullscreen=" + b(pauseFullscreen),
             "Snowman=" + b(snowman), "AllScreens=" + b(allScreens), "Plow=" + b(plow), "WindowSnow=" + b(windowSnow), "CameraHat=" + b(cameraHat), "CameraFront=" + b(cameraFront), "CameraBeard=" + b(cameraBeard), "CameraSuit=" + b(cameraSuit), "Sound=" + b(sound), "CameraPausesScreens=" + b(cameraPausesScreens), "PlowSound=" + b(plowSound), "SoundLevel=\(soundLevel)",
             "SnowLevel=\(snowLevel)", "NisseCount=\(nisseCount)", "PowerSave=\(powerSave)", "FrameRate=\(frameRate)",
-            "Theme=\(theme)", "Kite=" + b(kite), "CameraHalloween=\(cameraHalloween)", "Folk=\(folk)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
+            "Theme=\(theme)", "Kite=" + b(kite), "CameraHalloween=\(cameraHalloween)", "Folk=\(folk)", "Carnival=\(carnival)", "AutoUpdate=" + b(autoUpdate), "LastVersion=" + lastVersion, "Language=" + language,
             "SnowmanSeenStage=\(snowmanSeenStage)", "OfrendaSeconds=\(Int(ofrendaSeconds))", "CalendarYear=\(calendarYear)",
             "FirstRun=" + ds(firstRun), "LastDoorNotice=" + ds(lastDoorNotice),
             "OpenedDoors=" + openedDoors.sorted().map(String.init).joined(separator: ","),
