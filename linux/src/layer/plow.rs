@@ -147,8 +147,8 @@ impl Layer {
                         });
                     }
                 }
-            } else if st.autumn {
-                // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
+            } else if st.autumn || st.nytaar {
+                // the leaf collector (and New Year's street sweeper with its confetti): leaves whirl up around its nozzle and are left behind in the air for a moment
                 if ph > 6.0 {
                     self.plow_chunk_acc += dt * 14.0;
                     while self.plow_chunk_acc >= 1.0 {
@@ -187,7 +187,7 @@ impl Layer {
             }
             self.plow_smoke_timer -= dt;
             // (a donkey makes no smoke, nor do a witch or ghosts)
-            if self.plow_smoke_timer <= 0.0 && !st.muertos && !st.halloween {
+            if self.plow_smoke_timer <= 0.0 && !st.muertos && !st.halloween && !st.nytaar {
                 self.plow_smoke_timer = 0.2;
                 self.plow_bits.push(PlowBit {
                     x: h.x - h.dir * 2.0 * sc,
@@ -282,6 +282,11 @@ impl Layer {
             } else {
                 super::halloween::witch_sweeper(cr, ph, h.wheel as f64);
             }
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.nytaar {
+            super::nytaar::sweeper(cr, ph, h.wheel as f64);
             cr.set_matrix(saved);
             return;
         }

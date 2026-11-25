@@ -84,7 +84,9 @@ impl Layer {
             (st.snowman_stage, x, g - heap_at(&self.heap, x) + 3.0 * s)
         });
         self.snowman_pos = snowman.map(|(_, x, y)| (self.rect.x as f32 + x, self.rect.y as f32 + y));
-        let snowman_key = snowman.map(|(stage, x, y)| (stage, x as i32, y.round() as i32));
+        // (New Year's clock is drawn again whenever its hands have moved: the clock's key is part of the stage)
+        let hands = if st.nytaar { st.clock_key.wrapping_mul(100) } else { 0 };
+        let snowman_key = snowman.map(|(stage, x, y)| (stage.wrapping_add(hands), x as i32, y.round() as i32));
         let plow_here = self.plow_is_here(st);
 
         let shown = self.ground_shown;
@@ -150,6 +152,8 @@ impl Layer {
         if let Some((stage, x, y)) = snowman {
             let what = if st.muertos {
                 snowman::Built::Ofrenda
+            } else if st.nytaar {
+                snowman::Built::Clock { hour: st.clock.0, minute: st.clock.1, second: st.clock.2 }
             } else if st.halloween {
                 snowman::Built::Pumpkins
             } else {

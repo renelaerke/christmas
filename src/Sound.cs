@@ -576,6 +576,101 @@ namespace JuleHygge
             });
         }
 
+        // ------------------------------------------------------------------ nytår
+        // New Year's tune, to the rockets: "Auld Lang Syne", verse and refrain (16 bars of 4/4, about 29 s, looping).
+        // The melody is traditional (Scottish, 18th century) and free of rights; this arrangement is ours: a soft
+        // reed voice like an accordion over a slow bass and a held chord. Same as macOS Sound.swift (Synth.auldLangSyne).
+        public static float[] AuldLangSyne()
+        {
+            const double beat = 0.46;
+            const int C4 = 60, D4 = 62, F4 = 65, G4 = 67, A4 = 69, C5 = 72, D5 = 74;
+            // every bar is a dotted quarter, an eighth and two quarters; the long notes take three beats, and the
+            // fourth is the upbeat to the next line
+            double[,] melody = {
+                { F4, 1.5 }, { F4, 0.5 }, { F4, 1 }, { A4, 1 },   { G4, 1.5 }, { F4, 0.5 }, { G4, 1 }, { A4, 1 },
+                { F4, 1.5 }, { F4, 0.5 }, { A4, 1 }, { C5, 1 },   { D5, 3 }, { D5, 1 },
+                { C5, 1.5 }, { A4, 0.5 }, { A4, 1 }, { F4, 1 },   { G4, 1.5 }, { F4, 0.5 }, { G4, 1 }, { A4, 1 },
+                { F4, 1.5 }, { D4, 0.5 }, { D4, 1 }, { C4, 1 },   { F4, 3 }, { D5, 1 },
+                { C5, 1.5 }, { A4, 0.5 }, { A4, 1 }, { F4, 1 },   { G4, 1.5 }, { F4, 0.5 }, { G4, 1 }, { D5, 1 },
+                { C5, 1.5 }, { A4, 0.5 }, { A4, 1 }, { C5, 1 },   { D5, 3 }, { D5, 1 },
+                { C5, 1.5 }, { A4, 0.5 }, { A4, 1 }, { F4, 1 },   { G4, 1.5 }, { F4, 0.5 }, { G4, 1 }, { A4, 1 },
+                { F4, 1.5 }, { D4, 0.5 }, { D4, 1 }, { C4, 1 },   { F4, 3 }, { C4, 1 } };
+            // one chord a bar: F, C, F, B flat | F, C, B flat, F, twice (root, third, fifth)
+            int[] fa = { 41, 57, 60 }, ce = { 36, 55, 60 }, be = { 34, 58, 62 };
+            int[][] chords = { fa, ce, fa, be, fa, ce, be, fa, fa, ce, fa, be, fa, ce, be, fa };
+            Func<double, double> freq = midi => 440 * Math.Pow(2, (midi - 69) / 12.0);
+            double total = 0;
+            int notes = melody.GetLength(0);
+            for (int i = 0; i < notes; i++) total += melody[i, 1] * beat;
+            double[,] reed = { { 1, 1 }, { 2, 0.42 }, { 3, 0.2 }, { 4, 0.1 }, { 5, 0.05 } };
+            return MakeBuffer(total, (output, n) =>
+            {
+                // the melody: two reeds a few cents apart (their slow beating is the accordion's tremolo)
+                double t0 = 0;
+                for (int i = 0; i < notes; i++)
+                {
+                    double f = freq(melody[i, 0]), dur = melody[i, 1] * beat;
+                    int start = (int)(t0 * Rate), count = (int)(dur * Rate);
+                    for (int k = 0; k < count && start + k < n; k++)
+                    {
+                        double t = k / Rate, left = dur - t;
+                        double env = Math.Min(1, t / 0.035) * Math.Min(1, left / 0.07) * (0.85 + 0.15 * Math.Exp(-t * 2.5));
+                        double v = 0;
+                        for (int h = 0; h < 5; h++)
+                            v += reed[h, 1] * (Math.Sin(2 * Math.PI * f * reed[h, 0] * t) + 0.8 * Math.Sin(2 * Math.PI * f * 1.006 * reed[h, 0] * t));
+                        output[start + k] += (float)(v * env * 0.085);
+                    }
+                    t0 += dur;
+                }
+                // the left hand: the root on the first beat, the chord on the second and fourth, each note dying away
+                Action<double, int, double, double> tone = (at, midi, len, amp) =>
+                {
+                    double f = freq(midi);
+                    int start = (int)(at * beat * Rate), count = (int)(len * beat * Rate);
+                    for (int k = 0; k < count && start + k < n; k++)
+                    {
+                        double t = k / Rate, u = k / (double)count;
+                        double env = Math.Min(1, t / 0.02) * (1 - u) * (1 - u);
+                        output[start + k] += (float)(amp * env * (Math.Sin(2 * Math.PI * f * t) + 0.35 * Math.Sin(4 * Math.PI * f * t) + 0.12 * Math.Sin(6 * Math.PI * f * t)));
+                    }
+                };
+                for (int b = 0; b < chords.Length; b++)
+                {
+                    double bar = b * 4;
+                    tone(bar, chords[b][0], 2.2, 0.2);
+                    tone(bar + 2, chords[b][0] + 7, 1.8, 0.12);
+                    foreach (double at in new[] { 1.0, 3.0 }) { tone(bar + at, chords[b][1], 0.9, 0.06); tone(bar + at, chords[b][2], 0.9, 0.06); }
+                }
+            });
+        }
+
+        // Midnight: twelve strokes of a tower bell, one every 1.3 s, each ringing on under the next. The partials are
+        // a bell's (hum, prime, minor third, fifth, octave and above), the low ones ringing longest. Same as macOS
+        // (Synth.midnightBell).
+        public static float[] MidnightBell()
+        {
+            const double gap = 1.3, f = 233.0;
+            double[,] partials = { { 0.5, 0.55, 0.55 }, { 1, 1, 0.9 }, { 1.19, 0.6, 1.3 }, { 1.5, 0.35, 1.8 }, { 2, 0.5, 2.2 }, { 2.74, 0.22, 3.2 }, { 4.07, 0.12, 5 } };
+            return MakeBuffer(gap * 12 + 4.5, (output, n) =>
+            {
+                for (int s = 0; s < 12; s++)
+                {
+                    int start = (int)(s * gap * Rate), count = (int)(5.5 * Rate);
+                    for (int k = 0; k < count && start + k < n; k++)
+                    {
+                        double t = k / Rate, v = 0;
+                        for (int p = 0; p < partials.GetLength(0); p++)
+                            v += partials[p, 1] * Math.Exp(-t * partials[p, 2]) * Math.Sin(2 * Math.PI * f * partials[p, 0] * t);
+                        // the clapper's knock
+                        v += 0.5 * Math.Exp(-t * 60) * Math.Sin(2 * Math.PI * 1300 * t);
+                        output[start + k] += (float)(v * Math.Min(1, t / 0.003) * 0.16);
+                    }
+                }
+                int fade = (int)(0.6 * Rate);
+                for (int i = 0; i < fade && n - 1 - i >= 0; i++) output[n - 1 - i] *= i / (float)fade;
+            });
+        }
+
         // The wind Halloween's ghosts blow the leaves away with: a hollow rush of air that rises and falls, and under
         // it two wavering "oooo" voices a third apart. A 4 s loop: every tone and every swell is a whole number of
         // cycles in it, and the air is made a little longer and faded into its own start, so there is no seam.
@@ -1025,6 +1120,8 @@ namespace JuleHygge
             sounds.Add("aeselkaerre-broel", DonkeyBray);
             sounds.Add("heks-melodi", WitchTune);
             sounds.Add("spoegelser-sus", GhostWind);
+            sounds.Add("nytaar-melodi", AuldLangSyne);
+            sounds.Add("nytaar-klokke", MidnightBell);
             for (int m = 0; m < GooseMoods.Length; m++) { int mood = m; sounds.Add("gaes-" + GooseMoods[m], () => Geese(mood)); }
             foreach (var kv in sounds)
             {

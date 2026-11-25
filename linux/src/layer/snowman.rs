@@ -15,11 +15,15 @@ pub(super) enum Built {
     Scarecrow,
     Ofrenda,
     Pumpkins,
+    /// New Year's clock (`nytaar.rs`), with what its hands show: the hour hand's and the minute hand's turn
+    /// (0..1), and the second hand's while it has one.
+    Clock { hour: f64, minute: f64, second: Option<f64> },
 }
 
 /// The box the snowman fills when it stands at (x, y) on a screen of scale `s`.
 pub(super) fn bounds(x: f32, y: f32, s: f32) -> (f32, f32, f32, f32) {
-    (x - 62.0 * s, y - 135.0 * s, 124.0 * s, 142.0 * s)
+    // (72 to each side: the glow of the lanterns on New Year's clock reaches that far; the others need 62)
+    (x - 72.0 * s, y - 135.0 * s, 144.0 * s, 142.0 * s)
 }
 
 /// Draws the haystack and scarecrow at `stage` standing at (x, y). It is drawn into the cached ground image
@@ -33,6 +37,7 @@ pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32, what: Built
         Built::Scarecrow => scarecrow(cr, stage),
         Built::Ofrenda => super::muertos::ofrenda(cr, stage),
         Built::Pumpkins => super::halloween::pumpkins(cr, stage),
+        Built::Clock { hour, minute, second } => super::nytaar::party_clock(cr, stage, hour, minute, second),
     }
     cr.set_matrix(saved);
 }

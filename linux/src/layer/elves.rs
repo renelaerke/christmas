@@ -200,7 +200,12 @@ impl Layer {
             }
         }
 
-        self.meet_elves();
+        // New Year: in the last minutes before midnight the guests on the clock's screen gather round it, each at
+        // its own place to one side, and stay there (jumping when the controller says so) until it is over.
+        let gather = if st.gather && self.primary { self.snowman_pos.map(|(x, _)| x - self.rect.x as f32) } else { None };
+        if gather.is_none() {
+            self.meet_elves();
+        }
         let zone = self.play_zone(st);
         // where an elf vanished or reappeared by magic (x, size)
         let mut puffs: Vec<(f32, f32)> = Vec::new();
@@ -208,6 +213,29 @@ impl Layer {
         for i in 0..self.elves.len() {
             let e = &mut self.elves[i];
             e.meet_cooldown = (e.meet_cooldown - dt).max(0.0);
+            if let Some(cx) = gather.filter(|_| e.magic <= 0.0 && e.meet_timer <= 0.0 && !e.entering && !e.leaving && !e.crossing) {
+                let side = if i % 2 == 0 { -1.0 } else { 1.0 };
+                let slot = (cx + side * (62.0 + (i / 2) as f32 * 24.0) * s).max(30.0 * s).min(w - 30.0 * s);
+                e.t += dt;
+                if e.t > 200.0 * std::f32::consts::PI {
+                    e.t -= 200.0 * std::f32::consts::PI;
+                }
+                if e.state == ElfState::Wave {
+                    e.state_timer -= dt;
+                    if e.state_timer <= 0.0 {
+                        e.state = ElfState::Stand;
+                    }
+                } else if (e.x - slot).abs() > 4.0 * s {
+                    e.state = ElfState::Walk;
+                    e.dir = if slot > e.x { 1.0 } else { -1.0 };
+                    e.x += e.dir * e.speed * 1.6 * dt;
+                    e.walk_phase += dt * e.speed * 1.6 / (4.5 * s);
+                } else {
+                    e.state = ElfState::Stand;
+                    e.dir = if cx > e.x { 1.0 } else { -1.0 };
+                }
+                continue;
+            }
             if e.magic > 0.0 {
                 // vanished by magic: it reappears on the other side of the children, walking on
                 e.magic -= dt;
@@ -432,6 +460,27 @@ impl Layer {
                 cr,
                 super::muertos::CalacaPose {
                     tunic: tunic_index(e),
+                    gift: GIFTS.iter().position(|g| *g == e.gift).unwrap_or(0),
+                    walking,
+                    waving,
+                    carries_gift: e.carries_gift,
+                    walk: if walking { e.walk_phase as f64 } else { 0.0 },
+                    stand: if e.state == ElfState::Stand { e.t as f64 * 1.5 } else { 0.0 },
+                    wave: if waving { e.t as f64 * 11.0 } else { 0.0 },
+                },
+            );
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.nytaar {
+            // New Year: a party guest (`nytaar.rs`), in the same pose as the elf it stands in for. Who it is follows
+            // the elf itself, not what it carries: a guest keeps its look when a cracker changes hands.
+            let walking = e.state == ElfState::Walk;
+            let waving = e.state == ElfState::Wave;
+            super::nytaar::guest(
+                cr,
+                super::nytaar::GuestPose {
+                    look: (e.id % 8) as usize,
                     gift: GIFTS.iter().position(|g| *g == e.gift).unwrap_or(0),
                     walking,
                     waving,

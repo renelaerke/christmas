@@ -284,7 +284,8 @@ extension ScreenOverlay {
         g.restoreGState()
         // the party horn: rolled up at the mouth, and blown out straight with its tip still curled
         if waving {
-            let out = 9 + abs(sin(wavePhase)) * 11
+            // (no longer than the walker's own box is wide: that is all that is cleared behind it on Windows and Linux)
+            let out = 8 + abs(sin(wavePhase)) * 8
             g.line(C(250, 250, 250), 1.8, 5.6, 3.2, 8.5, 3.6, round: true)
             for k in 0..<Int(out / 3) {
                 g.line(k % 2 == 0 ? C(233, 50, 90) : Self.gold, 3, 8.5 + F(k) * 3, 3.6 - F(k) * 0.25, 8.5 + F(k + 1) * 3, 3.6 - F(k + 1) * 0.25)

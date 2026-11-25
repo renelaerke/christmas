@@ -10,6 +10,7 @@ mod folk;
 mod icon;
 mod lang;
 mod layer;
+mod new_year;
 mod log;
 mod rng;
 mod session;

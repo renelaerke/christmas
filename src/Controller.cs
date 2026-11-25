@@ -106,7 +106,32 @@ namespace JuleHygge
         public bool Halloween { get { return Cfg.Theme == 3; } }
         // A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
         // runs and keeps it finished until another theme is chosen (UpdateOfrenda): the ofrenda, and the lanterns.
-        public bool GrowsByHour { get { return Muertos || Halloween; } }
+        public bool GrowsByHour { get { return Muertos || Halloween || Nytaar; } }
+        // New Year (Cfg.Theme 4), as the macOS version (OverlayNytaar.swift): confetti and streamers fall all the time,
+        // a large clock shows the time in the snowman's place and is decorated hour by hour, volleys of rockets burst
+        // in a band across the top in Santa's, party guests in paper hats walk in the nisser's, pennants and paper
+        // lanterns hang in the lights', sparklers and party poppers are on the window edges, and a small street
+        // sweeper takes the confetti (LayerNytaar.cs). The theme has a moment: the countdown to midnight and a burst
+        // at the stroke (UpdateNewYear). Nothing in the theme shows or suggests drinking (REL 2026-11-25).
+        public bool Nytaar { get { return Cfg.Theme == 4; } }
+        // The clock is there from the first step (its hands are the countdown) and is decorated from then on.
+        static readonly string[] ClockSteps = {
+            "et stort ur på en stander", "en guldkant med små pærer", "en rød sløjfe", "serpentiner om standeren", "en række vimpler til venstre",
+            "en række vimpler til højre", "en papirlanterne", "en papirlanterne til", "to balloner", "to balloner til", "en guldstjerne på toppen",
+            "to stjernekastere - uret er pyntet færdigt!" };
+        // What the menu items are called at New Year, by their Christmas text (one not here keeps its text).
+        static readonly Dictionary<string, string> NytaarTexts = new Dictionary<string, string> {
+            { "Snevejr", "Konfetti" }, { "Snemængde", "Mængde af konfetti" }, { "Let sne", "Lidt konfetti" }, { "Snestorm", "Konfettistorm" },
+            { "Sne på proceslinjen", "Konfetti på proceslinjen" }, { "Sne på vinduerne", "Konfetti, stjernekastere og bordbomber på vinduerne" },
+            { "Snemand", "Ur med pynt" }, { "Julemanden", "Raketter" }, { "Send julemanden afsted nu!", "Send raketter op nu!" },
+            { "Sneplov rydder proceslinjen", "Fejemaskine rydder konfettien" }, { "Send sneploven ud nu!", "Send fejemaskinen ud nu!" },
+            { "Lyd: bjælder og jingle når julemanden flyver", "Lyd: melodi til raketterne og klokkeslag ved midnat" },
+            { "Lyd: motor, skraben og horn fra sneploven", "Lyd: motor og sug fra fejemaskinen" },
+            { "Nisser", "Festgæster" }, { "Antal nisser pr. skærm", "Antal gæster pr. skærm" },
+            { "30 billeder/s - glattere sne", "30 billeder/s - glattere konfetti" }, { "Julelys", "Vimpler og papirlanterner" } };
+        // What New Year does not have: the advent calendar and the choice of folk. (The countdown line stays: here it
+        // counts down to midnight.)
+        static readonly HashSet<string> NytaarHidden = new HashSet<string> { "Julekalender...", "Nisser eller alfer" };
         static readonly string[] PumpkinSteps = {
             "et lille græskar", "et græskar til", "et stort græskar i midten", "stilke og en snoet ranke", "øjne i det store græskar",
             "en mund med tænder", "et lys inde i det store græskar", "et ansigt i det venstre græskar", "et ansigt i det højre græskar",
@@ -176,7 +201,7 @@ namespace JuleHygge
                 double calm = PowerSave ? Math.Min(Cfg.FrameRate, 12) : Cfg.FrameRate;
                 // Unlike macOS (60 fps for Santa), Windows uploads the whole overlay on every frame, so 60 fps
                 // costs about a full core (measured). Santa and the plow are boosted to 30 fps at most.
-                bool busy = SantaActive || Sparks.Count > 0 || Plow.Active || Clumps.Count > 0;
+                bool busy = SantaActive || Sparks.Count > 0 || Rockets.Count > 0 || Plow.Active || Clumps.Count > 0;
                 foreach (var l in layers) if (l.IsBusy) busy = true;
                 if (busy) return Math.Max(calm, PowerSave ? 20 : 30);
                 return calm;
@@ -239,6 +264,8 @@ namespace JuleHygge
             if (SantaActive || Plow.Active) ErrorLog.Debug("finish runs: santa=" + SantaActive + " plow=" + Plow.Active);
             if (SantaActive) { SantaActive = false; santaNext = 60 + R() * 120; }
             Sparks.Clear();
+            Rockets.Clear();
+            midnightUntil = -1;
             Clumps.Clear();
             if (Plow.Active) { Plow.Active = false; Plow.Cooldown = 30; }
             audio.StopAll();
@@ -302,6 +329,9 @@ namespace JuleHygge
             // Halloween: the witch's tune, and the wind the ghosts blow the leaves away with
             witchTune = audio.CreateVoice(Synth.WitchTune, true);
             ghostWind = audio.CreateVoice(Synth.GhostWind, true);
+            // New Year: "Auld Lang Syne" to the rockets, and twelve strokes of a bell at midnight
+            auldTune = audio.CreateVoice(Synth.AuldLangSyne, true);
+            midnightBell = audio.CreateVoice(Synth.MidnightBell, false);
             // De dødes dag: the butterflies' tune, and the donkey cart's hooves and wheel, broom and bray
             butterflyTune = audio.CreateVoice(Synth.MuertosSon, true);
             cartRoll = audio.CreateVoice(() => Synth.DonkeyCart(DonkeyStepCycle), true);
@@ -415,6 +445,7 @@ namespace JuleHygge
             UpdatePlow(dt);
             UpdateWindowSnow(dt);
             UpdateOfrenda(dt);
+            UpdateNewYear(dt);
             if (celebrateAt > 0 && Time >= celebrateAt) { celebrateAt = -1; SnowmanCelebrate(); }
             if (plowAt >= 0 && Time >= plowAt) { plowAt = -1; SendPlow(); }
 
@@ -528,7 +559,8 @@ namespace JuleHygge
             float s = here != null ? here.S : 1;
             // the donkey cart walks at a donkey's pace
             // (so does Halloween's witch; the ghosts float a little faster)
-            float pace = Muertos ? CartPace : Halloween ? (GhostsBlow ? 0.6f : CartPace) : 1;
+            // (New Year's street sweeper trundles)
+            float pace = Muertos ? CartPace : Halloween ? (GhostsBlow ? 0.6f : CartPace) : Nytaar ? 0.6f : 1;
             Plow.GX += Plow.Dir * PlowSpeed * pace * s * dt;
             Plow.Wheel += PlowSpeed * pace * s * dt / (10 * s * PlowScale);
             if ((Plow.Dir > 0 && Plow.GX > Plow.MaxX + 260 * s * PlowScale) || (Plow.Dir < 0 && Plow.GX < Plow.MinX - 260 * s * PlowScale))
@@ -543,7 +575,7 @@ namespace JuleHygge
         readonly AudioHub audio = new AudioHub();
         readonly Voice[] jingles, gooseVoices;
         readonly Voice plowEngine, plowScrape, plowHorn, leafSuction;
-        readonly Voice butterflyTune, cartRoll, broomSweep, donkeyBray, witchTune, ghostWind;
+        readonly Voice butterflyTune, cartRoll, broomSweep, donkeyBray, witchTune, ghostWind, auldTune, midnightBell;
         int jingleIndex;
         // How near this trip's flyer passes (its size against the ordinary one): far geese are quieter too.
         float flyerDepth = 1;
@@ -560,12 +592,14 @@ namespace JuleHygge
             {
                 if (Muertos) butterflyTune.Warm();
                 else if (Halloween) witchTune.Warm();
+                else if (Nytaar) { auldTune.Warm(); midnightBell.Warm(); }
                 else foreach (var j in Autumn ? gooseVoices : jingles) j.Warm();
             }
             if (Cfg.PlowSound)
             {
                 if (Muertos) { cartRoll.Warm(); broomSweep.Warm(); donkeyBray.Warm(); }
                 else if (Halloween) { broomSweep.Warm(); ghostWind.Warm(); }
+                else if (Nytaar) { plowEngine.Warm(); leafSuction.Warm(); }
                 else { plowEngine.Warm(); (Autumn ? leafSuction : plowScrape).Warm(); plowHorn.Warm(); }
             }
         }
@@ -595,6 +629,10 @@ namespace JuleHygge
                 bool halloween = Halloween;
                 if ((Cfg.Sound && halloween) || witchTune.Playing)
                     witchTune.Update(on && halloween ? presence * Math.Min(1f, flyerDepth) * Volume : 0, pan, dt);
+                // New Year's rockets go up to "Auld Lang Syne" (at midnight the tune waits for the bell's twelve strokes)
+                bool nytaar = Nytaar;
+                if ((Cfg.Sound && nytaar) || auldTune.Playing)
+                    auldTune.Update(on && nytaar && Time >= tuneHoldUntil ? presence * Volume : 0, 0, dt);
             }
             if (Cfg.PlowSound || plowEngine.Playing || plowScrape.Playing || leafSuction.Playing || cartRoll.Playing || broomSweep.Playing || ghostWind.Playing)
             {
@@ -603,14 +641,15 @@ namespace JuleHygge
                 float presence = Math.Max(0, Math.Min(1, Math.Min(Plow.GX - (Plow.MinX - margin), (Plow.MaxX + margin) - Plow.GX) / margin));
                 float pan = (Plow.GX - Plow.MinX) / span * 2 - 1;
                 bool on = Plow.Active && Cfg.PlowSound && !SoundMuted;
-                bool muertos = Muertos, halloween = Halloween;
-                plowEngine.Update(on && !muertos && !halloween ? presence * Volume * 0.8f : 0, pan, dt);
+                bool muertos = Muertos, halloween = Halloween, nytaar = Nytaar;
+                // (New Year's street sweeper is a small machine: a quieter engine, and the leaf collector's suction)
+                plowEngine.Update(on && !muertos && !halloween ? presence * Volume * (nytaar ? 0.4f : 0.8f) : 0, pan, dt);
                 // scraping gets louder with the amount of snow in front of the blade
                 float load = (float)Math.Min(1, Math.Sqrt(Plow.Pushed / 2000));
                 // (the leaf collector does not scrape: it has the rush of its suction, which never goes quite quiet)
                 plowScrape.Update(on && Christmas ? presence * Volume * (0.15f + 0.85f * load) : 0, pan, dt);
-                if (Autumn || leafSuction.Playing)
-                    leafSuction.Update(on && Autumn ? presence * Volume * (0.55f + 0.45f * load) : 0, pan, dt);
+                if (Autumn || nytaar || leafSuction.Playing)
+                    leafSuction.Update(on && (Autumn || nytaar) ? presence * Volume * (0.55f + 0.45f * load) : 0, pan, dt);
                 // the donkey cart: hooves and wheel all the way, the broom louder with more petals in front of it
                 // (Halloween's witch has the same broom; the ghosts a hollow wind of their own)
                 bool sweeps = muertos || (halloween && !GhostsBlow);
@@ -623,7 +662,7 @@ namespace JuleHygge
                     ghostWind.Update(on && halloween && GhostsBlow ? presence * Volume * (0.5f + 0.5f * load) : 0, pan, dt);
                 // (the donkey brays where the plow honks)
                 // (and Halloween has nothing in the horn's place: a truck's honk does not belong there)
-                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; if (!halloween) (muertos ? donkeyBray : plowHorn).PlayOnce(Volume, pan); }
+                if (on && !hornedThisRun && presence > 0.6f) { hornedThisRun = true; if (!halloween && !nytaar) (muertos ? donkeyBray : plowHorn).PlayOnce(Volume, pan); }   // (nor has New Year's sweeper)
             }
             if (!Plow.Active) hornedThisRun = false;
             audio.IdleCheck(Time);
@@ -658,6 +697,8 @@ namespace JuleHygge
         public void LaunchSanta()
         {
             if (SantaActive || layers.Count == 0) return;
+            // (New Year's flyer is a volley of rockets)
+            if (Nytaar) { LaunchVolley(12 + R() * 6, 0.85f); return; }
             var target = layers[Rnd.Next(layers.Count)];
             var b = target.ScreenBounds;
             // Size and pace are two separate things, each drawn per trip: Santa is ±15 % in size, and the geese
@@ -703,6 +744,7 @@ namespace JuleHygge
                 if (Cfg.Santa) { santaNext -= dt; if (santaNext <= 0) { LaunchSanta(); santaNext = 60 + R() * 120; } }
                 return;
             }
+            if (Nytaar) { UpdateVolley(dt); return; }
             SantaX += SantaDir * SantaSpeed * dt;
             SantaPhase += dt;
             if (Christmas) sparkAcc += dt * 45;   // Santa leaves a trail of sparks; the geese and the butterflies do not
@@ -735,7 +777,278 @@ namespace JuleHygge
                 if (sp.Life <= 0) { Sparks.RemoveAt(i); continue; }
                 sp.X += sp.VX * dt;
                 sp.Y += sp.VY * dt;
-                sp.VY += 12 * SantaScale * dt;
+                if (sp.Drag > 0) { float k = (float)Math.Exp(-sp.Drag * dt); sp.VX *= k; sp.VY *= k; }
+                sp.VY += (sp.Gravity >= 0 ? sp.Gravity : 12 * SantaScale) * dt;
+            }
+            UpdateRockets(dt);
+        }
+
+        // ------------------------------------------------------------------ raketter (nytår)
+        // New Year's flyer in Santa's place: a volley of rockets. Each rises from the bottom of a screen with a tail
+        // of sparks and bursts in a band across the top into one soft bloom of coloured sparks, which fades over a
+        // second or two (never a flash, and nothing below the top band). The volley keeps Santa's schedule, his menu
+        // items and his switch, and counts as "Santa is flying" for the frame rate and the tune.
+        public readonly List<Rocket> Rockets = new List<Rocket>();
+        double volleyLength;
+        float volleyNext, volleyGap = 0.85f;
+
+        // Starts a volley over every screen, lasting `seconds`; `gap` is the average time between two rockets on one
+        // screen.
+        void LaunchVolley(double seconds, float gap)
+        {
+            if (layers.Count == 0) return;
+            volleyLength = seconds;
+            volleyGap = gap;
+            volleyNext = 0.3f;
+            santaMinX = float.MaxValue; santaMaxX = float.MinValue;
+            foreach (var l in layers)
+            {
+                santaMinX = Math.Min(santaMinX, l.ScreenBounds.Left);
+                santaMaxX = Math.Max(santaMaxX, l.ScreenBounds.Right);
+            }
+            SantaX = (santaMinX + santaMaxX) / 2;
+            SantaY0 = layers[0].ScreenBounds.Y + layers[0].ScreenBounds.Height * 0.2f;
+            SantaScale = layers[0].S;
+            SantaDir = 1;
+            flyerDepth = 1;
+            auldTune.Rate = 0.95f + R() * 0.1f;
+            SantaPhase = 0;
+            SantaActive = true;
+            ErrorLog.Debug("volley: " + (int)seconds + " s over " + layers.Count + " screen(s)");
+        }
+
+        void UpdateVolley(float dt)
+        {
+            SantaPhase += dt;
+            if (SantaPhase < volleyLength)
+            {
+                volleyNext -= dt;
+                while (volleyNext <= 0 && layers.Count > 0)
+                {
+                    volleyNext += volleyGap * (0.45f + R() * 1.1f) / layers.Count;
+                    var o = layers[Rnd.Next(layers.Count)];
+                    var b = o.ScreenBounds;
+                    var r = new Rocket();
+                    r.Scale = o.S;
+                    r.X = b.X + b.Width * (0.07f + R() * 0.86f);
+                    r.Y = b.Bottom - 4 * r.Scale;
+                    r.BurstY = b.Y + b.Height * (0.10f + R() * 0.22f);
+                    r.VY = -(r.Y - r.BurstY) / (0.9f + R() * 0.45f);
+                    r.Sway = R() * 6.28f;
+                    r.Colour = 1 + Rnd.Next(Layer.ConfettiColours.Length);
+                    Rockets.Add(r);
+                }
+            }
+            else if (Rockets.Count == 0 && SantaPhase > volleyLength + 2.5)
+            {
+                SantaActive = false;
+                santaNext = 60 + R() * 120;
+            }
+        }
+
+        // The rockets rise, each leaving a short tail of gold sparks, and burst where they were aimed.
+        void UpdateRockets(float dt)
+        {
+            for (int i = Rockets.Count - 1; i >= 0; i--)
+            {
+                var r = Rockets[i];
+                r.Y += r.VY * dt;
+                r.X += (float)Math.Sin(r.Sway + r.Y * 0.012) * 14 * r.Scale * dt;
+                r.Trail += dt * 48;
+                while (r.Trail >= 1)
+                {
+                    r.Trail -= 1;
+                    var sp = new Spark();
+                    sp.X = r.X + (R() - 0.5f) * 3 * r.Scale; sp.Y = r.Y + R() * 8 * r.Scale;
+                    sp.VX = (R() - 0.5f) * 16 * r.Scale; sp.VY = (20 + R() * 30) * r.Scale;
+                    sp.Max = sp.Life = 0.3f + R() * 0.35f;
+                    sp.Size = (1.6f + R() * 1.6f) * r.Scale;
+                    sp.Gold = true;
+                    sp.Gravity = 60 * r.Scale;
+                    Sparks.Add(sp);
+                }
+                if (r.Y > r.BurstY) continue;
+                Burst(r);
+                Rockets.RemoveAt(i);
+            }
+        }
+
+        // One burst: a round bloom of sparks in the rocket's colour, slowed by the air and sinking a little as they
+        // fade. Most are thrown out at nearly the same speed and make the shell; the rest fill it, and a few are white.
+        void Burst(Rocket r)
+        {
+            const int n = 64;
+            for (int k = 0; k < n; k++)
+            {
+                double a = 2 * Math.PI * (k + R()) / n;
+                bool shell = k % 3 != 0;
+                float v = 195 * (shell ? 0.86f + R() * 0.2f : 0.25f + R() * 0.55f) * r.Scale;
+                var sp = new Spark();
+                sp.X = r.X; sp.Y = r.Y;
+                sp.VX = (float)Math.Cos(a) * v; sp.VY = (float)Math.Sin(a) * v;
+                sp.Drag = 1.9f; sp.Gravity = 30 * r.Scale;
+                sp.Max = sp.Life = (shell ? 1.35f : 1.0f) + R() * 0.85f;
+                sp.Size = (shell ? 3.4f + R() * 2.4f : 2.4f + R() * 1.6f) * r.Scale;
+                sp.Colour = k % 8 == 4 ? 2 : r.Colour;
+                Sparks.Add(sp);
+            }
+        }
+
+        // ------------------------------------------------------------------ midnat (nytår)
+        // New Year is the one theme with a moment. The clock it goes by is the computer's own, moved by the test aids:
+        // JULE_DATE=2026-12-31 keeps the time of day on that date, and JULE_NYTAAR_OM=N puts midnight N seconds after
+        // the program started.
+        static readonly TimeSpan clockShift = ClockShift();
+        static TimeSpan ClockShift()
+        {
+            double n;
+            if (double.TryParse(Environment.GetEnvironmentVariable("JULE_NYTAAR_OM"), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out n))
+                return NextNewYear(DateTime.Now) - DateTime.Now - TimeSpan.FromSeconds(n);
+            if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JULE_DATE"))) return JuleClock.Today - DateTime.Today;
+            return TimeSpan.Zero;
+        }
+        // The time the New Year theme goes by (the clock's hands show it).
+        public DateTime ClockNow { get { return DateTime.Now + clockShift; } }
+        static DateTime NextNewYear(DateTime after) { return new DateTime(after.Year + 1, 1, 1); }
+        // The midnight that is counted down to. It stays for an hour after it has passed, then it is next year's.
+        DateTime newYearAt = NextNewYear(DateTime.Now + clockShift);
+        // Seconds to midnight (negative for the hour after it).
+        public double NewYearLeft { get { return (newYearAt - ClockNow).TotalSeconds; } }
+        // The last minute: the clock gets its second hand.
+        public bool NewYearClose { get { return Nytaar && NewYearLeft > 0 && NewYearLeft <= 60; } }
+        // The last ten minutes, and the minute of the burst: the guests stand round the clock.
+        public bool GatherAtClock { get { return Nytaar && ((NewYearLeft > 0 && NewYearLeft <= 600) || Time < midnightUntil); } }
+        double lastLeft = double.PositiveInfinity, midnightUntil = -1, yearAgainAt = -1, jumpAt = -1, tuneHoldUntil = -1;
+        int countedSecond;
+        string trayText = "";
+
+        // What is shown with the tray icon on New Year's Eve (the tray shows only an icon, so it is the icon's
+        // tooltip): the time left as hours:minutes, the seconds alone in the last minute, and the new year's number
+        // for the ten minutes after. Digits only, so it needs no translation. Empty on every other day.
+        public static string TrayCountdown(double left, int year)
+        {
+            if (left > 86400 || left < -600) return "";
+            if (left <= 0) return year.ToString();
+            if (left <= 60) return ((int)Math.Ceiling(left)).ToString();
+            int minutes = (int)Math.Ceiling(left / 60);
+            return (minutes / 60) + ":" + (minutes % 60).ToString("00");
+        }
+
+        void SetTrayText(string text)
+        {
+            if (text == trayText) return;
+            trayText = text;
+            tray.Text = text.Length == 0 ? "Jule-hygge" : "Jule-hygge  " + text;
+            ErrorLog.Debug("tray: '" + text + "'");
+        }
+
+        void UpdateNewYear(float dt)
+        {
+            if (!Nytaar)
+            {
+                SetTrayText("");
+                lastLeft = double.PositiveInfinity;
+                return;
+            }
+            double left = NewYearLeft;
+            if (left < -3600) { newYearAt = NextNewYear(ClockNow); left = NewYearLeft; }
+            SetTrayText(TrayCountdown(left, newYearAt.Year));
+            // (after the computer has slept the time left has jumped: nothing is played late)
+            bool running = lastLeft - left < 2;
+            // the last ten seconds, written in sparks over the clock, one number at a time
+            int second = (int)Math.Ceiling(left);
+            if (running && left > 0 && second <= 10 && second != countedSecond)
+            {
+                countedSecond = second;
+                CountDown(second);
+            }
+            if (running && lastLeft > 0 && left <= 0) Midnight();
+            lastLeft = left;
+
+            if (Time >= midnightUntil) return;
+            if (jumpAt >= 0 && Time >= jumpAt) { jumpAt = Time + 9; NisseParty(); }
+            if (yearAgainAt >= 0 && Time >= yearAgainAt) { yearAgainAt = -1; WriteYear(); }
+        }
+
+        // The stroke of midnight: about a minute of the big effect. Rockets one after the other over every screen
+        // (unless they are switched off), a burst of confetti, the guests jump, and the new year's number in sparks.
+        // With the sound on, twelve strokes of a bell first, and the tune after them.
+        void Midnight()
+        {
+            ErrorLog.Debug("midnight: " + newYearAt.Year);
+            midnightUntil = Time + 60;
+            StormUntil = Time + 35;
+            jumpAt = Time;
+            WriteYear();
+            yearAgainAt = Time + 24;
+            if (Cfg.Sound && !SoundMuted)
+            {
+                midnightBell.PlayOnce(Volume, 0);
+                tuneHoldUntil = Time + 16.5;
+            }
+            if (Cfg.Santa)
+            {
+                SantaActive = false;
+                LaunchVolley(46, 0.5f);
+            }
+        }
+
+        // The digits are written as dots on a grid of five by seven.
+        static readonly string[][] DigitDots = {
+            new[] { "01110", "10001", "10011", "10101", "11001", "10001", "01110" }, new[] { "00100", "01100", "00100", "00100", "00100", "00100", "01110" },
+            new[] { "01110", "10001", "00001", "00010", "00100", "01000", "11111" }, new[] { "11110", "00001", "00001", "01110", "00001", "00001", "11110" },
+            new[] { "00010", "00110", "01010", "10010", "11111", "00010", "00010" }, new[] { "11111", "10000", "11110", "00001", "00001", "10001", "01110" },
+            new[] { "00110", "01000", "10000", "11110", "10001", "10001", "01110" }, new[] { "11111", "00001", "00010", "00100", "01000", "01000", "01000" },
+            new[] { "01110", "10001", "10001", "01110", "10001", "10001", "01110" }, new[] { "01110", "10001", "10001", "01111", "00001", "00010", "01100" } };
+
+        // Writes a number in sparks, centred on (x, y) in global coordinates and `height` tall. The sparks stay lit
+        // for `life` seconds, sinking slowly, and go out at the end.
+        void WriteInSparks(int number, float x, float y, float height, float life, float scale)
+        {
+            string digits = number.ToString();
+            float pitch = height / 7, wide = 5 * pitch, gap = pitch * 1.7f;
+            float total = digits.Length * wide + (digits.Length - 1) * gap;
+            for (int i = 0; i < digits.Length; i++)
+            {
+                float x0 = x - total / 2 + i * (wide + gap) + pitch / 2;
+                string[] rows = DigitDots[digits[i] - '0'];
+                for (int row = 0; row < 7; row++)
+                    for (int col = 0; col < 5; col++)
+                    {
+                        if (rows[row][col] != '1') continue;
+                        var sp = new Spark();
+                        sp.X = x0 + col * pitch; sp.Y = y - height / 2 + (row + 0.5f) * pitch;
+                        // (they hardly move: a number that drifts apart cannot be read)
+                        sp.VX = (R() - 0.5f) * 1.6f * scale; sp.VY = (R() - 0.5f) * 1.6f * scale;
+                        sp.Gravity = 1.5f * scale;
+                        sp.Max = sp.Life = life * (0.85f + R() * 0.15f);
+                        sp.Size = pitch * 0.42f;
+                        sp.Colour = 1; sp.Holds = true;
+                        Sparks.Add(sp);
+                    }
+            }
+        }
+
+        // One of the last ten seconds: its number over the clock (or over the middle of the screen, if the clock is
+        // switched off).
+        void CountDown(int second)
+        {
+            Layer o = null;
+            foreach (var l in layers) if (l.IsPrimary) o = l;
+            if (o == null) return;
+            var b = o.ScreenBounds;
+            if (!o.SnowmanPos.IsEmpty) WriteInSparks(second, o.SnowmanPos.X, o.SnowmanPos.Y - 178 * o.S, 60 * o.S, 0.95f, o.S);
+            else WriteInSparks(second, b.X + b.Width / 2f, b.Y + b.Height * 0.45f, 60 * o.S, 0.95f, o.S);
+        }
+
+        // The new year's number, large, in the top third of every screen.
+        void WriteYear()
+        {
+            foreach (var o in layers)
+            {
+                var b = o.ScreenBounds;
+                WriteInSparks(newYearAt.Year, b.X + b.Width / 2f, b.Y + b.Height * 0.3f, Math.Min(150 * o.S, b.Width / 7f), 9, o.S);
             }
         }
 
@@ -865,7 +1178,9 @@ namespace JuleHygge
             {
                 ErrorLog.Debug("ofrenda: step " + stage + " of " + SnowmanMaxStage);
                 celebrateAt = Time + 0.5;
-                if (stage == SnowmanMaxStage && Halloween)
+                if (stage == SnowmanMaxStage && Nytaar)
+                    tray.ShowBalloonTip(6000, "Uret er pyntet færdigt!", "Gæsterne har pyntet det. Til sidst kom der " + ClockSteps[stage - 1], ToolTipIcon.None);
+                else if (stage == SnowmanMaxStage && Halloween)
                     tray.ShowBalloonTip(6000, "Græskarlygterne er færdige!", "Spøgelserne har skåret dem ud. Til sidst kom der " + PumpkinSteps[stage - 1], ToolTipIcon.None);
                 else if (stage == SnowmanMaxStage)
                     tray.ShowBalloonTip(6000, "Ofrendaen er færdig!", "Calacas har pyntet alteret. Til sidst kom der " + OfrendaSteps[stage - 1], ToolTipIcon.None);
@@ -916,7 +1231,7 @@ namespace JuleHygge
             menu.Items.Add(Themed(countdownItem, null, null));
             menu.Items.Add(new ToolStripSeparator());
 
-            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår", "De dødes dag", "Halloween" }, new[] { 0, 1, 2, 3 }, () => Cfg.Theme,
+            menu.Items.Add(Choice("Tema", new[] { "Jul", "Efterår", "De dødes dag", "Halloween", "Nytår" }, new[] { 0, 1, 2, 3, 4 }, () => Cfg.Theme,
                 v => { if (Cfg.Theme != v) { Cfg.Theme = v; ThemeChanged(); } }));
             menu.Items.Add(Themed(Toggle("Snevejr", () => Cfg.Snow, v => Cfg.Snow = v), "Løvfald", "Kronblade fra tagetes"));
             var level = new ToolStripMenuItem("Snemængde");
@@ -1124,15 +1439,18 @@ namespace JuleHygge
             foreach (var kv in danish) kv.Key.Text = Lang.T(kv.Value);
             foreach (var t in themedItems)
             {
-                t.Item.Available = Autumn ? t.Efteraar != null : (Muertos || Halloween) ? t.Muertos != null : true;
+                t.Item.Available = Autumn ? t.Efteraar != null : (Muertos || Halloween) ? t.Muertos != null : Nytaar ? !NytaarHidden.Contains(t.Jul) : true;
                 string own = t.Folk != null ? t.Folk[WalkerFolk - 1] : null;
                 string spooky;
                 if (!Halloween || !HalloweenTexts.TryGetValue(t.Jul, out spooky)) spooky = t.Jul;
-                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : Muertos ? (t.Muertos ?? t.Jul) : Halloween ? spooky : (own ?? t.Jul));
+                string party;
+                if (!Nytaar || !NytaarTexts.TryGetValue(t.Jul, out party)) party = t.Jul;
+                if (t.Item == countdownItem) continue;   // (its text is the countdown itself, set below)
+                t.Item.Text = Lang.T(Autumn ? (t.Efteraar ?? t.Jul) : Muertos ? (t.Muertos ?? t.Jul) : Halloween ? spooky : Nytaar ? party : (own ?? t.Jul));
             }
             kiteItem.Available = Autumn;
-            countdownItem.Text = Countdown();
-            snowmanItem.Text = Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
+            countdownItem.Text = Nytaar ? NewYearCountdown() : Countdown();
+            snowmanItem.Text = Nytaar ? Lang.T("Ur med pynt (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Autumn ? Lang.T("Høstak med fugleskræmsel (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
                 : Muertos ? Lang.T("Ofrenda (alter) (trin {0} af {1})", SnowmanStage, SnowmanMaxStage)
                 : Halloween ? Lang.T("Græskarlygter (trin {0} af {1})", SnowmanStage, SnowmanMaxStage) : Lang.T("Snemand");
             folkAutoItem.Text = Lang.T("Automatisk efter sprog og land ({0})", Lang.T(Folk.Name(Folk.Auto)));
@@ -1211,6 +1529,19 @@ namespace JuleHygge
             if (d == 0) return Lang.T("★ Glædelig jul! ★");
             if (d == 1) return Lang.T("★ 1 dag til juleaften ★");
             return Lang.T("★ {0} dage til juleaften ★", d);
+        }
+
+        // New Year's countdown line: the days to New Year's Eve, on the day itself the hours and minutes to midnight,
+        // and a greeting for the first hour of the new year.
+        string NewYearCountdown()
+        {
+            double left = NewYearLeft;
+            if (left <= 0) return Lang.T("★ Godt nytår! ★");
+            int days = (int)(newYearAt.Date - ClockNow.Date).TotalDays - 1;
+            if (days >= 2) return Lang.T("★ {0} dage til nytårsaften ★", days);
+            if (days == 1) return Lang.T("★ 1 dag til nytårsaften ★");
+            int minutes = (int)Math.Ceiling(left / 60);
+            return Lang.T("★ {0}:{1} til midnat ★", minutes / 60, (minutes % 60).ToString("00"));
         }
 
         bool syncingMenu;

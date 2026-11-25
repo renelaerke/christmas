@@ -225,6 +225,19 @@ namespace JuleHygge
     {
         public float X, Y, VX, VY, Life, Max, Size;
         public bool Gold, Star;
+        // New Year's rockets: a spark of a burst has its burst's colour (1.. = Layer.ConfettiColours, 0 = gold or
+        // white as above), is slowed by the air (Drag, per second) and falls with its own weight (Gravity, negative
+        // = Santa's sparks' own). Holds: it stays fully lit and only fades at the very end (the digits).
+        public int Colour;
+        public bool Holds;
+        public float Drag, Gravity = -1;
+    }
+
+    // One of New Year's rockets on its way up, in global coordinates: it bursts when it reaches BurstY.
+    class Rocket
+    {
+        public float X, Y, VY, BurstY, Scale = 1, Sway, Trail;
+        public int Colour = 1;
     }
 
     class Nisse
@@ -242,5 +255,9 @@ namespace JuleHygge
         public float Magic, MagicTo;
         public int ZoneBumps;
         public System.Drawing.Color Tunic, Mitten, Gift;
+        // Who this walker is, where a theme's walkers are people who differ in more than their clothes (New Year's
+        // guests: skin, hair, hat, dress or jacket). It never changes, whatever is handed over at a meeting.
+        public readonly int Look = LookRnd.Next(8);
+        static readonly System.Random LookRnd = new System.Random();
     }
 }

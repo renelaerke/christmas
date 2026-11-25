@@ -128,6 +128,7 @@ namespace JuleHygge
             DisposeAutumn();
             DisposeMuertos();
             DisposeHalloween();
+            DisposeNytaar();
             foreach (var p in flakePens) p.Dispose();
             base.OnFormClosed(e);
         }
@@ -298,6 +299,7 @@ namespace JuleHygge
 
 
             Petals = c.Muertos;
+            Confetti = c.Nytaar;
             UpdateSnow(dt);
             UpdateRain(dt);
             UpdatePlow(dt);
@@ -348,7 +350,7 @@ namespace JuleHygge
             int lower = Math.Min(1, (int)amount);
             float flakesWanted = baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - lower);
             // (leaves are much bigger than flakes, so far fewer are needed)
-            if (c.Leaves) flakesWanted *= 0.2f;
+            if (c.Leaves) flakesWanted *= c.Nytaar ? 0.4f : 0.2f;   // (confetti is smaller than a leaf: twice as many)
             float logicalArea = W * (float)H / (dpiScale * dpiScale);
             // Snow covers the whole screen also in power-save mode (like macOS); power-save only lowers the frame rate.
             // SnowIntensity makes the amount drift slowly between ~60% and ~140% of the chosen level.
@@ -471,6 +473,14 @@ namespace JuleHygge
                 f.Crystal = false;
                 f.RotSpd = (Rnd() - 0.5f) * 5;
                 f.Kind = rnd.Next(LeafKinds);
+                if (c.Nytaar)
+                {
+                    // confetti: smaller and lighter than a leaf, fluttering down slowly and turning fast
+                    f.R = (3.5f + depth * 4.5f) * S;
+                    f.Vy = (24 + depth * 30 + Rnd() * 16) * S * (c.EffectiveSnowLevel == 2 ? 1.4f : 1f);
+                    f.RotSpd = (Rnd() - 0.5f) * 9;
+                    f.Kind = rnd.Next(ConfettiKinds);
+                }
             }
             return f;
         }
@@ -494,8 +504,16 @@ namespace JuleHygge
         static bool Petals;
         static int[][] petalSprites;   // see MakePetalSprites in LayerMuertos.cs
 
+        // New Year's confetti (LayerNytaar.cs), set the same way.
+        static bool Confetti;
+
         static int[] LeafSprite(int kind)
         {
+            if (Confetti)
+            {
+                if (confettiSprites == null) confettiSprites = MakeConfettiSprites();
+                return confettiSprites[((kind % ConfettiKinds) + ConfettiKinds) % ConfettiKinds];
+            }
             kind = ((kind % LeafKinds) + LeafKinds) % LeafKinds;
             int which = (kind / 5) * 2 + (kind % 5 == 4 ? 1 : 0);
             if (Petals)
@@ -508,7 +526,7 @@ namespace JuleHygge
         }
 
         // The dark between the leaves (or petals) of a pile.
-        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : c.Halloween ? Color.FromArgb(245, 96, 46, 20) : PileFill; } }
+        Color PileFillNow { get { return c.Muertos ? Color.FromArgb(245, 168, 72, 8) : c.Halloween ? Color.FromArgb(245, 96, 46, 20) : c.Nytaar ? Color.FromArgb(245, 92, 70, 120) : PileFill; } }
 
         static int[][] MakeLeafSprites()
         {
@@ -889,6 +907,7 @@ namespace JuleHygge
             if (autumn) DrawLedgeLeaves();
             if (c.Muertos) DrawLedgeCandles();
             if (c.Halloween) DrawLedgeSpooks();
+            if (c.Nytaar) DrawLedgeParty();
         }
 
         // One stretch: the pile's top from left to right, then back along the drape hanging below the edge.
@@ -946,10 +965,25 @@ namespace JuleHygge
             {
                 float x = sp.X - ox, y = sp.Y - oy;
                 if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
-                float life = sp.Star ? Math.Min(1f, sp.Life) : sp.Life / sp.Max;
+                float life = sp.Star ? Math.Min(1f, sp.Life) : sp.Holds ? Math.Min(1f, sp.Life / 0.3f) : sp.Life / sp.Max;
                 int a = (int)(255 * life);
                 Color col = sp.Gold ? Color.FromArgb(a, 255, 220, 120) : Color.FromArgb(a, 255, 255, 255);
                 Mark(x - sp.Size * 1.6f, y - sp.Size * 1.6f, sp.Size * 3.2f, sp.Size * 3.2f);
+                if (sp.Colour > 0)
+                {
+                    // a rocket's spark in its burst's colour: a soft dot with a light middle
+                    Color own = ConfettiColours[(sp.Colour - 1) % ConfettiColours.Length];
+                    float r = sp.Size * 1.1f;
+                    using (var halo = new SolidBrush(Color.FromArgb(a * 110 / 255, own)))
+                    using (var body = new SolidBrush(Color.FromArgb(a, own)))
+                    using (var core = new SolidBrush(Color.FromArgb(a, (own.R + 255) / 2, (own.G + 255) / 2, (own.B + 255) / 2)))
+                    {
+                        g.FillEllipse(halo, x - r, y - r, 2 * r, 2 * r);
+                        g.FillEllipse(body, x - r * 0.6f, y - r * 0.6f, r * 1.2f, r * 1.2f);
+                        g.FillEllipse(core, x - r * 0.3f, y - r * 0.3f, r * 0.6f, r * 0.6f);
+                    }
+                    continue;
+                }
                 using (var b = new SolidBrush(col))
                 {
                     if (sp.Star) g.FillPolygon(b, StarPoints(x, y, sp.Size, sp.Size * 0.45f, sp.Life));
@@ -962,7 +996,22 @@ namespace JuleHygge
                         g.DrawLine(p, x, y - sp.Size * 1.5f, x, y + sp.Size * 1.5f);
                     }
             }
-            if (!c.SantaActive) return;
+            // New Year's rockets on their way up: a bright point with a small cross (their tails are sparks)
+            foreach (var r in c.Rockets)
+            {
+                float x = r.X - ox, y = r.Y - oy, k = 7 * r.Scale;
+                if (x < -20 || y < -20 || x > W + 20 || y > H + 20) continue;
+                Mark(x - k, y - k, 2 * k, 2 * k);
+                using (var b = new SolidBrush(Color.White))
+                using (var p = new Pen(Color.White, 1f))
+                {
+                    g.FillEllipse(b, x - k * 0.3f, y - k * 0.3f, k * 0.6f, k * 0.6f);
+                    g.DrawLine(p, x - k, y, x + k, y);
+                    g.DrawLine(p, x, y - k, x, y + k);
+                }
+            }
+            // (New Year's flyer is a volley of rockets: particles, no figure)
+            if (!c.SantaActive || c.Nytaar) return;
 
             float sc = c.SantaScale * 1.1f;
             float sx = c.SantaX - ox, sy = c.SantaY - oy;
@@ -1109,12 +1158,15 @@ namespace JuleHygge
             int stage = c.SnowmanStage;
             float x = W * 0.78f, y = groundY - HeapAt(x) + 3 * S;
             SnowmanPos = new PointF(ScreenBounds.X + x, ScreenBounds.Y + y);
-            Mark(x - 62 * S, y - 135 * S, 124 * S, 142 * S);
+            // (the glow of the lanterns on New Year's clock reaches a little wider than the other themes' figures)
+            float half = c.Nytaar ? 72 : 62;
+            Mark(x - half * S, y - 135 * S, 2 * half * S, 142 * S);
 
             var st = g.Save();
             g.TranslateTransform(x, y);
             g.ScaleTransform(S, S);
-            if (c.Muertos) DrawOfrenda(stage); else if (c.Halloween) DrawPumpkins(stage); else DrawScarecrow(stage);
+            if (c.Muertos) DrawOfrenda(stage); else if (c.Halloween) DrawPumpkins(stage);
+            else if (c.Nytaar) DrawPartyClock(stage); else DrawScarecrow(stage);
             g.Restore(st);
         }
 
@@ -1227,9 +1279,9 @@ namespace JuleHygge
                         }
                     }
                 }
-                else if (c.Autumn)
+                else if (c.Autumn || c.Nytaar)
                 {
-                    // the leaf collector: leaves whirl up around its nozzle and are left behind in the air for a moment
+                    // the leaf collector (and New Year's street sweeper with its confetti): leaves whirl up around its nozzle and are left behind in the air for a moment
                     if (ph > 6)
                     {
                         plowChunkAcc += dt * 14;
@@ -1265,7 +1317,7 @@ namespace JuleHygge
                     }
                 }
                 plowSmokeTimer -= dt;
-                if (plowSmokeTimer <= 0 && !c.Muertos && !c.Halloween)   // (a donkey makes no smoke, nor do a witch or ghosts)
+                if (plowSmokeTimer <= 0 && !c.Muertos && !c.Halloween && !c.Nytaar)   // (a donkey makes no smoke, nor do a witch or ghosts)
                 {
                     plowSmokeTimer = 0.2f;
                     var b = new PlowBit();
@@ -1337,6 +1389,7 @@ namespace JuleHygge
             g.ScaleTransform(plowDir * sc, sc);
             if (c.Muertos) { DrawPetalCart(ph); g.Restore(st); return; }
             if (c.Halloween) { if (c.GhostsBlow) DrawGhostBlowers(ph); else DrawWitchSweeper(ph); g.Restore(st); return; }
+            if (c.Nytaar) { DrawSweeper(ph); g.Restore(st); return; }
             if (autumn) { DrawLeafCollector(ph); g.Restore(st); return; }
 
             Color orange = Color.FromArgb(235, 130, 20), orangeDark = Color.FromArgb(185, 95, 10);
@@ -1486,10 +1539,40 @@ namespace JuleHygge
                 }
             }
 
-            MeetNisser();
-            foreach (var n in nisser)
+            // New Year: in the last minutes before midnight the guests on the clock's screen gather round it, each at
+            // its own place to one side, and stay there (jumping when the Controller says so) until it is over.
+            bool gather = c.GatherAtClock && IsPrimary && !SnowmanPos.IsEmpty;
+            float clockX = SnowmanPos.X - ScreenBounds.X;
+            if (!gather) MeetNisser();
+            for (int place = 0; place < nisser.Count; place++)
             {
+                var n = nisser[place];
                 n.MeetCooldown = Math.Max(0, n.MeetCooldown - dt);
+                if (gather && n.Magic <= 0 && n.MeetTimer <= 0 && !n.Entering && !n.Leaving && !n.Crossing)
+                {
+                    float side = place % 2 == 0 ? -1 : 1;
+                    float slot = Math.Max(30 * S, Math.Min(W - 30 * S, clockX + side * (62 + (place / 2) * 24) * S));
+                    n.T += dt;
+                    if (n.T > 200 * (float)Math.PI) n.T -= 200 * (float)Math.PI;
+                    if (n.State == 2)
+                    {
+                        n.StateTimer -= dt;
+                        if (n.StateTimer <= 0) n.State = 1;
+                    }
+                    else if (Math.Abs(n.X - slot) > 4 * S)
+                    {
+                        n.State = 0;
+                        n.Dir = slot > n.X ? 1 : -1;
+                        n.X += n.Dir * n.Speed * 1.6f * dt;
+                        n.WalkPhase += dt * n.Speed * 1.6f / (4.5f * S);
+                    }
+                    else
+                    {
+                        n.State = 1;
+                        n.Dir = clockX > n.X ? 1 : -1;
+                    }
+                    continue;
+                }
                 if (n.Magic > 0)
                 {
                     // vanished by magic: it reappears on the other side of the children, walking on
@@ -1706,6 +1789,7 @@ namespace JuleHygge
             if (c.Autumn) { DrawAnimal(n); g.Restore(st); return; }
             if (c.Muertos) { DrawCalaca(n); g.Restore(st); return; }
             if (c.Halloween) { DrawSpook(n); g.Restore(st); return; }
+            if (c.Nytaar) { DrawGuest(n); g.Restore(st); return; }
             switch (c.WalkerFolk)
             {
                 case Folk.Alfer: DrawElf(n); g.Restore(st); return;
@@ -1846,6 +1930,7 @@ namespace JuleHygge
             if (c.Autumn) { RenderGarland(lg); return; }
             if (c.Muertos) { RenderPapelPicado(lg); return; }
             if (c.Halloween) { RenderSpookGarland(lg); return; }
+            if (c.Nytaar) { RenderPartyGarland(lg); return; }
             float span = 230 * S, sag = 22 * S, top = 1;
             int perSpan = 4, idx = 0;
             using (var wire = new Pen(Color.FromArgb(220, 25, 60, 35), 2f * S))

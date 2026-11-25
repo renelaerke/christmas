@@ -76,7 +76,7 @@ pub const MENU_CHECK_UPDATE: &str = "Søg efter opdatering nu";
 // The same menu in autumn: the items whose element has an autumn form get that form's name (as in the macOS and
 // Windows versions).
 pub const MENU_THEME: &str = "Tema";
-pub const THEMES: [&str; 4] = ["Jul", "Efterår", "De dødes dag", "Halloween"];
+pub const THEMES: [&str; 5] = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår"];
 pub const MENU_LEAVES: &str = "Løvfald";
 pub const MENU_LEAF_LEVEL: &str = "Mængde af blade";
 pub const LEAF_LEVELS: [&str; 4] = ["Få blade", "Normal", "Efterårsstorm", "Skiftende vejr"];
@@ -128,6 +128,59 @@ pub fn menu_ofrenda(stage: i32, max: i32) -> String {
 pub fn notice_ofrenda() -> String {
     "Calacas har pyntet alteret. Til sidst kom der et glas vand, et lille sukkerkranie og en monarksommerfugl - ofrendaen er færdig!"
         .to_string()
+}
+
+// ---------------------------------------------------------------------- New Year (menu "Tema")
+// The same menu at New Year (as in the macOS and Windows versions): confetti for the snow, a decorated clock for the
+// snowman, rockets for Santa, party guests for the nisser, pennants and paper lanterns for the lights, and a street
+// sweeper for the plow. The countdown line stays: here it counts down to midnight.
+pub const MENU_CONFETTI: &str = "Konfetti";
+pub const MENU_CONFETTI_LEVEL: &str = "Mængde af konfetti";
+pub const CONFETTI_LEVELS: [&str; 4] = ["Lidt konfetti", "Normal", "Konfettistorm", "Skiftende vejr"];
+pub const MENU_CONFETTI_GROUND: &str = "Konfetti på panelet";
+pub const MENU_WINDOW_PARTY: &str = "Konfetti, stjernekastere og bordbomber på vinduerne";
+pub const MENU_ROCKETS: &str = "Raketter";
+pub const MENU_SEND_ROCKETS: &str = "Send raketter op nu!";
+pub const MENU_ROCKET_SOUND: &str = "Lyd: melodi til raketterne og klokkeslag ved midnat";
+pub const MENU_SWEEPER: &str = "Fejemaskine rydder konfettien";
+pub const MENU_SEND_SWEEPER: &str = "Send fejemaskinen ud nu!";
+pub const MENU_STREET_SWEEPER_SOUND: &str = "Lyd: motor og sug fra fejemaskinen";
+pub const MENU_GUESTS: &str = "Festgæster";
+pub const MENU_GUEST_COUNT: &str = "Antal gæster pr. skærm";
+pub const MENU_PARTY_GARLAND: &str = "Vimpler og papirlanterner";
+pub const FRAME_RATES_NEW_YEAR: [&str; 4] = [
+    "12 billeder/s - mindst strøm",
+    "20 billeder/s - normal",
+    "30 billeder/s - glattere konfetti",
+    "60 billeder/s - mest strøm",
+];
+pub const NOTICE_CLOCK_TITLE: &str = "Uret er pyntet færdigt!";
+
+pub fn menu_clock(stage: i32, max: i32) -> String {
+    crate::lang::trf("Ur med pynt (trin {0} af {1})", &[stage.to_string().as_str(), max.to_string().as_str()])
+}
+
+/// The notice when the last of the clock's decorations is in place (a step for every hour the app runs).
+pub fn notice_clock() -> String {
+    "Gæsterne har pyntet det. Til sidst kom der to stjernekastere - uret er pyntet færdigt!".to_string()
+}
+
+/// The countdown line at New Year: a greeting for the first hour of the new year,
+pub fn new_year_greeting() -> String {
+    crate::lang::tr("★ Godt nytår! ★")
+}
+
+/// ... the days to New Year's Eve,
+pub fn new_year_days(days: i64) -> String {
+    match days {
+        1 => crate::lang::tr("★ 1 dag til nytårsaften ★"),
+        d => crate::lang::trf("★ {0} dage til nytårsaften ★", &[d.to_string().as_str()]),
+    }
+}
+
+/// ... and on the day itself the hours and minutes to midnight.
+pub fn new_year_midnight(hours: i64, minutes: i64) -> String {
+    crate::lang::trf("★ {0}:{1} til midnat ★", &[hours.to_string().as_str(), format!("{minutes:02}").as_str()])
 }
 
 // ---------------------------------------------------------------------- Halloween (menu "Tema")

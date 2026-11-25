@@ -146,6 +146,21 @@ jobs:
             test -s "$RUNNER_TEMP/shots-halloween-$form/screen0.png"
             cp "$RUNNER_TEMP/shots-halloween-$form/screen0.png" "build/screen0-halloween-$form.png"
           done
+          # and at New Year: the decorated clock, the pennants and paper lanterns, the guests, a volley of rockets
+          # and the street sweeper; and once more with midnight six seconds after the start (JULE_NYTAAR_OM): the
+          # guests round the clock, the big volley and the new year's number in sparks
+          printf 'Theme=4\nOfrendaSeconds=39600\nSnowLevel=1\nNisseCount=8\n' > "$RUNNER_TEMP/nytaar.ini"
+          for shot in nytaar nytaar-midnat; do
+            om=""; extra="--santa --plow=1"
+            if [ "$shot" = nytaar-midnat ]; then om=6; extra=""; fi
+            set +e
+            JULE_SETTINGS="$RUNNER_TEMP/nytaar.ini" JULE_DEEPSNOW=1 ${om:+JULE_NYTAAR_OM=$om} xvfb-run -a -s "-screen 0 1920x1080x24" timeout 17 build/JuleHygge $extra --snapshot="$RUNNER_TEMP/shots-$shot,10"
+            code=$?
+            set -e
+            [ "$code" = 124 ] || exit 1
+            test -s "$RUNNER_TEMP/shots-$shot/screen0.png"
+            cp "$RUNNER_TEMP/shots-$shot/screen0.png" "build/screen0-$shot.png"
+          done
           # the children's snowman at three points of its story, to look at: being dressed, the snowball fight,
           # and the plow just after it has run the snowman down (the blade reaches x=900 about 6.5 s in)
           printf 'FirstRun=2020-01-01\nSnowLevel=1\nSanta=0\nNisseCount=8\n' > "$RUNNER_TEMP/snemand.ini"
@@ -205,6 +220,8 @@ jobs:
             linux/build/screen0-muertos.png
             linux/build/screen0-halloween-heks.png
             linux/build/screen0-halloween-spoegelser.png
+            linux/build/screen0-nytaar.png
+            linux/build/screen0-nytaar-midnat.png
             linux/build/screen0-alfer.png
             linux/build/screen0-wichtel.png
             linux/build/screen0-kabouter.png

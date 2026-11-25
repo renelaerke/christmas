@@ -73,7 +73,7 @@ Temaet **Halloween** (`Theme=3`) er påbegyndt 2026-11-24. Idéen står i `docs/
 - **Test:** sæt `Theme=3` og `OfrendaSeconds=39600` (færdige lygter) i en settings-fil og brug den med `JULE_SETTINGS`; `--julemand` sender heksen, `--sneplov` den, der rydder bladene (`JULE_HALLOWEEN_PLOV=heks` eller `=spoegelser` låser hvilken), `JULE_DEEPSNOW=1` giver en fuld bunke. Kameraet: `HUE_HALLOWEEN=1 … --kamera-replay=MAPPE` (heks), med `HUE_GRAESKAR=1` græskarhovedet, og `HUE_NAESE_MAAL=1` viser næsens tre målte punkter og udskriver målingen.
 
 ## Nytår
-Temaet **Nytår** (`Theme=4`) er påbegyndt 2026-11-25, kun i macOS-udgaven. Idéen og RELs afgørelser står i `docs/nytaar-ide.md`, det udestående i `docs/nytaar-udestaaende.md`. Figurerne er i `Sources/JuleHygge/OverlayNytaar.swift`, raketterne og midnat i `Controller.swift`. Intet i temaet viser eller antyder drikkeri (ingen glas, flasker eller propper).
+Temaet **Nytår** (`Theme=4`) er påbegyndt 2026-11-25; Windows og Linux har det også (uden kameraet), se `AGENTS.md`. Idéen og RELs afgørelser står i `docs/nytaar-ide.md`, det udestående i `docs/nytaar-udestaaende.md`. Figurerne er i `Sources/JuleHygge/OverlayNytaar.swift`, raketterne og midnat i `Controller.swift`. Intet i temaet viser eller antyder drikkeri (ingen glas, flasker eller propper).
 
 | Jul | Nytår |
 |---|---|
