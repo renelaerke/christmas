@@ -21,8 +21,10 @@ if [[ ! "$VERSION" =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then echo "VERSION skal se 
 if [[ "$VERSION" != 0.0.0 ]]; then /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$APP/Contents/Info.plist"; fi
 "$BIN" --icon "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/JuleHygge.icns"
-# The one sound file: the recording of geese for the autumn theme (see assets/lyd/KILDER.md).
+# The sound files (see assets/lyd/KILDER.md): the geese of the autumn theme, and the brass band of the Rhineland
+# carnival with the times of its beats.
 cp ../assets/lyd/gaes-flok.wav "$APP/Contents/Resources/gaes-flok.wav"
+cp ../assets/lyd/hannerl-polka.wav ../assets/lyd/hannerl-polka.takt "$APP/Contents/Resources/"
 # The menu's languages (assets/sprog/README.md): every file there goes along.
 mkdir -p "$APP/Contents/Resources/sprog"
 cp ../assets/sprog/*.ini "$APP/Contents/Resources/sprog/"

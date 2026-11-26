@@ -83,6 +83,8 @@ icon_script = ('set -e\\nSRC=\\"$PROJECT_DIR/build/JuleHygge.icns\\"\\n'
                'if [ -f \\"$SRC\\" ]; then cp \\"$SRC\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/JuleHygge.icns\\"; fi\\n'
                # the one sound file: the recording of geese for the autumn theme (assets/lyd/KILDER.md)
                'cp \\"$PROJECT_DIR/../assets/lyd/gaes-flok.wav\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/gaes-flok.wav\\"\\n'
+               # the brass band of the Rhineland carnival and the times of its beats (assets/lyd/KILDER.md)
+               'cp \\"$PROJECT_DIR/../assets/lyd/hannerl-polka.wav\\" \\"$PROJECT_DIR/../assets/lyd/hannerl-polka.takt\\" \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/\\"\\n'
                # the menu's languages (assets/sprog/README.md)
                'mkdir -p \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/sprog\\"\\n'
                'cp \\"$PROJECT_DIR\\"/../assets/sprog/*.ini \\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/sprog/\\"\\n'

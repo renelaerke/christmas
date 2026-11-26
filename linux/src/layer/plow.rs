@@ -127,8 +127,9 @@ impl Layer {
                         self.plow_bits.push(bit);
                     }
                 }
-            } else if st.muertos {
+            } else if st.muertos || st.karneval() {
                 // the broom: petals are swept up and fly back over the donkey into the cart
+                // (and carnival's street sweepers do the same with the confetti)
                 if ph > 5.0 {
                     self.plow_chunk_acc += dt * 10.0;
                     while self.plow_chunk_acc >= 1.0 {
@@ -186,8 +187,8 @@ impl Layer {
                 }
             }
             self.plow_smoke_timer -= dt;
-            // (a donkey makes no smoke, nor do a witch or ghosts)
-            if self.plow_smoke_timer <= 0.0 && !st.muertos && !st.halloween && !st.nytaar {
+            // (a donkey makes no smoke, nor do a witch or ghosts, nor carnival's street sweepers)
+            if self.plow_smoke_timer <= 0.0 && !st.muertos && !st.halloween && !st.nytaar && !st.karneval() {
                 self.plow_smoke_timer = 0.2;
                 self.plow_bits.push(PlowBit {
                     x: h.x - h.dir * 2.0 * sc,
@@ -287,6 +288,11 @@ impl Layer {
         }
         if st.nytaar {
             super::nytaar::sweeper(cr, ph, h.wheel as f64);
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.karneval() {
+            super::karneval::street_sweepers(cr, ph, h.wheel as f64);
             cr.set_matrix(saved);
             return;
         }

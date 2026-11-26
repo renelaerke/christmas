@@ -120,6 +120,10 @@ final class DotImages {
     let confetti: [CGImage]
     /// The sparks of a rocket's burst, one soft dot for each of the confetti's colours.
     let burstDots: [CGImage]
+    /// Carnival: what falls there, the confetti and streamers again with a feather for every six of them.
+    let carnival: [CGImage]
+    /// ... and in the Rhineland's carnival: confetti and streamers with a wrapped sweet (Kamelle) for every six.
+    let kamelle: [CGImage]
 
     init(scale: F) {
         let s: F = 64, m: F = 32
@@ -259,6 +263,34 @@ final class DotImages {
         }
         confetti = confettiList
         burstDots = dots
+        // Carnival's feathers: a curved quill with a soft vane to both sides, the tip at the right
+        var mixed = confettiList
+        for (i, colour) in Theme.confettiColours.enumerated() {
+            let feather = img { g in
+                let vane = CGMutablePath()
+                vane.move(to: CGPoint(x: 12, y: m + 2))
+                vane.addCurve(to: CGPoint(x: 60, y: m - 4), control1: CGPoint(x: 24, y: m - 18), control2: CGPoint(x: 48, y: m - 18))
+                vane.addCurve(to: CGPoint(x: 12, y: m + 2), control1: CGPoint(x: 50, y: m + 14), control2: CGPoint(x: 26, y: m + 16))
+                g.addPath(vane); g.setFillColor(colour); g.fillPath()
+                g.bezier(shade(colour, 0.7), 2, 4, m + 4, 20, m + 2, 44, m - 2, 60, m - 4)
+                for k in 0..<5 { g.line(shade(colour, 0.82), 1.2, 18 + F(k) * 8, m + 1 - F(k) * 0.8, 23 + F(k) * 8, m - 9 + F(k) * 0.6) }
+            }
+            mixed.insert(feather, at: i * 6 + 5)
+        }
+        carnival = mixed
+        // The Rhineland's Kamelle: a sweet in a paper twisted at both ends
+        var sweets = confettiList
+        for (i, colour) in Theme.confettiColours.enumerated() {
+            let sweet = img { g in
+                g.fillPoly(shade(colour, 1.2), [(6, m - 12), (20, m - 4), (20, m + 4), (6, m + 12)])
+                g.fillPoly(shade(colour, 1.2), [(58, m - 12), (44, m - 4), (44, m + 4), (58, m + 12)])
+                g.fillEllipse(colour, 16, m - 11, 32, 22)
+                g.fillEllipse(C(255, 255, 255, 110), 22, m - 8, 12, 6)
+                g.line(shade(colour, 0.7), 2, 26, m - 10, 26, m + 10); g.line(shade(colour, 0.7), 2, 38, m - 10, 38, m + 10)
+            }
+            sweets.insert(sweet, at: i * 6 + 5)
+        }
+        kamelle = sweets
 
         candle = img { g in
             g.fillRect(C(250, 242, 222), 22, 4, 20, 60)
@@ -339,6 +371,10 @@ final class ScreenOverlay {
     var spookImages: [CGImage] = []
     /// New Year's sparklers and party poppers on the window edges (OverlayNytaar.swift), drawn once.
     var partyImages: [CGImage] = []
+    /// Carnival's toucans on the window edges (OverlayKarneval.swift), drawn once.
+    var toucanImages: [CGImage] = []
+    /// ... and the Rhineland's jester caps and doughnuts in their place.
+    var capImages: [CGImage] = []
     private var ledgeCandlesShown = false
     private var ledgeLeavesAt = -10.0
     private var bulbLayers: [(layer: CALayer, omega: Double, phase: Double)] = []
@@ -359,7 +395,7 @@ final class ScreenOverlay {
 
     private var PS: Bool { c.powerSave }
     /// What falls and piles up: autumn's leaves, or the marigold petals of the dead.
-    private var fallImages: [CGImage] { c.theme == .muertos ? images.petals : c.theme == .nytaar ? images.confetti : images.leaves }
+    private var fallImages: [CGImage] { c.theme == .muertos ? images.petals : c.theme == .nytaar ? images.confetti : c.theme == .karneval ? (c.carnival == .rhein ? images.kamelle : images.carnival) : images.leaves }
     private var lightsHeight: F { 70 * S }
 
     static let santaRed = C(205, 25, 35), gold = C(235, 195, 70), skin = C(255, 214, 186),
@@ -606,7 +642,7 @@ final class ScreenOverlay {
         // between two levels while the weather changes
         let amount = max(0, min(2, c.snowAmount)), lower = min(1, Int(amount))
         // (leaves are much bigger than flakes, so far fewer are needed)
-        let flakesWanted = (baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - F(lower))) * (c.theme == .nytaar ? 0.4 : c.theme.leaves ? 0.2 : 1)
+        let flakesWanted = (baseCount[lower] + (baseCount[lower + 1] - baseCount[lower]) * (amount - F(lower))) * (c.theme == .nytaar || c.theme == .karneval ? 0.4 : c.theme.leaves ? 0.2 : 1)
         let logicalArea = W * H
         // Snow covers the whole screen also in power-save mode: a Mac handles it easily, power-save only lowers the frame rate.
         let areaShare: F = 1
@@ -754,7 +790,7 @@ final class ScreenOverlay {
             f.crystal = false
             f.rotSpd = (R() - 0.5) * 5
             f.kind = Int(R() * F(fallImages.count)) % fallImages.count
-            if c.theme == .nytaar {
+            if c.theme == .nytaar || c.theme == .karneval {
                 // confetti: smaller and lighter than a leaf, fluttering down slowly and turning fast
                 f.r = (3.5 + depth * 4.5) * S
                 f.vy = (24 + depth * 30 + R() * 16) * S * (c.effectiveSnowLevel == 2 ? 1.4 : 1)
@@ -856,7 +892,7 @@ final class ScreenOverlay {
     /// A candle only stands where the edge is not hidden by a window in front. The flames flicker: the flame
     /// and glow images change size and strength every other frame (only these few layers move).
     private func renderLedgeCandles() {
-        let stands = c.theme == .muertos || c.theme == .halloween || c.theme == .nytaar
+        let stands = c.theme == .muertos || c.theme == .halloween || c.theme == .nytaar || c.theme == .karneval
         guard stands || ledgeCandlesShown, frameNo % 2 == 0 else { return }
         ledgeCandlesShown = stands
         let ox = screenBounds.minX, oy = screenBounds.minY
@@ -884,6 +920,8 @@ final class ScreenOverlay {
         if cfg.windowSnow && c.theme == .halloween { addLedgeSpooks(to: ledgeCandlePool) }
         // New Year: sparklers and party poppers
         if cfg.windowSnow && c.theme == .nytaar { addLedgeParty(to: ledgeCandlePool) }
+        // carnival: toucans
+        if cfg.windowSnow && c.theme == .karneval { addLedgeToucans(to: ledgeCandlePool) }
         ledgeCandlePool.end()
     }
 
@@ -1062,7 +1100,7 @@ final class ScreenOverlay {
         // (New Year's flyer is a volley of rockets: particles, no figure)
         guard c.santaActive, c.theme != .nytaar else { santaSprite.hide(); return }
         let sc = c.santaScale * 1.1
-        let sx = c.santaX - screenBounds.minX, sy = c.santaY - screenBounds.minY
+        let (sx, sy) = flyerPoint
         if sx < -330 * sc || sx > W + 330 * sc || sy < -150 * sc || sy > H + 150 * sc { santaSprite.hide(); return }
         santaSprite.place(CGRect(x: sx - 330 * sc, y: sy - 135 * sc, width: 660 * sc, height: 195 * sc), redraw: frameNo % 2 == 0 || santaSprite.layer.isHidden)   // moves every frame, limbs at half rate
     }
@@ -1123,12 +1161,21 @@ final class ScreenOverlay {
         g.restoreGState()
     }
 
+    /// Where the flyer is on this screen. Carnival's is a truck that drives along the ground: it stands on this
+    /// screen's own pile, wherever Santa's height would have put it.
+    var flyerPoint: (F, F) {
+        let sx = c.santaX - screenBounds.minX
+        if c.theme == .karneval { return (sx, groundY - heapAt(max(0, min(W - 1, sx))) + S) }
+        return (sx, c.santaY - screenBounds.minY)
+    }
+
     private func drawSanta(_ g: CGContext) {
         let sc = c.santaScale * 1.1
-        let sx = c.santaX - screenBounds.minX, sy = c.santaY - screenBounds.minY
+        let (sx, sy) = flyerPoint
         g.translateBy(x: sx, y: sy)
         g.scaleBy(x: c.santaDir * sc, y: sc)
         let t = c.santaPhase
+        if c.theme == .karneval { drawBandTruck(g, t); return }
         if c.theme == .efteraar {
             // Autumn's flyer: geese on their way south in a wedge, the leader in front and one arm longer than
             // the other. Each bird beats its wings in its own time and rides a little up and down.
@@ -1537,7 +1584,8 @@ final class ScreenOverlay {
         g.translateBy(x: x, y: y)
         g.scaleBy(x: S, y: S)
         if c.theme == .muertos { drawOfrenda(g, stage) } else if c.theme == .halloween { drawPumpkins(g, stage) }
-        else if c.theme == .nytaar { drawPartyClock(g, stage) } else { drawScarecrow(g, stage) }
+        else if c.theme == .nytaar { drawPartyClock(g, stage) } else if c.theme == .karneval { drawFloat(g, stage) }
+        else { drawScarecrow(g, stage) }
     }
 
     // ------------------------------------------------------------------ sneplov
@@ -1606,8 +1654,9 @@ final class ScreenOverlay {
                         plowBits.append(b)
                     }
                 }
-            } else if c.theme == .muertos {
+            } else if c.theme == .muertos || c.theme == .karneval {
                 // the broom: petals are swept up and fly back over the donkey into the cart
+                // (and carnival's street sweepers do the same with the confetti)
                 if ph > 5 {
                     plowChunkAcc += dt * 10
                     while plowChunkAcc >= 1 {
@@ -1655,7 +1704,7 @@ final class ScreenOverlay {
                 }
             }
             plowSmokeTimer -= dt
-            if plowSmokeTimer <= 0 && c.theme != .muertos && c.theme != .halloween && c.theme != .nytaar {
+            if plowSmokeTimer <= 0 && c.theme != .muertos && c.theme != .halloween && c.theme != .nytaar && c.theme != .karneval {
                 plowSmokeTimer = 0.2
                 let b = PlowBit()
                 b.smoke = true
@@ -1710,6 +1759,7 @@ final class ScreenOverlay {
         if c.theme == .muertos { drawPetalCart(g, ph); return }
         if c.theme == .halloween { if c.ghostsBlow { drawGhostBlowers(g, ph) } else { drawWitchSweeper(g, ph) }; return }
         if c.theme == .nytaar { drawSweeper(g, ph); return }
+        if c.theme == .karneval { drawStreetSweepers(g, ph); return }
 
         // Autumn's form is a leaf collector: the same truck in green, with a suction nozzle and hose in place
         // of the blade, and an open body heaped with leaves in place of the salt spreader.
@@ -2130,14 +2180,20 @@ final class ScreenOverlay {
             let sc = S * n.size
             let gy = groundY - heapAt(n.x) + 2 * S
             let frame: Int
+            // (carnival: everyone steps, stands and waves in time with the drums, each on the beat or just off it)
+            let beats = c.beatCount + Double(n.look % 2)
+            let onBeat = c.theme.revellers
             switch n.state {
+            case _ where onBeat && n.state == 0: frame = Int((beats / 4).truncatingRemainder(dividingBy: 1) * Double(Self.walkFrames)) % Self.walkFrames
+            case _ where onBeat: frame = Int((beats / 2).truncatingRemainder(dividingBy: 1) * Double(Self.standFrames)) % Self.standFrames
             case 0: frame = Int((n.walkPhase / (4 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.walkFrames)) % Self.walkFrames
             case 1: frame = Int((n.t * 1.5 / (2 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.standFrames)) % Self.standFrames
             default: frame = Int((n.t * 11 / (2 * .pi)).truncatingRemainder(dividingBy: 1) * F(Self.waveFrames)) % Self.waveFrames
             }
             // the folk is part of the key, so a change in the menu shows at once and both sets of pictures are kept
             // (New Year's guests are told apart by who they are, not by their clothes' number)
-            let who = c.theme.guests ? "g\(n.look)-\(n.carriesGift ? n.giftIndex : -1)" : n.variant
+            let who = c.theme.guests ? "g\(n.look)-\(n.carriesGift ? n.giftIndex : -1)"
+                : c.theme.revellers ? "k\(c.carnival.rawValue)\(n.look)-\(n.variant)" : n.variant
             let key = "\(c.folk.rawValue)-\(who)-\(n.state)-\(frame)"
             let img = nisseFrames[key] ?? renderNisseFrame(n, frame, key)
             let l = nisseLayers[i]
@@ -2156,7 +2212,7 @@ final class ScreenOverlay {
             g.scaleBy(x: maxSc, y: maxSc)
             g.translateBy(x: 32, y: 72)
             if c.theme.animals { drawAnimal(g, n, frame) } else if c.theme.skeletons { drawCalaca(g, n, frame) } else if c.theme.spooks { drawSpook(g, n, frame) }
-            else if c.theme.guests { drawGuest(g, n, frame) } else {
+            else if c.theme.guests { drawGuest(g, n, frame) } else if c.theme.revellers { drawReveller(g, n, frame) } else {
                 switch c.folk {
                 case .nisser: drawNisse(g, n, frame)
                 case .alfer: drawElf(g, n, frame)
@@ -2826,7 +2882,7 @@ final class ScreenOverlay {
         // Autumn's form is a garland: a brown vine with leaves hanging from it, and small lanterns where the
         // bulbs are (their lit panes are the twinkling layers, see buildBulbs).
         let autumn = c.theme == .efteraar
-        let wire = autumn ? C(104, 68, 34, 235) : c.theme == .muertos || c.theme == .halloween || c.theme == .nytaar ? C(40, 30, 36, 200) : C(25, 60, 35, 220), socket = C(30, 70, 40)
+        let wire = autumn ? C(104, 68, 34, 235) : c.theme == .muertos || c.theme == .halloween || c.theme == .nytaar || c.theme == .karneval ? C(40, 30, 36, 200) : C(25, 60, 35, 220), socket = C(30, 70, 40)
         var x0 = -span * 0.3
         while x0 < W {
             g.setStrokeColor(wire); g.setLineWidth(2 * S); g.setLineCap(.round)
@@ -2905,6 +2961,10 @@ final class ScreenOverlay {
             forEachBulb { _, bx, by in bulbs.append((bx, by)) }
             drawSpookGarland(g, span: span, sag: sag, top: top, bulbs: bulbs)
             return
+        }
+        if c.theme == .karneval {
+            // a fringe of foil strips and masks; the bulbs below are the Christmas lights' own
+            drawCarnivalGarland(g, span: span, sag: sag, top: top)
         }
         if c.theme == .nytaar {
             // pennants along the string, and gold bulbs and paper lanterns where the bulbs are (lit by buildBulbs)

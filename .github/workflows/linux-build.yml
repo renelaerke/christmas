@@ -162,6 +162,21 @@ jobs:
             test -s "$RUNNER_TEMP/shots-$shot/screen0.png"
             cp "$RUNNER_TEMP/shots-$shot/screen0.png" "build/screen0-$shot.png"
           done
+          # and at carnival, once for each form (Rio's, the Rhineland's): the finished float, the garland behind
+          # the bulbs, the walkers in step and the band truck (or the wagon) on the ground (the street sweepers
+          # wait for it, so no --plow here)
+          for form in 1 2; do
+            name=karneval
+            if [ "$form" = 2 ]; then name=karneval-rhein; fi
+            printf 'Theme=5\nCarnival=%s\nOfrendaSeconds=39600\nSnowLevel=1\nNisseCount=8\n' "$form" > "$RUNNER_TEMP/$name.ini"
+            set +e
+            JULE_SETTINGS="$RUNNER_TEMP/$name.ini" JULE_DEEPSNOW=1 xvfb-run -a -s "-screen 0 1920x1080x24" timeout 17 build/JuleHygge --santa --snapshot="$RUNNER_TEMP/shots-$name,10"
+            code=$?
+            set -e
+            [ "$code" = 124 ] || exit 1
+            test -s "$RUNNER_TEMP/shots-$name/screen0.png"
+            cp "$RUNNER_TEMP/shots-$name/screen0.png" "build/screen0-$name.png"
+          done
           # the children's snowman at three points of its story, to look at: being dressed, the snowball fight,
           # and the plow just after it has run the snowman down (the blade reaches x=900 about 6.5 s in)
           printf 'FirstRun=2020-01-01\nSnowLevel=1\nSanta=0\nNisseCount=8\n' > "$RUNNER_TEMP/snemand.ini"
@@ -209,6 +224,8 @@ jobs:
           grep -q '^aeselkaerre-rul: 4\.' "$RUNNER_TEMP/lyd/summary.txt"
           grep -q '^heks-melodi: 10\.' "$RUNNER_TEMP/lyd/summary.txt"
           grep -q '^spoegelser-sus: 4\.0' "$RUNNER_TEMP/lyd/summary.txt"
+          grep -q '^karneval-trommer: 4\.0' "$RUNNER_TEMP/lyd/summary.txt"
+          grep -q '^karneval-rhein: 63\.' "$RUNNER_TEMP/lyd/summary.txt"
 
       - name: Keep as workflow artifact
         uses: actions/upload-artifact@v7
@@ -223,6 +240,8 @@ jobs:
             linux/build/screen0-halloween-spoegelser.png
             linux/build/screen0-nytaar.png
             linux/build/screen0-nytaar-midnat.png
+            linux/build/screen0-karneval.png
+            linux/build/screen0-karneval-rhein.png
             linux/build/screen0-alfer.png
             linux/build/screen0-wichtel.png
             linux/build/screen0-kabouter.png

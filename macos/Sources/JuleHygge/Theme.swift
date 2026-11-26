@@ -20,6 +20,11 @@ import AppKit
 /// hang in the lights', sparklers and party poppers are on the window edges, and a small street sweeper takes the
 /// confetti. The theme has a moment: the countdown to midnight and a burst at the stroke (Controller.updateNewYear).
 /// Nothing in the theme shows or suggests drinking (REL 2026-11-25).
+/// Carnival (`karneval`, OverlayKarneval.swift): Rio's parade. Confetti, streamers and feathers fall, a carnival
+/// float is built hour by hour in the snowman's place, a truck with a band on it drives along the ground in
+/// Santa's (nothing flies in this theme), the people of a samba parade walk in the nisser's in time with the drums,
+/// a fringe garland with masks hangs in the lights', toucans sit on the window edges, and the street sweepers of
+/// Ash Wednesday take the confetti. No calendar and no countdown; nothing in the camera yet (docs/karneval-ide.md).
 /// What the camera dresses the person in. Set from the theme before each camera frame (the hat and the costume
 /// are drawn on the camera's queue and do not see the controller): autumn's sou'wester and yellow raincoat
 /// instead of the nisse hat and the red suit. Autumn has nothing in the beard's place.
@@ -115,10 +120,22 @@ struct CameraLook {
     }
 }
 
-enum Theme: Int {
-    case jul = 0, efteraar = 1, muertos = 2, halloween = 3, nytaar = 4
+/// Which carnival the Karneval theme shows (setting `Carnival`: 0 = by language and region). Rio's samba parade is
+/// the first and the default; where German is the language or the country it is the Rhineland's street carnival
+/// (Cologne, Düsseldorf, Mainz), with its own walkers, wagon, music and what is thrown. The rule for "German" is the
+/// one that gives the Wichtel (Folk), so the two always agree. More can be added the same way.
+enum Carnival: Int, CaseIterable {
+    case rio = 1, rhein = 2
+    static let names = ["Rio (Brasilien)", "Rhinlandet (Tyskland)"]
+    var name: String { Self.names[rawValue - 1] }
+    static var system: Carnival { Folk.system == .wichtel ? .rhein : .rio }
+    static func chosen(_ setting: Int) -> Carnival { Carnival(rawValue: setting) ?? system }
+}
 
-    static let names = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår"]
+enum Theme: Int {
+    case jul = 0, efteraar = 1, muertos = 2, halloween = 3, nytaar = 4, karneval = 5
+
+    static let names = ["Jul", "Efterår", "De dødes dag", "Halloween", "Nytår", "Karneval"]
 
     /// Leaves (or petals) instead of snow: fewer and bigger pictures, turning as they fall, in several colours.
     /// Which pictures is `ScreenOverlay.fallImages` (leaves in autumn, marigold petals for the dead).
@@ -133,6 +150,7 @@ enum Theme: Int {
         case .muertos: return C(168, 72, 8, 245)
         case .halloween: return C(96, 46, 20, 245)
         case .nytaar: return C(92, 70, 120, 245)
+        case .karneval: return C(150, 60, 110, 245)
         }
     }
     var pileEdge: CGColor { self == .jul ? C(170, 200, 230, 110) : withAlpha(pile, 0) }
@@ -153,7 +171,9 @@ enum Theme: Int {
     /// A theme that is only on for a couple of days builds its form of the snowman a stage for every hour the app
     /// runs, and keeps it finished until another theme is chosen (Controller.updateOfrenda): the ofrenda, and
     /// Halloween's jack-o'-lanterns.
-    var growsByHour: Bool { self == .muertos || self == .halloween || self == .nytaar }
+    var growsByHour: Bool { self == .muertos || self == .halloween || self == .nytaar || self == .karneval }
+    /// Carnival's walkers: the people of a samba parade, stepping in time with the drums (Controller.beat).
+    var revellers: Bool { self == .karneval }
     /// New Year's walkers: party guests in paper hats, with party horns and crackers.
     var guests: Bool { self == .nytaar }
     /// Halloween's walkers: ghosts, and children dressed up for trick or treat.

@@ -72,6 +72,17 @@ final class Voice {
         self.hub = hub; self.make = make; self.loops = loops
     }
 
+    /// Makes the sound ahead of time on a background queue, so the first time it plays does not hold the frames
+    /// up (the march takes most of a second to synthesize).
+    func warm() {
+        guard buffer == nil else { return }
+        let make = self.make
+        DispatchQueue.global(qos: .utility).async {
+            let made = make()
+            DispatchQueue.main.async { [weak self] in if self?.buffer == nil { self?.buffer = made } }
+        }
+    }
+
     private func prepare() -> Bool {
         if buffer == nil { buffer = make() }
         return hub.ensureRunning(for: self)
@@ -80,7 +91,7 @@ final class Voice {
     /// Looping voice: fades smoothly (about half a second) toward `level` (0…1) and pans to `pan` (−1…1).
     func update(level: Float, pan: Float, dt: Float) {
         if level > 0 && !playing {
-            guard prepare(), let buffer else { return }
+            guard prepare(), let buffer else { ErrorLog.debug("sound: a voice could not start"); return }
             gain = 0
             player.volume = 0
             player.scheduleBuffer(buffer, at: nil, options: loops ? .loops : [])
@@ -92,6 +103,16 @@ final class Voice {
         player.volume = gain
         player.pan = max(-1, min(1, pan))
         if level == 0 && gain < 0.003 { halt() }
+    }
+
+    /// How far into its buffer a looping voice is right now, in seconds (nil while it is silent). What comes out
+    /// of the speakers is a few hundredths of a second behind this.
+    var position: Double? {
+        guard playing, let buffer, buffer.frameLength > 0, let node = player.lastRenderTime, node.isSampleTimeValid,
+              let t = player.playerTime(forNodeTime: node) else { return nil }
+        let frames = Double(t.sampleTime) * buffer.format.sampleRate / t.sampleRate
+        guard frames >= 0 else { return nil }
+        return frames.truncatingRemainder(dividingBy: Double(buffer.frameLength)) / buffer.format.sampleRate
     }
 
     /// Plays the whole buffer once.
@@ -384,8 +405,11 @@ enum Synth {
     /// The flock itself is a recording (assets/lyd/gaes-flok.wav, see KILDER.md there; copied into the app's
     /// Resources by the build scripts): synthesized calls sounded far too artificial. It is the project's one
     /// sound file. Mixed to mono at the synth's sample rate, peak 0.6. Nil if the file is missing: no sound then.
-    private static let gooseRecording: [Float]? = {
-        guard let url = Bundle.main.url(forResource: "gaes-flok", withExtension: "wav"),
+    private static let gooseRecording: [Float]? = recording("gaes-flok")
+
+    /// A recording from the app's Resources (assets/lyd), mixed to mono at the synth's sample rate, peak 0.6.
+    private static func recording(_ name: String) -> [Float]? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav"),
               let file = try? AVAudioFile(forReading: url) else { return nil }
         let fmt = file.processingFormat
         let frames = AVAudioFrameCount(file.length)
@@ -408,7 +432,42 @@ enum Synth {
         }
         if peak > 0 { let k = 0.6 / peak; for i in 0..<outN { r[i] *= k } }
         return r
+    }
+
+    // ------------------------------------------------------------------ the Rhineland wagon's band (a recording)
+
+    /// What the Rhineland carnival's wagon plays: a real village brass band, because four synthesized marches
+    /// (the last of them FM brass, `marchBand` below) never came to sound like brass (REL 2026-11-25). It is an
+    /// excerpt of the Hannerl Polka played by Blaskapelle Franz Stremnitzer (CC BY 3.0; source, licence and how
+    /// it was cut in assets/lyd/KILDER.md; the credit is shown from the menu, see Licenses.swift).
+    /// Nil if the file is missing: the synthesized march plays then.
+    static func rheinBand() -> AVAudioPCMBuffer? {
+        guard let rec = recording("hannerl-polka"), rec.count > 1000 else { return marchBand() }
+        return makeBuffer(seconds: Double(rec.count) / sampleRate) { out, n in
+            for i in 0..<min(n, rec.count) { out[i] = rec[i] }
+        }
+    }
+
+    /// Where every beat of that excerpt falls, in seconds from its start (found by tools/takt.py: a band never
+    /// keeps one tempo exactly, and the walkers step on the band's beats, not on a clock's). The last number is
+    /// the excerpt's length, where the first beat comes round again. Nil without the recording.
+    static let rheinBeats: [Double]? = {
+        guard Bundle.main.url(forResource: "hannerl-polka", withExtension: "wav") != nil,
+              let url = Bundle.main.url(forResource: "hannerl-polka", withExtension: "takt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let t = text.split(separator: "\n").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard t.count > 8, zip(t, t.dropFirst()).allSatisfy({ $0 < $1 }) else { return nil }
+        return t
     }()
+
+    /// The beat number (whole numbers on the beats) at `position` seconds into the excerpt.
+    static func rheinBeat(at position: Double) -> Double? {
+        guard let t = rheinBeats else { return nil }
+        let p = max(t[0], min(t[t.count - 1], position))
+        var lo = 0, hi = t.count - 1
+        while hi - lo > 1 { let m = (lo + hi) / 2; if t[m] <= p { lo = m } else { hi = m } }
+        return Double(lo) + (p - t[lo]) / (t[hi] - t[lo])
+    }
 
     /// One seamless loop of geese calling, as long as the recording: 0 = the flock alone, 1 = farther off
     /// (quieter and duller) over synthesized gusts of wind.
@@ -686,6 +745,209 @@ enum Synth {
                     out[start + k] += Float(v * env * 0.1)
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ karneval
+    /// The band truck's drums: a samba batucada, two bars of 2/4 at 120 beats a minute (4 s, looping; the same
+    /// beat the walkers step to, Controller.beat). An original pattern for the instruments of a bateria: the low
+    /// surdo on the second beat of each bar with a softer answer on the first, the snare (caixa) running in
+    /// sixteenths with accents, the small tamborim in its off-beat figure, two bells (agogô) high and low, a shaker
+    /// throughout, and a whistle that calls at the start. Written for JuleHygge, so it is free of rights.
+    static func batucada() -> AVAudioPCMBuffer? {
+        let step = 0.125, steps = 32
+        return makeBuffer(seconds: step * Double(steps)) { out, n in
+            var rng = SeededRandom(seed: 2027)
+            func noise() -> Double { Double(rng.next()) * 2 - 1 }
+            func add(_ t0: Double, _ len: Double, _ f: (Double) -> Double) {
+                let start = Int(t0 * sampleRate), count = Int(len * sampleRate)
+                for k in 0..<count {
+                    let i = (start + k) % n   // (a hit near the end rings on into the start: the loop has no seam)
+                    out[i] += Float(f(Double(k) / sampleRate))
+                }
+            }
+            for s in 0..<steps {
+                let t = Double(s) * step, inBar = s % 16
+                // surdo: a deep drum, its pitch dropping a little as it rings
+                if inBar == 4 || inBar == 12 { add(t, 0.5) { x in 0.55 * exp(-x * 6) * sin(2 * .pi * (62 + 18 * exp(-x * 30)) * x) } }
+                if inBar == 0 || inBar == 8 { add(t, 0.3) { x in 0.28 * exp(-x * 14) * sin(2 * .pi * (78 + 14 * exp(-x * 30)) * x) } }
+                // caixa: sixteenths of filtered noise, accented on the off-beats
+                let accent = [1.0, 0.35, 0.5, 0.8][s % 4]
+                var last = 0.0
+                add(t, 0.07) { x in
+                    let v = noise(); let hp = v - last; last = v
+                    return 0.16 * accent * exp(-x * 60) * hp
+                }
+                // tamborim: a dry high tap in the figure of a telecoteco
+                if [0, 3, 6, 10, 12, 15].contains(inBar) {
+                    add(t, 0.06) { x in 0.2 * exp(-x * 70) * (sin(2 * .pi * 1900 * x) + 0.5 * sin(2 * .pi * 2850 * x)) }
+                }
+                // agogô: two bells, high and low
+                if [2, 6, 9, 14].contains(inBar) {
+                    let f = inBar == 2 || inBar == 9 ? 880.0 : 660.0
+                    add(t, 0.25) { x in 0.12 * exp(-x * 12) * (sin(2 * .pi * f * x) + 0.4 * sin(2 * .pi * f * 2.76 * x)) }
+                }
+                // shaker: soft hiss on every sixteenth
+                add(t, 0.05) { x in 0.05 * (s % 2 == 0 ? 1 : 0.6) * sin(.pi * min(1, x / 0.05)) * noise() }
+            }
+            // the whistle at the start: three short calls, each with the pea's trill
+            for (t, len) in [(0.0, 0.12), (0.25, 0.12), (0.5, 0.3)] {
+                add(t, len) { x in
+                    let env = min(1, x / 0.01) * min(1, (len - x) / 0.02)
+                    return 0.1 * env * sin(2 * .pi * 2700 * x + 2.5 * sin(2 * .pi * 38 * x))
+                }
+            }
+        }
+    }
+
+    /// The Rhineland's wagon: a brass band playing a march of our own, eight bars of 4/4 at 120 beats a minute (16 s,
+    /// looping; the same beat the walkers step to). Written for JuleHygge, so it is free of rights: no carnival
+    /// song is quoted.
+    ///
+    /// The first version (one voice to a part, every note alike and exactly on the beat) sounded thin and
+    /// mechanical (REL 2026-11-25). What makes this one a band:
+    /// - every part is several players, a few cents apart and a few milliseconds apart, so they beat and blur;
+    /// - the instruments are a brass band's: trumpets with the tune, flugelhorns a third below them, trombones
+    ///   holding the chord, horns off the beat, three tubas and a euphonium on it, and a glint of glockenspiel (a
+    ///   marching band's lyre); their tone is FM brass, see `brass` below;
+    /// - nobody plays like a clock: each note is a little early or late and a little louder or softer, and the
+    ///   first beat of a bar is leaned on;
+    /// - the drums are a snare with a roll into each phrase, a big drum and a cymbal with it;
+    /// - and the whole band stands in a little room (a short reverb, run round the loop so it has no seam).
+    static func marchBand() -> AVAudioPCMBuffer? {
+        let beat = 0.5
+        func freq(_ midi: Int) -> Double { 440 * pow(2, Double(midi - 69) / 12) }
+        // per bar: the tuba's root, and the chord's three notes
+        let C = (36, [55, 60, 64]), Fm = (41, [57, 60, 65]), G = (43, [55, 59, 62])
+        let bars = [C, Fm, G, C, C, G, Fm, C]
+        // the tune, in eighths: (note, length); two phrases of four bars
+        let melody: [(Int, Int)] = [
+            (67, 2), (72, 2), (76, 2), (79, 2),   (81, 3), (79, 1), (77, 2), (72, 2),
+            (74, 2), (79, 2), (77, 1), (76, 1), (74, 2),   (72, 2), (76, 2), (72, 3), (0, 1),
+            (76, 2), (79, 2), (84, 2), (79, 2),   (83, 3), (81, 1), (79, 2), (74, 2),
+            (81, 2), (77, 2), (79, 1), (81, 1), (83, 2),   (84, 2), (79, 2), (72, 3), (0, 1)]
+        /// The note a third below in C major (the second trumpet).
+        func thirdBelow(_ midi: Int) -> Int {
+            let scale = [0, 2, 4, 5, 7, 9, 11]
+            let octave = midi / 12, degree = scale.firstIndex(of: midi % 12) ?? 0
+            let d = degree - 2
+            return d >= 0 ? octave * 12 + scale[d] : (octave - 1) * 12 + scale[d + 7]
+        }
+        return makeBuffer(seconds: beat * 32) { out, n in
+            var rng = SeededRandom(seed: 1111)
+            func rnd() -> Double { Double(rng.next()) }
+            var dry = [Double](repeating: 0, count: n)
+            func add(_ t0: Double, _ len: Double, _ f: (Double) -> Double) {
+                var start = Int(t0 * sampleRate) % n
+                if start < 0 { start += n }
+                let count = Int(len * sampleRate)
+                for k in 0..<count { dry[(start + k) % n] += f(Double(k) / sampleRate) }   // (a note near the end rings on into the start)
+            }
+            /// One part: `players` of them on the same note, each a few cents and a few milliseconds off the others.
+            ///
+            /// The tone is Chowning's FM brass (1973), which rests on Risset's analysis of the trumpet: a brass
+            /// note's overtones are not a fixed set, they spread upward as the note gets louder and draw in again as
+            /// it dies, and the low ones speak first. A carrier and a modulator at the same frequency give every
+            /// harmonic, and the modulation index, which sets how far up they reach, follows the note's own loudness
+            /// envelope: a quick attack that overshoots, a fall to about three quarters, and a release. `bright` is the
+            /// index at the peak as a share of 6 (a trumpet about 5, a flugelhorn or horn about 3, a tuba under 3).
+            /// The two versions before this added sine overtones in fixed proportions, which is how an organ pipe or a
+            /// flute sounds however the proportions are chosen: "church organ or flute" (REL 2026-11-25).
+            func brass(_ t0: Double, _ midi: Int, _ len: Double, _ amp: Double, bright: Double, players: Int, accent: Double = 1) {
+                for player in 0..<players {
+                    let cents = (rnd() - 0.5) * 14 + Double(player - players / 2) * 5
+                    let f = freq(midi) * pow(2, cents / 1200)
+                    let late = (rnd() - 0.35) * 0.022, loud = amp * accent * (0.8 + rnd() * 0.4) / Double(players).squareRoot()
+                    let vibrato = len > 0.45 ? 0.003 + rnd() * 0.002 : 0, rate = 5.2 + rnd() * 0.8
+                    let top = bright * 6 * (0.9 + rnd() * 0.2) * min(1.15, accent)
+                    let total = len + 0.05
+                    let attack = min(0.07, total * 0.3), release = min(0.09, total * 0.3)
+                    var phase = rnd() * 6.28, drift = 0.0
+                    add(t0 + late, total) { x in
+                        // the loudness envelope, which the index follows
+                        var e = x < attack ? x / attack : 0.75 + 0.25 * exp(-(x - attack) / 0.07)
+                        if x > total - release { e *= max(0, (total - x) / release) }
+                        // (the lips never hold a note dead still)
+                        drift += ((rnd() - 0.5) * 0.012 - drift) * 0.004
+                        let wobble = vibrato * min(1, x / 0.3) * sin(2 * .pi * rate * x)
+                        phase += 2 * .pi * f * (1 + wobble + drift) / sampleRate
+                        return loud * e * sin(phase + top * e * sin(phase))
+                    }
+                }
+            }
+            func noise() -> Double { rnd() * 2 - 1 }
+            func snare(_ t0: Double, _ amp: Double) {
+                var last = 0.0
+                add(t0 + (rnd() - 0.5) * 0.008, 0.14) { x in
+                    let w = noise(); let hp = w - last * 0.6; last = w
+                    return amp * (exp(-x * 34) * hp * 0.8 + exp(-x * 50) * sin(2 * .pi * 190 * x) * 0.5)
+                }
+            }
+            for (b, bar) in bars.enumerated() {
+                let t = Double(b) * 4 * beat
+                for q in 0..<4 {
+                    let tq = t + Double(q) * beat
+                    // the tuba on the beats: root and fifth, the first of the bar leaned on
+                    // (three tubas, and a euphonium an octave above them: so low a note is hardly heard on small
+                    // loudspeakers without it. REL asked for more tuba, 2026-11-25)
+                    let low = bar.0 + (q % 2 == 0 ? 0 : 7)
+                    brass(tq, low, beat * 0.9, 0.4, bright: 0.42, players: 3, accent: q == 0 ? 1.2 : 1)
+                    brass(tq, low + 12, beat * 0.85, 0.14, bright: 0.4, players: 1)
+                    // on the last beat of a bar the tubas walk up to the next one
+                    if q == 3 { brass(tq + beat / 2, low + 2, beat * 0.42, 0.26, bright: 0.42, players: 2) }
+                    // the horns off the beat
+                    for note in bar.1 { brass(tq + beat / 2, note, beat * 0.3, 0.055, bright: 0.5, players: 2) }
+                    // the big drum on every beat, heavier on one and three, with the cymbal
+                    let heavy = q % 2 == 0 ? 1.0 : 0.55
+                    add(tq, 0.32) { x in 0.3 * heavy * exp(-x * 11) * sin(2 * .pi * (54 + 22 * exp(-x * 28)) * x) }
+                    var held = 0.0
+                    add(tq + 0.004, 0.5) { x in
+                        let w = noise(); let hp = w - held; held = w
+                        return 0.035 * heavy * exp(-x * 7) * hp
+                    }
+                    // the snare: a tap on every eighth, a crack on two and four
+                    snare(tq, q % 2 == 1 ? 0.2 : 0.07)
+                    snare(tq + beat / 2, 0.06)
+                }
+                // trombones hold the chord, swelling a little through the bar
+                for note in bar.1 { brass(t, note - 12, beat * 3.7, 0.04, bright: 0.6, players: 1) }
+                // a roll into the next phrase, growing
+                if b % 4 == 3 { for r in 0..<8 { snare(t + 3 * beat + Double(r) * beat / 8, 0.05 + 0.02 * Double(r)) } }
+            }
+            var at = 0.0
+            for (i, (note, len)) in melody.enumerated() {
+                let dur = Double(len) * beat / 2
+                if note > 0 {
+                    let onBar = Int((at / beat).rounded()) % 4 == 0 && at.truncatingRemainder(dividingBy: beat) < 0.01
+                    // short notes are played short, long ones held
+                    let held = len >= 2 ? dur * 0.9 : dur * 0.7
+                    // (the trumpets play it in their middle register, an octave under where it is written here: up
+                    // high it was shrill and thin)
+                    brass(at, note - 12, held, 0.17, bright: 0.85, players: 3, accent: onBar ? 1.15 : 1)
+                    brass(at, thirdBelow(note) - 12, held, 0.1, bright: 0.55, players: 2)
+                    // the glockenspiel on top, only a glint (louder, its pure tones were part of the flute sound)
+                    let f = freq(note + 12), ring = 0.011 * (0.8 + rnd() * 0.4)
+                    add(at + (rnd() - 0.5) * 0.01, 0.6) { x in
+                        ring * (exp(-x * 7) * sin(2 * .pi * f * x) + 0.4 * exp(-x * 12) * sin(2 * .pi * f * 2.76 * x) + 0.2 * exp(-x * 20) * sin(2 * .pi * f * 5.4 * x))
+                    }
+                }
+                _ = i
+                at += dur
+            }
+            // the room: four short echoes fed back on themselves, run twice round the loop (the second time round
+            // it carries the tail of the first, so the loop has no seam)
+            var wet = [Double](repeating: 0, count: n)
+            for (delay, gain) in [(1310, 0.74), (1637, 0.72), (1811, 0.70), (1999, 0.68)] {
+                var line = [Double](repeating: 0, count: delay)
+                var p = 0
+                for i in 0..<(2 * n) {
+                    let y = dry[i % n] + line[p] * gain
+                    line[p] = y
+                    p = (p + 1) % delay
+                    if i >= n { wet[i - n] += y * 0.25 }
+                }
+            }
+            for i in 0..<n { out[i] = Float(dry[i] * 0.82 + wet[i] * 0.2) }
         }
     }
 

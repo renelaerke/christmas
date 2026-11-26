@@ -16,10 +16,11 @@ namespace JuleHygge
         public int PowerSave = 2;          // 0 = off, 1 = always on, 2 = only on battery
         public int SoundLevel = 1;         // 0 = low, 1 = medium, 2 = high
         public int FrameRate = 20;         // frames/s while the scene is calm: 12, 20, 30 or 60 (same default as macOS)
-        public int Theme = 0;              // 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween, 4 = nytår (as macOS; see Controller.Autumn, Muertos, Halloween and Nytaar)
+        public int Theme = 0;              // 0 = jul, 1 = efterår, 2 = de dødes dag, 3 = halloween, 4 = nytår, 5 = karneval (as macOS; see Controller.Autumn, Muertos, Halloween, Nytaar and Karneval)
         public double OfrendaSeconds = 0;  // how long the ofrenda (De dødes dag) has been built on: a step for every hour the app runs
         public bool Kite = true;           // autumn's kite over the primary screen
         public int Folk = 0;               // 0 = automatic by language and region, else 1 nisser, 2 alfer, 3 Wichtel, 4 kabouters, 5 päkapikud (class Folk)
+        public int Carnival = 0;           // which carnival: 0 = automatic by language and region, 1 = Rio, 2 = the Rhineland (Controller.Carnival)
         public bool AutoUpdate = true;     // install new GitHub releases by itself
         public string LastVersion = "";  // the version that ran last time, to announce an update
         public string Language = "";     // the menu's language: empty = automatic, or a code such as "en" (see Lang)
@@ -82,10 +83,11 @@ namespace JuleHygge
             if (Array.IndexOf(new[] { 12, 20, 30, 60 }, s.FrameRate) < 0) s.FrameRate = 20;
             // (a theme this version does not have shows as Christmas)
             s.Theme = I(d, "Theme", 0);
-            if (s.Theme < 0 || s.Theme > 4) s.Theme = 0;
+            if (s.Theme < 0 || s.Theme > 5) s.Theme = 0;
             s.OfrendaSeconds = Math.Max(0, I(d, "OfrendaSeconds", 0));
             s.Kite = B(d, "Kite", s.Kite);
             s.Folk = Math.Max(0, Math.Min(5, I(d, "Folk", s.Folk)));
+            s.Carnival = Math.Max(0, Math.Min(2, I(d, "Carnival", s.Carnival)));
             s.SnowLevel = Math.Max(0, Math.Min(3, I(d, "SnowLevel", s.SnowLevel)));
             s.NisseCount = Math.Max(1, Math.Min(12, I(d, "NisseCount", s.NisseCount)));
             s.PowerSave = Math.Max(0, Math.Min(2, I(d, "PowerSave", s.PowerSave)));
@@ -121,7 +123,7 @@ namespace JuleHygge
                     "Snow=" + B(Snow), "SnowGround=" + B(SnowGround), "Santa=" + B(Santa),
                     "Nisser=" + B(Nisser), "Lights=" + B(Lights), "PauseFullscreen=" + B(PauseFullscreen),
                     "Snowman=" + B(Snowman), "AllScreens=" + B(AllScreens), "Plow=" + B(Plow), "WindowSnow=" + B(WindowSnow), "Sound=" + B(Sound), "PlowSound=" + B(PlowSound), "SoundLevel=" + SoundLevel,
-                    "SnowLevel=" + SnowLevel, "NisseCount=" + NisseCount, "PowerSave=" + PowerSave, "FrameRate=" + FrameRate, "Theme=" + Theme, "Kite=" + B(Kite), "Folk=" + Folk, "AutoUpdate=" + B(AutoUpdate), "LastVersion=" + LastVersion, "Language=" + Language,
+                    "SnowLevel=" + SnowLevel, "NisseCount=" + NisseCount, "PowerSave=" + PowerSave, "FrameRate=" + FrameRate, "Theme=" + Theme, "Kite=" + B(Kite), "Folk=" + Folk, "Carnival=" + Carnival, "AutoUpdate=" + B(AutoUpdate), "LastVersion=" + LastVersion, "Language=" + Language,
                     "SnowmanSeenStage=" + SnowmanSeenStage, "OfrendaSeconds=" + (int)OfrendaSeconds, "CalendarYear=" + CalendarYear,
                     "FirstRun=" + Ds(FirstRun), "LastDoorNotice=" + Ds(LastDoorNotice),
                     "OpenedDoors=" + string.Join(",", OpenedDoors.OrderBy(x => x)) });

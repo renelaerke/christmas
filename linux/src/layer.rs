@@ -25,6 +25,8 @@ mod build;
 mod elves;
 mod ground;
 mod halloween;
+mod karneval;
+mod karneval_rhein;
 mod ledges;
 mod lights;
 mod muertos;
@@ -113,12 +115,30 @@ pub struct SceneState<'a> {
     pub clock_key: i32,
     /// The last minutes before midnight: the guests on the clock's screen stand round it.
     pub gather: bool,
+    /// Carnival (setting `Theme` = 5): 0 when it is another theme, else which carnival it is,
+    /// `folk::CARNIVAL_RIO` or `folk::CARNIVAL_RHEIN` (setting `Carnival`). Confetti with feathers or sweets for
+    /// snow, and every figure in its carnival form (`layer/karneval.rs`, `layer/karneval_rhein.rs`).
+    pub carnival: i32,
+    /// How many beats of carnival's drums have gone (120 to the minute): every walker on every screen steps in
+    /// time with it, and the band on the truck plays to it.
+    pub beat_count: f64,
 }
 
 impl SceneState<'_> {
     /// Leaves or petals instead of snow (autumn and De dødes dag): fewer and bigger pictures, turning as they fall.
     pub fn leaves(&self) -> bool {
-        self.autumn || self.muertos || self.halloween || self.nytaar
+        self.autumn || self.muertos || self.halloween || self.nytaar || self.karneval()
+    }
+
+    /// The carnival theme, in either of its forms.
+    pub fn karneval(&self) -> bool {
+        self.carnival != 0
+    }
+
+    /// New Year's confetti falls (at New Year, and at carnival with feathers or sweets among it): smaller and
+    /// lighter than a leaf, and twice as many.
+    fn confetti(&self) -> bool {
+        self.nytaar || self.karneval()
     }
 
     /// The dark between the leaves (or petals) of a pile; None when the pile is snow.
@@ -127,6 +147,8 @@ impl SceneState<'_> {
             Some((245, 168, 72, 8))
         } else if self.nytaar {
             Some((245, 92, 70, 120))
+        } else if self.karneval() {
+            Some((245, 150, 60, 110))
         } else if self.halloween {
             Some((245, 96, 46, 20))
         } else if self.autumn {
@@ -409,6 +431,9 @@ pub struct Layer {
     petals: bool,
     /// ... or, when `confetti`, New Year's confetti and streamers (`nytaar::make_confetti_sprites`).
     confetti: bool,
+    /// ... or, when this is not 0, carnival's confetti with feathers (`folk::CARNIVAL_RIO`) or sweets
+    /// (`folk::CARNIVAL_RHEIN`) among it (`karneval::make_carnival_sprites`).
+    carnival_fall: i32,
 }
 
 impl Layer {
@@ -480,6 +505,7 @@ impl Layer {
             leaf_sprites: make_leaf_sprites()?,
             petals: false,
             confetti: false,
+            carnival_fall: 0,
         })
     }
 
@@ -549,10 +575,12 @@ impl Layer {
     /// Leaves or petals: the pictures follow the theme (the controller builds the screens anew when it changes, so
     /// nothing cached was laid out with the other set).
     fn use_fall_sprites(&mut self, st: &SceneState) {
-        if st.muertos == self.petals && st.nytaar == self.confetti {
+        if st.muertos == self.petals && st.nytaar == self.confetti && st.carnival == self.carnival_fall {
             return;
         }
-        let made = if st.nytaar {
+        let made = if st.karneval() {
+            karneval::make_carnival_sprites(st.carnival == crate::folk::CARNIVAL_RHEIN)
+        } else if st.nytaar {
             nytaar::make_confetti_sprites()
         } else if st.muertos {
             muertos::make_petal_sprites()
@@ -565,6 +593,7 @@ impl Layer {
         }
         self.petals = st.muertos;
         self.confetti = st.nytaar;
+        self.carnival_fall = st.carnival;
     }
 
     // ------------------------------------------------------------------ one frame
@@ -618,6 +647,7 @@ impl Layer {
         self.draw_ledge_candles(st);
         self.draw_ledge_spooks(st);
         self.draw_ledge_party(st);
+        self.draw_ledge_carnival(st);
         self.draw_santa_and_sparks(st);
         self.draw_embers(st);
         self.draw_kite(dt, st);
@@ -696,7 +726,7 @@ impl Layer {
         let lower = (amount as usize).min(1);
         // (leaves are much bigger than flakes, so far fewer are needed)
         let wanted = (BASE[lower] + (BASE[lower + 1] - BASE[lower]) * (amount - lower as f32))
-            * if st.nytaar {
+            * if st.confetti() {
                 0.4 // (confetti is smaller than a leaf: twice as many)
             } else if st.leaves() {
                 0.2
@@ -886,7 +916,7 @@ impl Layer {
             f.crystal = false;
             f.rot_spd = (self.rng.f() - 0.5) * 5.0;
             f.kind = self.rng.range(0, LEAF_KINDS as i32) as usize;
-            if st.nytaar {
+            if st.confetti() {
                 // confetti: smaller and lighter than a leaf, fluttering down slowly and turning fast
                 f.r = (3.5 + depth * 4.5) * s;
                 f.vy = (24.0 + depth * 30.0 + self.rng.f() * 16.0) * s * if st.snow_level == 2 { 1.4 } else { 1.0 };
@@ -1111,6 +1141,8 @@ mod tests {
             clock: (0.0, 0.0, None),
             clock_key: 0,
             gather: false,
+            carnival: 0,
+            beat_count: 0.0,
         }
     }
 
@@ -1357,6 +1389,11 @@ mod tests {
 
     impl Layer {
         /// What clearing the whole screen would leave: the cached lights and ground, empty elsewhere.
+        /// Whether the pictures that fall are carnival's of that form.
+        fn confetti_is(&self, form: i32) -> bool {
+            self.carnival_fall == form && !self.petals
+        }
+
         fn background(&mut self) -> Vec<u32> {
             let keep = self.canvas.pixels.to_vec();
             self.clear_rects(&[Rect::new(0, 0, self.w, self.h)]);
@@ -1511,6 +1548,92 @@ mod tests {
         let x0 = (1280.0 * 0.78) as usize;
         let above = (620..690).any(|y| (x0 - 20..x0 + 20).any(|x| background[y * w as usize + x] >> 24 > 200));
         assert!(above, "no clock in the ground image");
+    }
+
+    #[test]
+    fn carnival_leaves_no_trails() {
+        use crate::figures::{Figures, ScreenInfo};
+        use crate::window_snow::{FRect, WinInfo, WindowSnow};
+        // one 1280x720 screen with every figure in its carnival form, once for Rio and once for the Rhineland: the
+        // garland behind the bulbs, the walkers stepping to the beat, the finished float, a window with toucans (or
+        // jester caps and doughnuts), the band truck (or the wagon, with sweets thrown from it) driving by, and
+        // when it has gone the street sweepers. Looked at every 20 seconds: the truck out, the sweepers out, after.
+        for form in [crate::folk::CARNIVAL_RIO, crate::folk::CARNIVAL_RHEIN] {
+            let rhein = form == crate::folk::CARNIVAL_RHEIN;
+            let rect = Rect::new(0, 0, 1280, 720);
+            let mut l = Layer::new(rect, true, 1.0, 23).unwrap();
+            l.heap.fill(18.0 * l.s);
+            let mut f = Figures::new(11);
+            f.karneval = true;
+            f.rhein = rhein;
+            let info = |l: &Layer| vec![ScreenInfo { rect, s: l.s, primary: true, heap_average: l.heap_average() }];
+            f.launch_santa(&info(&l));
+            assert!(f.santa.is_some(), "the truck did not start");
+            // (the sweepers wait while the truck is out)
+            f.send_plow(&info(&l));
+            assert!(!f.plow.active, "the sweepers came out with the truck");
+            let mut ws = WindowSnow::new(1.0, 5);
+            let win = WinInfo { id: 1, rect: FRect { x: 100.0, y: 400.0, w: 900.0, h: 300.0 }, visible: vec![(106.0, 994.0)] };
+            ws.update_ledges(vec![win]);
+            let mut t = 5.0;
+            let (mut truck_seen, mut sweepers_seen, mut sweets) = (false, false, 0usize);
+            for i in 0..1700 {
+                t += 0.05;
+                f.update(0.05, t, &info(&l), false, false);
+                // when the truck has gone by, the sweepers are sent
+                if f.santa.is_none() && !f.plow.active && !sweepers_seen {
+                    f.send_plow(&info(&l));
+                }
+                truck_seen |= f.santa.is_some();
+                sweepers_seen |= f.plow.active;
+                sweets = sweets.max(f.embers.len());
+                let st = SceneState {
+                    time: t,
+                    carnival: form,
+                    beat_count: t / 0.5,
+                    lights: true,
+                    elves: true,
+                    elf_count: 8,
+                    snow_amount: 2.0,
+                    snowman_stage: 12,
+                    santa: f.santa.as_ref(),
+                    sparks: &f.sparks,
+                    embers: &f.embers,
+                    plow: Some(&f.plow),
+                    ledges: &ws.ledges,
+                    clumps: &ws.clumps,
+                    ..state()
+                };
+                l.frame(0.05, &st);
+                f.plow.pushed += l.take_pushed();
+                for (li, x, r) in l.take_ledge_hits() {
+                    ws.ledges[li].deposit(x, r);
+                }
+                ws.update(0.05, false, false, 0.0, 720.0);
+                if i % 400 != 399 && i != 1699 {
+                    continue;
+                }
+                // every lit pixel was drawn this frame or is what clearing restores (the ground with the float, the
+                // garland and bulbs, the confetti on the window)
+                let background = l.background();
+                let w = l.width();
+                for (at, (p, b)) in l.pixels().iter().zip(&background).enumerate() {
+                    let (x, y) = (at as i32 % w, at as i32 / w);
+                    let drawn = l.prev_dirty.iter().any(|r| x >= r.x && x < r.right() && y >= r.y && y < r.bottom());
+                    assert!(*p == *b || drawn, "stale pixel at {x},{y} in frame {i} (rhein: {rhein})");
+                }
+            }
+            assert!(l.confetti_is(form), "carnival's pictures are not in use");
+            assert!(truck_seen && sweepers_seen, "truck {truck_seen}, sweepers {sweepers_seen} (rhein: {rhein})");
+            assert!(f.santa.is_none() && !f.plow.active, "they never arrived (rhein: {rhein})");
+            // sweets are thrown from the Rhineland's wagon only
+            assert_eq!(sweets > 5, rhein, "{sweets} sweets in the air at most (rhein: {rhein})");
+            // the float stands in the cached ground: something of it shows well above the pile
+            let background = l.background();
+            let (w, x0) = (l.width() as usize, (1280.0 * 0.78) as usize);
+            let above = (620..690).any(|y| (x0 - 30..x0 + 30).any(|x| background[y * w + x] >> 24 > 200));
+            assert!(above, "no float in the ground image (rhein: {rhein})");
+        }
     }
 
     #[test]

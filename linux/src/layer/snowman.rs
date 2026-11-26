@@ -9,7 +9,8 @@ use super::draw::*;
 pub const MAX_STAGE: i32 = 12;
 
 /// What is built in the snowman's place where it grows by stages: autumn's haystack and scarecrow, the ofrenda of
-/// De dødes dag (`muertos.rs`), or Halloween's jack-o'-lanterns (`halloween.rs`).
+/// De dødes dag (`muertos.rs`), Halloween's jack-o'-lanterns (`halloween.rs`), New Year's clock or carnival's
+/// float.
 #[derive(Clone, Copy)]
 pub(super) enum Built {
     Scarecrow,
@@ -18,12 +19,15 @@ pub(super) enum Built {
     /// New Year's clock (`nytaar.rs`), with what its hands show: the hour hand's and the minute hand's turn
     /// (0..1), and the second hand's while it has one.
     Clock { hour: f64, minute: f64, second: Option<f64> },
+    /// Carnival's float (`karneval.rs`), or the Rhineland's (`karneval_rhein.rs`).
+    Float { rhein: bool },
 }
 
 /// The box the snowman fills when it stands at (x, y) on a screen of scale `s`.
 pub(super) fn bounds(x: f32, y: f32, s: f32) -> (f32, f32, f32, f32) {
-    // (72 to each side: the glow of the lanterns on New Year's clock reaches that far; the others need 62)
-    (x - 72.0 * s, y - 135.0 * s, 144.0 * s, 142.0 * s)
+    // (80 to each side: the feather fans of carnival's float reach that far; the glow of the lanterns on New
+    // Year's clock needs 72, the others 62)
+    (x - 80.0 * s, y - 135.0 * s, 160.0 * s, 142.0 * s)
 }
 
 /// Draws the haystack and scarecrow at `stage` standing at (x, y). It is drawn into the cached ground image
@@ -38,6 +42,7 @@ pub(super) fn draw(cr: &Context, x: f64, y: f64, s: f64, stage: i32, what: Built
         Built::Ofrenda => super::muertos::ofrenda(cr, stage),
         Built::Pumpkins => super::halloween::pumpkins(cr, stage),
         Built::Clock { hour, minute, second } => super::nytaar::party_clock(cr, stage, hour, minute, second),
+        Built::Float { rhein } => super::karneval::parade_float(cr, stage, rhein),
     }
     cr.set_matrix(saved);
 }

@@ -9,7 +9,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
@@ -34,6 +34,10 @@ struct VoiceState {
     applied_pan: f32,
     /// Playback speed, tempo and pitch together (like a tape): Santa's tune follows his pace.
     rate: f32,
+    /// Where the voice was (`pos`) at the start of the buffer mixed last, and when that sample is heard: the time
+    /// of the mixing plus the output's delay, as far as the sound system tells it. None while nothing of the
+    /// voice has been mixed. See `AudioHub::position`.
+    heard: Option<(f64, Instant)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +78,7 @@ impl AudioHub {
             applied_gain: 0.0,
             applied_pan: 0.0,
             rate: 1.0,
+            heard: None,
         });
         Voice(v.len() - 1)
     }
@@ -102,6 +107,25 @@ impl AudioHub {
         self.lock()[v.0].rate = rate.clamp(0.5, 2.0);
     }
 
+    /// How far into its sound the voice is heard to be right now, in seconds; None while it is silent (or nothing
+    /// of it has been mixed yet). Carnival's walkers step to the band's own beats with it.
+    /// Counted: where the voice was when the last buffer was mixed, the time that has gone since, and the delay
+    /// the sound system reported for that buffer (ALSA's count of frames queued ahead of it). Not counted: any
+    /// delay the sound system does not report, e.g. in a sound server behind ALSA, in Bluetooth or in the
+    /// loudspeakers themselves.
+    pub fn position(&self, v: Voice) -> Option<f64> {
+        let voices = self.lock();
+        let s = &voices[v.0];
+        let len = s.samples.get().map_or(0, Vec::len) as f64;
+        let (start, at) = s.heard.filter(|_| s.playing && len > 0.0)?;
+        let now = Instant::now();
+        let since = if now >= at { (now - at).as_secs_f64() } else { -((at - now).as_secs_f64()) };
+        // (a playback thread that has stalled is not followed for more than a second)
+        let p = start + since.clamp(-1.0, 1.0) * RATE * s.rate as f64;
+        let p = if s.loops { p.rem_euclid(len) } else { p.clamp(0.0, len) };
+        Some(p / RATE)
+    }
+
     /// Looping voice: fades smoothly (about half a second) toward `level` (0..1) and pans to `pan` (-1..1).
     pub fn update(&mut self, v: Voice, level: f32, pan: f32, dt: f32) {
         let pan = pan.clamp(-1.0, 1.0);
@@ -112,6 +136,7 @@ impl AudioHub {
             let mut voices = self.lock();
             let s = &mut voices[v.0];
             s.pos = 0.0;
+            s.heard = None;
             s.gain = 0.0;
             s.applied_gain = 0.0;
             s.pan = pan;
@@ -142,6 +167,7 @@ impl AudioHub {
         let mut voices = self.lock();
         let s = &mut voices[v.0];
         s.pos = 0.0;
+        s.heard = None;
         s.gain = level;
         s.applied_gain = level;
         s.pan = pan.clamp(-1.0, 1.0);
@@ -169,6 +195,7 @@ impl AudioHub {
     pub fn stop_all(&mut self) {
         for v in self.lock().iter_mut() {
             v.playing = false;
+            v.heard = None;
             v.gain = 0.0;
             v.applied_gain = 0.0;
         }
@@ -213,11 +240,14 @@ fn play(voices: Arc<Mutex<Vec<VoiceState>>>, stop: Arc<AtomicBool>) -> Result<()
     // the sounds are made at 44.1 kHz; a device at another rate just steps through them faster or slower
     let step = SAMPLE_RATE as f64 / config.sample_rate.0 as f64;
     let mut acc = Vec::<f32>::new();
-    let mut mix = move |frames: usize| -> Vec<f32> {
+    // `delay`: how long after this call the buffer's first frame is heard (what the sound system reports)
+    let mut mix = move |frames: usize, delay: Duration| -> Vec<f32> {
         acc.clear();
         acc.resize(frames * 2, 0.0);
+        let heard_at = Instant::now() + delay;
         let mut v = voices.lock().unwrap_or_else(|e| e.into_inner());
         for s in v.iter_mut() {
+            s.heard = s.playing.then_some((s.pos, heard_at));
             mix_into(s, &mut acc, frames, step);
         }
         for x in acc.iter_mut() {
@@ -229,8 +259,8 @@ fn play(voices: Arc<Mutex<Vec<VoiceState>>>, stop: Arc<AtomicBool>) -> Result<()
     let stream = match format {
         cpal::SampleFormat::F32 => device.build_output_stream(
             &config,
-            move |data: &mut [f32], _| {
-                let m = mix(data.len() / channels);
+            move |data: &mut [f32], info: &cpal::OutputCallbackInfo| {
+                let m = mix(data.len() / channels, output_delay(info));
                 for (f, out) in data.chunks_mut(channels).enumerate() {
                     for (c, o) in out.iter_mut().enumerate() {
                         *o = if c < 2 { m[2 * f + c] } else { 0.0 };
@@ -242,8 +272,8 @@ fn play(voices: Arc<Mutex<Vec<VoiceState>>>, stop: Arc<AtomicBool>) -> Result<()
         )?,
         cpal::SampleFormat::I16 => device.build_output_stream(
             &config,
-            move |data: &mut [i16], _| {
-                let m = mix(data.len() / channels);
+            move |data: &mut [i16], info: &cpal::OutputCallbackInfo| {
+                let m = mix(data.len() / channels, output_delay(info));
                 for (f, out) in data.chunks_mut(channels).enumerate() {
                     for (c, o) in out.iter_mut().enumerate() {
                         *o = if c < 2 { (m[2 * f + c] * 32000.0) as i16 } else { 0 };
@@ -263,6 +293,13 @@ fn play(voices: Arc<Mutex<Vec<VoiceState>>>, stop: Arc<AtomicBool>) -> Result<()
     drop(stream);
     crate::log::debug("audio stopped");
     Ok(())
+}
+
+/// How long after the callback the buffer it fills starts to be heard, as the sound system reports it (zero when
+/// it does not say).
+fn output_delay(info: &cpal::OutputCallbackInfo) -> Duration {
+    let stamp = info.timestamp();
+    stamp.playback.duration_since(&stamp.callback).unwrap_or_default()
 }
 
 /// Adds one voice to the stereo mix, ramping gain and pan across the buffer so volume changes never click.
@@ -942,6 +979,121 @@ pub fn midnight_bell() -> Vec<f32> {
     })
 }
 
+// ---------------------------------------------------------------------- carnival
+/// The band truck's drums at Rio's carnival: a samba batucada, two bars of 2/4 at 120 beats a minute (4 s, looping;
+/// the beat the walkers step to, `controller::BEAT`). An original pattern for the instruments of a bateria, the
+/// same as `Synth.Batucada` in `src/Sound.cs`: the low surdo on the second beat of each bar with a softer answer on
+/// the first, the snare (caixa) running in sixteenths with accents, the small tamborim in its off-beat figure, two
+/// bells (agogô), a shaker throughout, and a whistle at the start.
+pub fn batucada() -> Vec<f32> {
+    const STEP: f64 = 0.125;
+    const STEPS: usize = 32;
+    const ACCENTS: [f64; 4] = [1.0, 0.35, 0.5, 0.8];
+    make_buffer(STEP * STEPS as f64, |out| {
+        let mut rng = NetRandom::new(2027);
+        // (a hit near the end rings on into the start: the loop has no seam)
+        let at = |t0: f64| (t0 * RATE) as i64;
+        let long = |len: f64| (len * RATE) as usize;
+        for s in 0..STEPS {
+            let t = s as f64 * STEP;
+            let in_bar = s % 16;
+            // surdo: a deep drum, its pitch dropping a little as it rings
+            if in_bar == 4 || in_bar == 12 {
+                add_wrapped(out, at(t), long(0.5), |k| {
+                    let x = k as f64 / RATE;
+                    0.55 * (-x * 6.0).exp() * (TAU * (62.0 + 18.0 * (-x * 30.0).exp()) * x).sin()
+                });
+            }
+            if in_bar == 0 || in_bar == 8 {
+                add_wrapped(out, at(t), long(0.3), |k| {
+                    let x = k as f64 / RATE;
+                    0.28 * (-x * 14.0).exp() * (TAU * (78.0 + 14.0 * (-x * 30.0).exp()) * x).sin()
+                });
+            }
+            // caixa: sixteenths of filtered noise, accented on the off-beats
+            let accent = ACCENTS[s % 4];
+            let mut last = 0.0;
+            add_wrapped(out, at(t), long(0.07), |k| {
+                let x = k as f64 / RATE;
+                let v = noise(&mut rng);
+                let hp = v - last;
+                last = v;
+                0.16 * accent * (-x * 60.0).exp() * hp
+            });
+            // tamborim: a dry high tap in the figure of a telecoteco
+            if matches!(in_bar, 0 | 3 | 6 | 10 | 12 | 15) {
+                add_wrapped(out, at(t), long(0.06), |k| {
+                    let x = k as f64 / RATE;
+                    0.2 * (-x * 70.0).exp() * ((TAU * 1900.0 * x).sin() + 0.5 * (TAU * 2850.0 * x).sin())
+                });
+            }
+            // agogô: two bells, high and low
+            if matches!(in_bar, 2 | 6 | 9 | 14) {
+                let f = if in_bar == 2 || in_bar == 9 { 880.0 } else { 660.0 };
+                add_wrapped(out, at(t), long(0.25), |k| {
+                    let x = k as f64 / RATE;
+                    0.12 * (-x * 12.0).exp() * ((TAU * f * x).sin() + 0.4 * (TAU * f * 2.76 * x).sin())
+                });
+            }
+            // shaker: soft hiss on every sixteenth
+            let soft = if s % 2 == 0 { 1.0 } else { 0.6 };
+            add_wrapped(out, at(t), long(0.05), |k| {
+                let x = k as f64 / RATE;
+                0.05 * soft * (std::f64::consts::PI * (x / 0.05).min(1.0)).sin() * noise(&mut rng)
+            });
+        }
+        // the whistle at the start: three short calls, each with the pea's trill
+        for (t0, len) in [(0.0, 0.12), (0.25, 0.12), (0.5, 0.3)] {
+            add_wrapped(out, at(t0), long(len), |k| {
+                let x = k as f64 / RATE;
+                0.1 * (x / 0.01).min(1.0) * ((len - x) / 0.02).min(1.0) * (TAU * 2700.0 * x + 2.5 * (TAU * 38.0 * x).sin()).sin()
+            });
+        }
+    })
+}
+
+/// What the Rhineland carnival's wagon plays: a recording of a real village brass band (an excerpt of the Hannerl
+/// Polka played by Blaskapelle Franz Stremnitzer, CC BY 3.0; source, licence and how it was cut in
+/// `assets/lyd/KILDER.md`), because synthesized marches never came to sound like brass on macOS. It is compiled
+/// into the binary with the times of its beats, as the geese are.
+static RHEIN_WAV: &[u8] = include_bytes!("../../assets/lyd/hannerl-polka.wav");
+static RHEIN_TAKT: &str = include_str!("../../assets/lyd/hannerl-polka.takt");
+
+/// The excerpt, mono at the synth's sample rate, peak 0.6, to be looped as it is. A second of silence if it is
+/// not 16-bit PCM. (Decoded when the voice is made ready, and kept by the voice.)
+pub fn rhein_band() -> Vec<f32> {
+    decode_wav(RHEIN_WAV).unwrap_or_else(|| vec![0.0; RATE as usize])
+}
+
+/// Where every beat of that excerpt falls, in seconds from its start (found by `tools/takt.py`: a band never
+/// keeps one tempo exactly, and the walkers step on the band's beats, not on a clock's). The last number is the
+/// excerpt's length, where the first beat comes round again. None if the list is not one of rising times.
+fn rhein_beats() -> Option<&'static [f64]> {
+    static BEATS: OnceLock<Option<Vec<f64>>> = OnceLock::new();
+    BEATS
+        .get_or_init(|| {
+            let t: Vec<f64> = RHEIN_TAKT.lines().filter_map(|line| line.trim().parse::<f64>().ok()).collect();
+            (t.len() > 8 && t.windows(2).all(|w| w[1] > w[0])).then_some(t)
+        })
+        .as_deref()
+}
+
+/// The beat number (whole numbers on the beats) at `position` seconds into the excerpt; None without the beats.
+pub fn rhein_beat(position: f64) -> Option<f64> {
+    let t = rhein_beats()?;
+    let p = position.clamp(t[0], t[t.len() - 1]);
+    let (mut lo, mut hi) = (0, t.len() - 1);
+    while hi - lo > 1 {
+        let m = (lo + hi) / 2;
+        if t[m] <= p {
+            lo = m;
+        } else {
+            hi = m;
+        }
+    }
+    Some(lo as f64 + (p - t[lo]) / (t[hi] - t[lo]))
+}
+
 // ---------------------------------------------------------------------- halloween
 /// The witch's tune: an original slow waltz in A minor (8 bars of 3/4, about 10 s, looping), sung by a thin
 /// wavering voice that slides from note to note (like a theremin) over a low organ holding the bar's root and
@@ -1313,6 +1465,8 @@ pub fn write_test_files(dir: &std::path::Path) -> std::io::Result<()> {
     sounds.push(("spoegelser-sus".into(), ghost_wind()));
     sounds.push(("nytaar-melodi".into(), auld_lang_syne()));
     sounds.push(("nytaar-klokke".into(), midnight_bell()));
+    sounds.push(("karneval-trommer".into(), batucada()));
+    sounds.push(("karneval-rhein".into(), rhein_band()));
     for (mood, name) in GOOSE_MOODS.iter().enumerate() {
         sounds.push((format!("gaes-{name}"), geese(mood)));
     }
@@ -1394,6 +1548,35 @@ mod tests {
     }
 
     #[test]
+    fn carnivals_sounds_are_sane_and_the_bands_beats_rise() {
+        let drums = batucada();
+        // two bars of 2/4 at 120 beats a minute
+        assert_eq!(drums.len(), (4.0 * RATE) as usize);
+        let band = rhein_band();
+        // the excerpt is about 63.3 s long, and the last of its beats' times is its length
+        let seconds = band.len() as f64 / RATE;
+        assert!((seconds - 63.3).abs() < 0.2, "{seconds} s");
+        let beats = rhein_beats().expect("the beats' times are read");
+        assert!(beats.len() > 100 && beats.windows(2).all(|w| w[1] > w[0]), "{} beats", beats.len());
+        assert!((beats[beats.len() - 1] - seconds).abs() < 0.05, "the beats end at {}", beats[beats.len() - 1]);
+        // (a whole number of pairs of beats in the loop, so nobody changes foot when it comes round)
+        assert_eq!((beats.len() - 1) % 2, 0);
+        for (name, s) in [("drums", drums), ("band", band)] {
+            let peak = s.iter().fold(0.0f32, |p, x| p.max(x.abs()));
+            assert!(peak > 0.1 && peak <= 0.9001 && s.iter().all(|x| x.is_finite()), "{name} peak {peak}");
+        }
+        // the beat number rises all the way through, and is a whole number on each beat
+        let mut last = -1.0;
+        for i in 0..=633 {
+            let b = rhein_beat(i as f64 * 0.1).expect("a beat number");
+            assert!(b > last || (b == last && i as f64 * 0.1 > seconds), "beat {b} after {last} at {i}");
+            last = b;
+        }
+        assert_eq!(rhein_beat(beats[5]), Some(5.0));
+        assert_eq!(rhein_beat(-1.0), Some(0.0));
+    }
+
+    #[test]
     fn halloweens_sounds_are_sane() {
         let tune = witch_tune();
         // 8 bars of 3/4 at 0.42 s a beat
@@ -1433,6 +1616,7 @@ mod tests {
             applied_gain: 0.0,
             applied_pan: 0.0,
             rate: 1.0,
+            heard: None,
         };
         let mut acc = vec![0.0f32; 4096];
         mix_into(&mut v, &mut acc, 2048, 1.0);

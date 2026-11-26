@@ -440,7 +440,12 @@ impl Layer {
         let sc = self.s * e.size;
         let gy = self.ground_y - heap_at(&self.heap, e.x) + 2.0 * self.s;
         let (ex, dir) = (e.x, e.dir);
-        self.mark(ex - 32.0 * sc, gy - 72.0 * sc, 64.0 * sc, 80.0 * sc);
+        if st.karneval() {
+            // (carnival's flag bearer holds her flag higher and farther out than a nisse reaches)
+            self.mark(ex - 38.0 * sc, gy - 84.0 * sc, 76.0 * sc, 92.0 * sc);
+        } else {
+            self.mark(ex - 32.0 * sc, gy - 72.0 * sc, 64.0 * sc, 80.0 * sc);
+        }
         let e = &self.elves[i];
 
         let cr = &self.canvas.cr;
@@ -489,6 +494,27 @@ impl Layer {
                     stand: if e.state == ElfState::Stand { e.t as f64 * 1.5 } else { 0.0 },
                     wave: if waving { e.t as f64 * 11.0 } else { 0.0 },
                 },
+            );
+            cr.set_matrix(saved);
+            return;
+        }
+        if st.karneval() {
+            // Carnival: one of a samba parade, or of the Rhineland's (`karneval.rs`), in the same state as the elf
+            // it stands in for. Who it is follows the elf itself, and its step the controller's beat, not the
+            // elf's own phase: everyone on every screen moves together.
+            super::karneval::reveller(
+                cr,
+                &super::karneval::RevellerPose {
+                    look: (e.id % 9973) as usize,
+                    tunic: tunic_index(e),
+                    gift: e.gift,
+                    walking: e.state == ElfState::Walk,
+                    standing: e.state == ElfState::Stand,
+                    waving: e.state == ElfState::Wave,
+                    carries_gift: e.carries_gift,
+                    beat_count: st.beat_count,
+                },
+                st.carnival == crate::folk::CARNIVAL_RHEIN,
             );
             cr.set_matrix(saved);
             return;

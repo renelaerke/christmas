@@ -203,9 +203,11 @@ final class VirtualCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
         // New Year: a paper party hat, and nothing in the beard's or the suit's place
         let nytaar = c.cfg.theme == Theme.nytaar.rawValue
         CameraCostume.nytaar = nytaar
-        let wantsHat = halloween ? c.cfg.cameraHalloween != 0 : c.cfg.cameraHat
-        let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && !halloween && CameraCostume.look.beard > 0
-        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween && !nytaar
+        // carnival: nothing on the person yet (the feather band and the mask are planned: docs/karneval-ide.md)
+        let karneval = c.cfg.theme == Theme.karneval.rawValue
+        let wantsHat = karneval ? false : halloween ? c.cfg.cameraHalloween != 0 : c.cfg.cameraHat
+        let wantsBeard = c.cfg.cameraBeard && !autumn && !muertos && !halloween && !karneval && CameraCostume.look.beard > 0
+        let wantsSuit = c.cfg.cameraSuit && !muertos && !halloween && !nytaar && !karneval
         let wantsMakeup = c.cfg.cameraBeard && muertos
         let wantsCostume = wantsBeard || wantsSuit || wantsMakeup   // all need the face landmarks
         let now = CACurrentMediaTime()

@@ -154,6 +154,8 @@ impl Layer {
                 snowman::Built::Ofrenda
             } else if st.nytaar {
                 snowman::Built::Clock { hour: st.clock.0, minute: st.clock.1, second: st.clock.2 }
+            } else if st.karneval() {
+                snowman::Built::Float { rhein: st.carnival == crate::folk::CARNIVAL_RHEIN }
             } else if st.halloween {
                 snowman::Built::Pumpkins
             } else {
